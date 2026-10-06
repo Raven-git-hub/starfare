@@ -212,10 +212,19 @@ const TIER3_GOOD_SET = new Set(TIER3_GOODS);
 // In a hold it takes a whole heavy hold (fuel.js `volumeOf` -> ASSET_CARGO_VOLUME), so only a heavy
 // transport can carry one, and only one at a time — no separate class rule is needed.
 //
-// Keyed by the KIND of structure the kit deploys as. Adding a kind later (toll gate, deep-scan array,
-// the Prefecture) is one new row here — a data change, not a refactor. Only the outpost kit exists.
+// Keyed by the KIND of structure the kit deploys as. Adding a kind later (toll gate, the Prefecture) is
+// one new row here — a data change, not a refactor. Two kits exist:
+//   - 'outpost'  -> outpost_kit          (roadmap 2.2, the deploy pipeline);
+//   - 'deepScan' -> deep_scan_array_kit  (roadmap 2.5 (b1), the Deep Scan Array — docs/exploration-model.md
+//                                         §5). The kind is the lane key the deploy range was designed under
+//                                         (docs/territory-model.md §5 "Lane-keyed so tollGate and deepScan
+//                                         slot in"); the good is named after the structure it packs.
+// The one row is what makes 'deepScan' a kit asset kind (sim/assets.js KIT_ASSET_KINDS) and lets the
+// grant, load, unload and ferry carry it with no further change. WHERE each kind may be placed is the
+// deploy rule's (sim/actions.js `deployCheck`), not this table's.
 const OUTPOST_KIT = 'outpost_kit';
-const DEPLOYABLE_KITS = Object.freeze({ outpost: OUTPOST_KIT });
+const DEEP_SCAN_KIT = 'deep_scan_array_kit';
+const DEPLOYABLE_KITS = Object.freeze({ outpost: OUTPOST_KIT, deepScan: DEEP_SCAN_KIT });
 
 // Every deployable good, sorted for a stable order (invariant 9), like the lists above.
 const DEPLOYABLE_GOODS = Object.freeze(Object.values(DEPLOYABLE_KITS).sort());
@@ -277,6 +286,6 @@ function kindForKit(good) {
 module.exports = {
   RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
   TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
-  OUTPOST_KIT, DEPLOYABLE_KITS, DEPLOYABLE_GOODS,
+  OUTPOST_KIT, DEEP_SCAN_KIT, DEPLOYABLE_KITS, DEPLOYABLE_GOODS,
   isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood, isDeployableGood, kitGoodFor, kindForKit,
 };

@@ -163,3 +163,29 @@ takes the next number from the guild's kit serial, so a kit that went out as `_0
 of the one stop the craft is already at (`--route "sys:$HOME@unload-kit"`) unloads at once, burning no fuel,
 like the standalone `unload-kit`. If the target were no longer held when the craft lands (no play path does this
 today), the kit would stay aboard and the craft would idle there flagged `laneEnded: { reason: 'target-gone' }`.
+
+## The Deep Scan Array — a kit deployed "attached" (2.5 (b1))
+
+The second space-lane kind (`docs/exploration-model.md` §5): the same grant → load → fly → deploy, with the
+kind `deepScan` and a different placement rule. The array must go on a bare hex **touching** territory the
+guild holds — exactly `claimRadius + 1` hexes from a held system's centre (the ring just outside its control
+disk; `claimRadius` is in the seed, 1 for every system today), or 1 hex from one of the guild's own Outposts.
+There is no range number. It scans nothing yet (slice (b2)). On the seat-demo galaxy above (home `sys_0006`
+at `104,55`, so `106,55` is on the ring and `107,55` is one hex past it):
+
+    node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind deepScan $B    # prints the minted asset id
+    node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_deepScan_02 $B
+    node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "106,55@deploy:deepScan" $B
+    node tools/admin.js tick N $B                                 # N = to the arrival; the array is placed on it
+    node tools/admin.js snapshot --pick deepScanArrays $B         # the god's-eye rows
+
+or fly there with `dispatch-vehicle` and place it by hand with `deploy-asset`, which prints the new array's id
+(`deepScanArray_<guild>_NN`), hex and anchor system. A hex that does not touch the guild's territory is refused,
+up front for a route, at once for `deploy-asset` (exit 1, "touches no footprint guild … holds"); so is one
+inside the disk, an occupied hex (one structure per hex, Outposts and arrays alike), and a deploy whose waypoint
+kind does not match the kit aboard. A route whose attachment is lost while it flies (the Outpost it touched was
+packed up) retreats exactly as an Outpost deploy does, flagged `deployFailed: { reason: 'not-attached' }`.
+`grant-kit`, `load-kit` and `unload-kit` list the guild's idle kits of every kind.
+
+A guild sees only its OWN arrays: `GET /snapshot?guild=<id>` carries `deepScanArrays` with that guild's rows
+only, and no `deepScanArrays` key at all when it owns none; a rival's array is not in the view.

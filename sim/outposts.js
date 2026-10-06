@@ -62,12 +62,16 @@ const DEPLOY_RETREAT_HEXES = 3;
 
 // DEPLOY_FAILED_REASONS — why an on-arrival deploy failed, recorded on the craft as `deployFailed =
 // { reason, tick }` (the `laneEnded` pattern) so the player can see why the craft pulled back:
-//   'occupied'     — the target hex holds a structure now (a seed landmark or an Outpost placed first);
-//   'out-of-range' — no system the guild holds is within OUTPOST_DEPLOY_RANGE of the hex any more.
-// These are the two deploy checks a craft's flight can change. The other two cannot fail on arrival — the
+//   'occupied'     — the target hex holds a structure now (a seed landmark, an Outpost or a Deep Scan
+//                    Array placed first);
+//   'out-of-range' — (an Outpost) no system the guild holds is within OUTPOST_DEPLOY_RANGE of the hex
+//                    any more;
+//   'not-attached' — (a Deep Scan Array, roadmap 2.5 (b1)) the hex no longer touches a footprint the guild
+//                    holds — e.g. the Outpost it was attached to was packed up while the craft flew.
+// These are the deploy checks a craft's flight can change. The others cannot fail on arrival — the
 // dispatch proved the target is a bare hex (an anchor never moves) and the hold exactly one kit (a kit is
 // never manifested) — so they have no reason here; an arrival that trips one halts loudly instead.
-const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range']);
+const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range', 'not-attached']);
 
 // OUTPOST_DOCK_TURNAROUND — the per-class load/unload time (ticks a craft holds a dock slot),
 // RULED 21-09-26 (design.md §4 "The dock model"; recorded in docs/phase-1-tuning.md): light 5,

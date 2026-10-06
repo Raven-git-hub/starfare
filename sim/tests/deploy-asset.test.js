@@ -355,12 +355,14 @@ test('status gates: a craft in transit, in a dock slot, or on a lane is refused'
 
 test('kit gates: no kit, or anything but exactly one kit, is refused; so is an unknown or rival guild', () => {
   const hex = freeHexAtDistance(1);
+  // With NO kit aboard there is no kind to read off the hold (deployAsset names only the craft), so since
+  // 2.5 (b1) — two kit kinds — the refusal asks for "a kit", not the Outpost's kit in particular.
   const empty = deployState({ location: hex });
-  assert.match(refuse(empty, deploy(empty)), /must carry exactly one outpost_kit and nothing else/);
+  assert.match(refuse(empty, deploy(empty)), /must carry exactly one kit and nothing else to deploy — its hold is \{\}/);
 
   const titanium = deployState({ location: hex });
   craftOf(titanium).cargo = { titanium: 5 };
-  assert.match(refuse(titanium, deploy(titanium)), /exactly one outpost_kit/);
+  assert.match(refuse(titanium, deploy(titanium)), /must carry exactly one kit and nothing else to deploy — its hold is \{"titanium":5\}/);
 
   const mixed = kitAt(hex);
   craftOf(mixed).cargo.titanium = 1; // a corrupt (over-capacity) hold: the gate still refuses it

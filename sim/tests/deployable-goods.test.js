@@ -93,7 +93,8 @@ const rulesOf = (violations) => violations.map((v) => v.rule);
 
 test('category: outpost_kit is a deployable good — not a stockpile good, not fuel', () => {
   assert.equal(OUTPOST_KIT, 'outpost_kit');
-  assert.deepEqual([...DEPLOYABLE_GOODS], ['outpost_kit'], 'the only kind this slice');
+  // Two kits since 2.5 (b1): the Deep Scan Array's joined the Outpost's (sorted, invariant 9).
+  assert.deepEqual([...DEPLOYABLE_GOODS], ['deep_scan_array_kit', 'outpost_kit']);
   assert.equal(isDeployableGood(OUTPOST_KIT), true);
   assert.equal(isStockpileGood(OUTPOST_KIT), false, 'never a stockpile key');
   assert.equal(STOCKPILE_GOODS.includes(OUTPOST_KIT), false);

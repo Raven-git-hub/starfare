@@ -290,8 +290,10 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
 §3 / §4’s, unchanged.
 
 **The payload** (self-contained, built at the retreat — all of it already in hand there):
-- `cause` — `'occupied'` | `'out-of-range'` (the two retreatable reasons; the §5 `deployFailed` reason).
-- `kind` — the deployable kind, `'outpost'` (the only one built).
+- `cause` — `'occupied'` | `'out-of-range'` | `'not-attached'` (the retreatable reasons; the §5 `deployFailed`
+  reason). *(⤳ `'not-attached'` added 06-10-26, roadmap 2.5 (b1): a Deep Scan Array whose attachment to held
+  territory was lost in flight. The client's Reason fact has no label for it yet — it reads "—" — client slice.)*
+- `kind` — the deployable kind, `'outpost'` or (2.5 (b1)) `'deepScan'`.
 - `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
 - `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map). *(⤳ Now the forks'
   lookup: Show on map is replaced, below.)*

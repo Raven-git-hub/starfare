@@ -124,7 +124,7 @@ The space-asset deploy ranges: how far from a system the guild **holds** a struc
 
 - **`OUTPOST_DEPLOY_RANGE`** — `[FIRST-CUT]` **10** hexes from a held **system**. **RULED 29-09-26** as the first-cut value for the build (the human, via the 2.2 deploy-pipeline slice-1 build prompt; the figure mirrors design.md §2 "Toll Gates & Toll Paths" and the §16 test-claims tooling's "outposts ≤10 hexes of an own system"). Lives once in `sim/outposts.js`, read only by the one deploy rule `deployCheck` (`sim/actions.js` — the manual `deployAsset` and, slice 2, the on-arrival deploy), never inlined. The nearest held system is both the range test and the new Outpost's `anchorSystemId` (a tie goes to the lower system id). The operator's `spawnOutpost` still places freely, without it.
 - **`DEPLOY_RETREAT_HEXES`** — `[FIRST-CUT]` **3** hexes. **RULED 30-09-26** (the human, via the 2.2 deploy-pipeline slice-2 build prompt; `docs/territory-model.md` §5, the retreat rule). When a craft's ON-ARRIVAL deploy fails (the hex was taken, or no held system is in range any more), the craft does not idle on that hex — it may be a rival's space — but snaps this many hexes from the target straight toward the **nearest system its guild holds** (a cube-round of the point that far along the line), landing **at** that system when it is this close or closer (never past it). A snap, not travel: no fuel, no time, no toll or fine. Lives once in `sim/outposts.js` beside `OUTPOST_DEPLOY_RANGE`, read only by the retreat (`retreatLanding`, `sim/actions.js`), never inlined. *(Its one unruled edge — a step that falls just off the lattice near the rim — is on the decision checklist.)*
-- **Toll gate ≤ 10 from a system OR outpost; deep-scan array ≤ 5 from a system or outpost** — `[FIRST-CUT]`, **still open** on the decision checklist: those kinds are not built, so no constant exists for them yet.
+- **Toll gate ≤ 10 from a system OR outpost; deep-scan array ≤ 5 from a system or outpost** — `[FIRST-CUT]`, **still open** on the decision checklist: those kinds are not built, so no constant exists for them yet. *(⤳ The deep-scan figure is SUPERSEDED 05-10-26 by the "attached" placement — "Exploration & scanning" below — and that placement is BUILT 06-10-26, roadmap 2.5 (b1), with no constant. The toll-gate figure stays open.)*
 - **The kit's cargo volume is NOT a new number:** an `outpost_kit` takes `ASSET_CARGO_VOLUME` (= `HEAVY_HOLD`), the Tier-4 asset volume already ruled (design.md §4), via `sim/fuel.js` `volumeOf`. It is why only a heavy carries a kit, one at a time.
 
 ### Exploration & scanning — the Deep Scan Array *(05-10-26 — `docs/exploration-model.md` §5; roadmap 2.5)*
@@ -144,7 +144,10 @@ The space-asset deploy ranges: how far from a system the guild **holds** a struc
   to ("attached to") a held system or outpost footprint**, which **supersedes** the `[FIRST-CUT]`
   "deep scan ≤ 5 hexes" deploy range (`territory-model.md` §5/§8). Its **scan reach is galaxy-wide
   / unbounded** — no range constant. The monitoring watch-fan (directional, ~4-hex reach) is
-  **deferred**; its radius is not ruled here.
+  **deferred**; its radius is not ruled here. *(⤳ BUILT 06-10-26, roadmap 2.5 (b1), still with **no
+  number**: "attached" is geometry — a bare hex exactly `claimRadius + 1` from a held system's centre
+  (`claimRadius` is seed data, `data/seed.json`, 1 for every system today), or 1 from an Outpost the guild
+  owns (`sim/actions.js` `attachedPlacement`). The scan timers above are not built — slice (b2).)*
 
 ### Production flow *(10-08-26)*
 - **Starved-line warn threshold** `[FIRST-CUT]` — a consuming line is flagged "starved" (the §5 pulsing box / future Plant-Manager cue) only when its effective rate is below this fraction of its own throttle, so a rounding wobble near 100% doesn't cry wolf. **95%** — pure first-cut, tune in play.

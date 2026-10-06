@@ -1,7 +1,8 @@
 'use strict';
 
-// kit-fixtures.js — how the deploy tests put an outpost kit aboard a heavy, now that the kit is a
-// system-scoped idle asset (design.md §4, RULED 02-10-26; docs/territory-model.md §5 REVISED).
+// kit-fixtures.js — how the deploy tests put a kit (an Outpost's, or a Deep Scan Array's) aboard a
+// heavy, now that the kit is a system-scoped idle asset (design.md §4, RULED 02-10-26;
+// docs/territory-model.md §5 REVISED).
 //
 // A kit no longer appears straight in a hold. It is GRANTED into a system's inventory as an idle
 // 'outpost' asset, then LOADED onto an empty, idle heavy berthed in that same system. `kitAboard` does
@@ -31,17 +32,19 @@ function act(state, action) {
 const guildOf = (state, guildId) => state.guilds.find((g) => g.id === guildId);
 const craftOf = (state, guildId, vehicleId) => guildOf(state, guildId).vehicles.find((v) => v.id === vehicleId);
 
-// kitAboard(state, guildId, vehicleId) -> the state after one outpost kit is granted into the system the
-// heavy is berthed at and loaded onto it. The heavy must be berthed at a system (loadKit's same-system
-// rule needs one), idle and empty — loadKit's own gates refuse anything else, loudly.
-function kitAboard(state, guildId, vehicleId) {
+// kitAboard(state, guildId, vehicleId, kind = 'outpost') -> the state after one kit of `kind` is granted
+// into the system the heavy is berthed at and loaded onto it. The heavy must be berthed at a system
+// (loadKit's same-system rule needs one), idle and empty — loadKit's own gates refuse anything else,
+// loudly. `kind` defaults to the outpost, so every caller from before the Deep Scan Array (2.5 (b1)) reads
+// exactly as it did.
+function kitAboard(state, guildId, vehicleId, kind = 'outpost') {
   const at = craftOf(state, guildId, vehicleId).location;
   if (!at || at.landmarkKind !== 'system') {
     throw new Error(`kit fixture: ${vehicleId} must be berthed at a system to load a kit, but it is at ${JSON.stringify(at)}`);
   }
-  let s = act(state, createGrantKitAction({ guildId, systemId: at.landmarkId, kind: 'outpost' }));
+  let s = act(state, createGrantKitAction({ guildId, systemId: at.landmarkId, kind }));
   // The kit just minted carries the guild's newest kit serial (sim/assets.js nextKitAssetSerial).
-  const kitId = assetId(guildId, 'outpost', guildOf(s, guildId).kitAssetSerial);
+  const kitId = assetId(guildId, kind, guildOf(s, guildId).kitAssetSerial);
   s = act(s, createLoadKitAction({ guildId, vehicleId, assetId: kitId }));
   return s;
 }

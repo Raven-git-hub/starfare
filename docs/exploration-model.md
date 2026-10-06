@@ -11,7 +11,10 @@ record (§7)**, and the **Deep Scan Array's discovery scan (§5)** are the curre
 (roadmap 2.5, the exploration slice). *(⤳ 05-10-26: the ENGINE half of §3/§6/§7 — the record, the
 one `reveal`, founding state, the rival-licensed-venture source, and the per-guild
 `buildSnapshot(state, guildId)` — is BUILT, roadmap 2.5 (a); see the AS-BUILT notes in §3, §6, §7.
-The Deep Scan Array (§5) and the client are the next slices; §8's gate is recorded, not enforced.)* **Monitoring (§5, the deferred half), L3 espionage,
+The Deep Scan Array (§5) and the client are the next slices; §8's gate is recorded, not enforced.)*
+*(⤳ 06-10-26: the Deep Scan Array's **Form** and **Deploy placement** (§5) are BUILT, roadmap 2.5
+(b1) — the array is a deployable structure that sits there; its **scan** is slice (b2), still
+design-ahead.)* **Monitoring (§5, the deferred half), L3 espionage,
 the semi-controlled corridors, and the Prefecture self-scan (§4) are design-ahead and
 NOT built here** — recorded so the slices that build them read the real ruling, not a
 paraphrase.
@@ -178,7 +181,57 @@ footprint and changes no territory.
   deferred monitoring aim. Recorded honestly so nobody later wonders why placement is fussy but
   inert.
 
-**Discovery — the scan (IN SCOPE).** The throttle, now that distance is removed, is **time +
+> **⤳ AS-BUILT 06-10-26 — Form + Deploy placement (roadmap 2.5 (b1); engine + operator, no client, no
+> scan).** Built to "Form" and "Deploy placement = attached" above; **no new number** — "attached" is
+> geometry, and `claimRadius` is seed data.
+> - **The kit.** One new row in `DEPLOYABLE_KITS` (`sim/resources.js`): kind **`deepScan`** (the lane key
+>   `territory-model.md` §5 reserved) → good **`deep_scan_array_kit`**. That row alone makes it a kit asset
+>   kind, an off-market deployable good taking a whole heavy hold, and lets the existing grant / load /
+>   unload / ferry carry it. It is obtained exactly as the outpost kit is — the operator `grantKit` lever.
+>   **No dockyard build path** (the installation bills stay data-only, `sim/asset-recipes.js`).
+> - **The structure** lives in its OWN top-level list, **`state.deepScanArrays`** — beside, not inside,
+>   `state.outposts` (an array has no stockpile, capacity or dock, and every Outpost row stays
+>   byte-identical). A row is `{ id, ownerGuildId, coords, anchorSystemId, createdAtTick }`, the id
+>   `deepScanArray_<guild>_NN` from a stored per-guild serial (`guild.deepScanArraySerial`, never
+>   reused — `sim/deep-scan-arrays.js`). **Omit-when-empty**: a galaxy with no array carries no key. Minted
+>   only by a guild's deploy (`mintDeepScanArray`, `sim/actions.js`). No scan or fan fields: nothing reads
+>   them yet. Guarded every tick by `checkDeepScanArrayIntegrity` (real owner, an id naming it, a real
+>   anchor system, an in-bounds hex, `createdAtTick` in [0, now], one structure per hex across seed
+>   landmarks, Outposts and arrays, the serial never below a live id).
+> - **The rule — the one deploy rule, generalised by kind.** `deployCheck` now takes the KIND it is
+>   placing (the deploy waypoint's `kind`; for the manual `deployAsset`, the kind of the kit aboard). Its
+>   first three checks stay shared — `not-bare-hex`, `kit` (now "exactly one kit **of that kind**", so a
+>   craft carrying an array kit cannot be sent to plant an Outpost, nor the reverse), `occupied` (ONE
+>   STRUCTURE PER HEX: `hexOccupant` now sees arrays too, so no array on an Outpost's hex, no Outpost on an
+>   array's) — and the fourth, **placement**, dispatches on the kind (`DEPLOYABLE_STRUCTURES`): the
+>   Outpost's range rule, moved verbatim; the array's **attached** predicate. `deployKit` mints by kind.
+>   Both triggers (the manual deploy and the on-arrival deploy) get the array at once.
+> - **The attached predicate.** The hex must touch a footprint the guild holds: `hexDistance(hex, centre)
+>   === claimRadius + 1` for a system it holds (the ring just outside its control disk; `claimRadius` read
+>   from the seed by `getClaimRadius`), or `hexDistance(hex, outpostHex) === 1` for an Outpost it owns
+>   (an Outpost has no aura, so its footprint is its own hex). A hex **inside** a footprint is not
+>   attached: the system's centre is a landmark (`not-bare-hex`), and a bare hex within `claimRadius` is
+>   refused by the predicate itself (`not-attached`). A rival's territory never counts.
+> - **The anchor.** A held **system** first (the lowest id); else the lowest-id owned **Outpost**, and the
+>   array takes *that Outpost's* `anchorSystemId` — so `anchorSystemId` always names a system (a seed id
+>   that can never dangle), with the meaning it has on an Outpost.
+> - **Arrival.** A deploy that loses its attachment in flight (e.g. the Outpost it touched is packed up)
+>   fails with the new retreatable reason **`not-attached`** (`DEPLOY_FAILED_REASONS`) and retreats by the
+>   existing rule (`retreatLanding`, unchanged), the kit aboard, with the `deploy_failed` notice. An
+>   arrival that must retreat while its guild holds no system (corrupt — a guild never loses its home)
+>   HALTS, naming the tick.
+> - **The view.** `deepScanArrays` is a god's-eye snapshot block (rows `{ id, ownerGuildId, coords,
+>   anchorSystemId }`, omit-when-empty), classified **filtered** in `sim/fog.js`: the per-guild view keeps
+>   only the viewer's OWN arrays, and omits the key unless the viewer owns one — a rival's array appears
+>   nowhere, not even as an empty list (§2: "deep-scan arrays are never" visible).
+> - **Proved:** the outpost deploy path is byte-identical to `main` before the slice (state, god's-eye
+>   lens and every refusal, hashes recorded on a60d98e — `tests/deep-scan-array.test.js`), and the five
+>   god's-eye hashes of 2.5 (a) still hold.
+> **Not built:** the scan (below — slice (b2)), monitoring, teardown or removal of an array, a dockyard
+> build path, the client (the deploy map's `deployRange.deepScan` paint lane, the array on the map).
+
+**Discovery — the scan (IN SCOPE).** *(⤳ NOT BUILT YET — slice (b2). Design-ahead as
+written.)* The throttle, now that distance is removed, is **time +
 queue depth**:
 
 - **One active scan job per array.** Scale by building more arrays, not by parallelising one.

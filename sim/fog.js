@@ -19,6 +19,8 @@
 //                             an UNLICENSED rival venture is not in the view at all (fogged until L3);
 //       · its outposts      → where they are and whose (a structure is public; its stockpile and dock
 //                             are not — the dock names the rival's transports, which are never shown);
+//       · its deep-scan arrays → NOT IN THE VIEW AT ALL (§2: "transports and deep-scan arrays are never"
+//                             visible, unlike outposts and toll gates — until L3, deferred);
 //       · its claims        → kept (ownership is public), the claimed system's seed detail cut to L0;
 //       · its deliveries, pending builds, production preview and notices → not in the view.
 //   - GALAXY-WIDE AGGREGATES are coarsened to posted values (design.md §5: "the real supply figure is
@@ -88,9 +90,14 @@ const TOP_LEVEL = {
   ],
   filtered: [
     'galacticSupply', 'syndicate', 'guilds', 'production', 'ventures', 'occupancy', 'claims', 'outposts',
-    'shipments', 'nodeLockouts', 'syndicateBuilds', 'attention',
+    'deepScanArrays', 'shipments', 'nodeLockouts', 'syndicateBuilds', 'attention',
   ],
 };
+
+// The classified keys the god's-eye snapshot OMITS WHEN EMPTY, so a snapshot may lack them. Every other
+// classified key is always present. `deepScanArrays` (2.5 (b1)) is omitted until an array exists, so a
+// galaxy without one serves exactly the god's-eye bytes it did before arrays existed.
+const OMIT_WHEN_EMPTY_TOP_LEVEL = ['deepScanArrays'];
 
 function pick(row, fields) {
   const out = {};
@@ -203,6 +210,14 @@ function fogForGuild(full, state, guildId) {
       }
     } else if (key === 'claims') out.claims = full.claims.map((c) => claimRow(c, guildId));
     else if (key === 'outposts') out.outposts = full.outposts.map((o) => (o.ownerGuildId === guildId ? o : pick(o, RIVAL_OUTPOST_FIELDS)));
+    else if (key === 'deepScanArrays') {
+      // ONLY THE VIEWER'S OWN arrays, each in full (exploration-model.md §2: a rival's deep-scan arrays are
+      // never visible). And the key itself follows the VIEWER: omitted unless the viewer owns one. Were it
+      // kept as `[]` whenever the god's-eye lens had a row, its mere presence would tell the viewer that
+      // SOME rival owns an array — the view's shape must never depend on a rival's hidden state.
+      const own = full.deepScanArrays.filter((a) => a.ownerGuildId === guildId);
+      if (own.length) out.deepScanArrays = own;
+    }
     else if (key === 'shipments') out.shipments = full.shipments.filter((s) => s.ownerGuildId === guildId);
     else if (key === 'syndicateBuilds') out.syndicateBuilds = full.syndicateBuilds.filter((b) => b.ownerGuildId === guildId);
     else if (key === 'attention') {
@@ -224,7 +239,7 @@ function fogForGuild(full, state, guildId) {
 }
 
 module.exports = {
-  fogForGuild, geographyFor, TOP_LEVEL,
+  fogForGuild, geographyFor, TOP_LEVEL, OMIT_WHEN_EMPTY_TOP_LEVEL,
   RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS, RIVAL_SYSTEM_LANDMARK_FIELDS,
   GALAXY_FUEL_FIELDS, SYNDICATE_PUBLIC_FIELDS,
 };

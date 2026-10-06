@@ -44,7 +44,7 @@ const FLAG_SPEC = Object.freeze({
   delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
   system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint
   good: 'string',     // adjust-goods: which stockpile good
-  kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost (the kit's kind)
+  kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost | deepScan (the kit's kind)
   asset: 'string',    // remove-asset / load-kit: which asset id
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
@@ -612,7 +612,7 @@ function removeOutpostBody(flags) {
 const DEPLOY_COMMANDS = Object.freeze(['grant-kit', 'load-kit', 'unload-kit', 'deploy-asset']);
 
 // grantKitBody(flags) -> the POST /admin/guild/grant-kit request body. `--kind` is passed through
-// verbatim ('outpost'): WHICH kinds have a kit is the engine's vocabulary (sim/resources.js), not this
+// verbatim ('outpost' / 'deepScan'): WHICH kinds have a kit is the engine's vocabulary (sim/resources.js), not this
 // file's. PURE and exported so admin.test.js can assert the mapping without a server.
 function grantKitBody(flags) {
   return {
@@ -648,6 +648,32 @@ function deployAssetBody(flags) {
     guildId: requireFlag(flags, 'guild', 'deploy-asset'),
     vehicleId: requireFlag(flags, 'id', 'deploy-asset'),
   };
+}
+
+// KIT_KINDS — the kinds of undeployed kit a guild's inventory can hold, QUOTED from sim/assets.js
+// KIT_ASSET_KINDS, never authored (tools/admin.test.js ties the copy to it): the Outpost's, and the Deep
+// Scan Array's 'deepScan' (roadmap 2.5 (b1)). The deploy printouts list a guild's idle kits by it.
+const KIT_KINDS = Object.freeze(['deepScan', 'outpost']);
+
+// idleKitsIn(snapshot, guildId) -> the guild's idle KIT asset rows (any KIT_KINDS kind), in snapshot (id)
+// order — the "idle outposts" / idle array kits the snapshot already lists among its assets
+// (deployedToVentureId null). PURE and exported.
+function idleKitsIn(snapshot, guildId) {
+  const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
+  return ((guild && guild.assets) || []).filter((a) => KIT_KINDS.includes(a.kind) && a.deployedToVentureId == null);
+}
+
+// structureUnder(snapshot, craft) -> { kind: 'outpost' | 'deepScanArray', row } for the structure standing
+// on the bare hex `craft` idles on, or null. After a deploy-asset that is the structure just placed: a deploy
+// leaves the craft on its new structure's hex, and there is one structure per hex. PURE and exported.
+function structureUnder(snapshot, craft) {
+  const at = craft && craft.location;
+  if (!at || at.q === undefined) return null; // berthed at a landmark, not on a bare hex
+  const onHex = (x) => x.coords.q === at.q && x.coords.r === at.r;
+  const outpost = (snapshot.outposts || []).find(onHex);
+  if (outpost) return { kind: 'outpost', row: outpost };
+  const array = (snapshot.deepScanArrays || []).find(onHex);
+  return array ? { kind: 'deepScanArray', row: array } : null;
 }
 
 // The two saved-route subcommands (transport-model.md §11.9, automation slice 2a) — thin HTTP clients
@@ -689,7 +715,7 @@ module.exports = {
   parseRouteWaypointToken, parseRouteFlag, parseRepeatFlag, dispatchRouteBody, stopRouteAfterRunBody, cancelRouteBody,
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
-  grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS,
+  grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS, KIT_KINDS, idleKitsIn, structureUnder,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
   EXPECTED_STARTER_CREDITS, EXPECTED_STARTER_FLEET, EXPECTED_STARTER_KITS,
@@ -1234,14 +1260,8 @@ function holdLine(craft) {
   return goods.length ? goods.map((good) => `${good}:${hold[good]}`).join(', ') : 'empty';
 }
 
-// idleKitsIn(snapshot, guildId) -> the guild's idle KIT asset rows (kind 'outpost'), in id order — the
-// "idle outposts" the snapshot already lists among its assets (deployedToVentureId null). The kit kinds are
-// the engine's; this reads the one that exists. newestKit is the one with the highest number, which is the
-// one just minted (kit ids come from a per-guild serial that only climbs).
-function idleKitsIn(snapshot, guildId) {
-  const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
-  return ((guild && guild.assets) || []).filter((a) => a.kind === 'outpost' && a.deployedToVentureId == null);
-}
+// newestKit(kits) -> the idle kit with the highest number, which is the one just minted: kit ids come from
+// ONE per-guild serial (shared by every kit kind) that only climbs. The kits are idleKitsIn's (above).
 function newestKit(kits) {
   const num = (id) => parseInt(/_(\d+)$/.exec(id)[1], 10);
   return kits.reduce((best, a) => (best === null || num(a.id) > num(best.id) ? a : best), null);
@@ -1298,20 +1318,23 @@ async function cmdDeployAsset(base, flags) {
   const out = await postJson(base, '/admin/vehicle/deploy-asset', body);
   if (!out.accepted) throw new Error(`deploy-asset refused: ${out.reason}`);
   const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
-  const mine = (out.snapshot.outposts || []).filter((o) => o.ownerGuildId === body.guildId);
-  const placed = mine[mine.length - 1] || null; // the just-minted outpost is the guild's newest row
+  const placed = structureUnder(out.snapshot, craft); // the deploy left the craft on its new structure
   row('action', 'deployAsset');
   row('guild', body.guildId);
   row('vehicle', body.vehicleId);
   if (placed) {
-    // `log`, not `row`: an outpost id is wider than row's 12-character label column.
-    log(`  outpost   ${placed.id} at ${JSON.stringify(placed.coords)}, anchored to ${placed.anchorSystemId}`);
+    // `log`, not `row`: a structure id is wider than row's 12-character label column.
+    const label = placed.kind === 'outpost' ? 'outpost  ' : 'array    ';
+    log(`  ${label} ${placed.row.id} at ${JSON.stringify(placed.row.coords)}, anchored to ${placed.row.anchorSystemId}`);
   }
   if (craft) {
     row('status', craft.status);
     row('hold', holdLine(craft));
   }
   row('outposts', `${(out.snapshot.outposts || []).length}`);
+  // The array count only once the galaxy has one (the block is omit-when-empty), so an Outpost deploy
+  // prints exactly what it printed before the Deep Scan Array existed.
+  if (out.snapshot.deepScanArrays) row('arrays', `${out.snapshot.deepScanArrays.length}`);
 }
 
 // save-route / delete-route (transport-model.md §11.9, automation slice 2a): build the body (the PURE
@@ -1444,7 +1467,7 @@ Flags
   --system ID    adjust-goods / grant-asset / grant-kit: which system's cell / where to mint;
                  spawn-outpost: the system the outpost anchors to
   --good G       adjust-goods: which stockpile good
-  --kind K       grant-asset: miner | factory; grant-kit: outpost
+  --kind K       grant-asset: miner | factory; grant-kit: outpost | deepScan
   --asset ID     remove-asset / load-kit: which asset id
   --venture ID   remove-venture: which venture id
   --close        remove-asset: tear the occupying venture down (default: detach it)

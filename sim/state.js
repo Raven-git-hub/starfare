@@ -107,6 +107,7 @@ function createGuild({
   vehicles = [],
   vehicleSerial = 0,
   outpostSerial = 0,
+  deepScanArraySerial = 0,
   savedRoutes = [],
   savedRouteSerial = 0,
   syndicateCommissionSerial = 0,
@@ -376,6 +377,11 @@ function createGuild({
     // `checkOutpostIntegrity`; OMITTED when 0 so a guild that has placed no outpost carries no key
     // and serializes byte-identically to pre-slice (invariant 9).
     ...(outpostSerial !== 0 ? { outpostSerial } : {}),
+    // deepScanArraySerial: the per-guild MONOTONIC Deep Scan Array mint counter (roadmap 2.5 (b1)), the
+    // exact sibling of `outpostSerial` above — bumped at each array deploy, never decremented, so an id
+    // (`deepScanArray_<guild>_NN`) is never reissued. Guarded by `checkDeepScanArrayIntegrity`; OMITTED
+    // when 0 so a guild that has placed no array carries no key (invariant 9).
+    ...(deepScanArraySerial !== 0 ? { deepScanArraySerial } : {}),
     // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — named, origin-free waypoint
     // lists the guild can load onto any craft. Nested here, a sibling of `vehicles`, because a saved
     // route is guild-owned bookkeeping: ownership is "the guild whose array holds it". Each row goes
@@ -962,6 +968,38 @@ function createOutpost({
   };
 }
 
+// Deep Scan Array (SHARED, docs/exploration-model.md §5 — a single-hex structure in the Outpost family;
+// roadmap 2.5 (b1)). Lives in `state.deepScanArrays` (assembled below), beside `state.outposts`; the
+// id/serial rules are sim/deep-scan-arrays.js's. Placed only by a guild's deploy (sim/actions.js
+// `deployKit`), "attached" to the guild's own territory.
+//
+//   id             — `deepScanArray_<guild>_NN`, never reissued.
+//   ownerGuildId   — the guild that deployed it.
+//   coords         — the single hex it occupies. COPIED, never aliased (the createOutpost discipline).
+//   anchorSystemId — the held system it hangs off: the system whose footprint its hex touched, or, when
+//                    it touched only one of the guild's Outposts, that Outpost's own `anchorSystemId`.
+//                    Always a system (a seed id, so it can never dangle), the same field and meaning an
+//                    Outpost carries.
+//   createdAtTick  — the tick it was deployed (§15.2).
+//
+// Deliberately NOTHING else: the scan job is slice (b2) and the monitoring fan is deferred, and a field
+// nothing reads only muddies the determinism hash (exploration-model.md §5). This file ASSEMBLES the
+// shape; legality is `deployCheck` and `checkDeepScanArrayIntegrity`'s.
+function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, createdAtTick }) {
+  if (id === undefined) throw new Error('createDeepScanArray: id is required');
+  if (ownerGuildId === undefined) throw new Error('createDeepScanArray: ownerGuildId is required');
+  if (coords === undefined) throw new Error('createDeepScanArray: coords is required');
+  if (anchorSystemId === undefined) throw new Error('createDeepScanArray: anchorSystemId is required');
+  if (createdAtTick === undefined) throw new Error('createDeepScanArray: createdAtTick is required');
+  return {
+    id,
+    ownerGuildId,
+    coords: { q: coords.q, r: coords.r },
+    anchorSystemId,
+    createdAtTick,
+  };
+}
+
 // Saved route (OWNED, transport-model.md §11.9 — a row in `guild.savedRoutes`). A NAMED, ORIGIN-FREE
 // route the guild can load onto any craft: `waypoints` is the SAME §11.1 list a dispatched route uses
 // (`[{ anchor, action? }]`, each action a `{ type: 'dock', manifest }`). It stores NO origin and NO
@@ -1158,6 +1196,14 @@ function createState(scenario) {
     ...(Array.isArray(scenario.outposts) && scenario.outposts.length
       ? { outposts: scenario.outposts.map(createOutpost) }
       : {}),
+    // deepScanArrays: the SHARED Deep Scan Array rows (docs/exploration-model.md §5, roadmap 2.5 (b1)) —
+    // single-hex structures, top-level beside `outposts` for the same reason. OMITTED when there is none,
+    // exactly like `outposts`: a guild's deploy is its only mint path, so a galaxy that has placed none
+    // carries no key and serializes byte-identically to pre-slice (invariant 9). A scenario or a restored
+    // save that HANDS ONE IN keeps it, deep-copied through `createDeepScanArray`.
+    ...(Array.isArray(scenario.deepScanArrays) && scenario.deepScanArrays.length
+      ? { deepScanArrays: scenario.deepScanArrays.map(createDeepScanArray) }
+      : {}),
     // IN-FLIGHT (§15.1). Today's only occupant is the Syndicate BUY delivery
     // (design.md §6): `{ ownerGuildId, cargo, destinationSystemId, arrivalTick }` —
     // or, for a BUY to a guild Outpost, `destinationOutpostId` in place of
@@ -1264,6 +1310,7 @@ module.exports = {
   createAsset,
   createVehicle,
   createOutpost,
+  createDeepScanArray,
   createSavedRoute,
   createReserve,
   createSyndicate,
