@@ -44,6 +44,7 @@ const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds, heldSystemIds } = require('./claims.js');
+const { revealSystem } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
@@ -4320,6 +4321,14 @@ function applyAction(state, action) {
       claimedAtTick: next.tick,
       contested: false,
     });
+    // THE FOUNDING EXPLORATION RECORD (docs/exploration-model.md §6, roadmap 2.5 engine slice 1).
+    // A new guild knows its HOME SYSTEM FULLY — every planet's archetype (L1) and every resource
+    // node's type (L2) — because it has lived there; it knows nothing else beyond L0, which is never
+    // stored (it is computed for every system in the view). Written through the one source-agnostic
+    // `reveal` path every later source also uses, stamped with the founding tick like the claim above.
+    // Every founding, bot or human — knowing your own home is not part of the human starter package.
+    // It moves no credits, fuel or goods (invariants 1/2/3 untouched); it only adds the record.
+    revealSystem(guild, action.homeSystemId, next.tick);
     // THE HUMAN STARTER PACKAGE (design.md §13, RULED 04-10-26): the free fleet and the Outpost
     // kit, idle at the home system. A human founding only — a bot gets nothing here. Minted HERE,
     // after the home claim above, so the guild already holds the system its craft berth at and its

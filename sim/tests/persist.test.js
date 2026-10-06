@@ -16,7 +16,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { HOME_SYSTEM, HOME_MINE, HOME_MINE_2 } = require('./home-anchor.js');
+const { HOME_SYSTEM, HOME_PLANET, HOME_MINE, HOME_MINE_2 } = require('./home-anchor.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const { join } = require('node:path');
@@ -489,6 +489,21 @@ const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'ffa2b309ebd3b3308b1c2f3de4b0bf6464c9b63
 // alone, proven by asserting `withoutStarterPackage(s)` returns the value above.
 const GOLDEN_HASH_WITH_STARTER_PACKAGE = '3b6506503e5d17383f49520f261ebba20d2ee9976ad59c212b48f0264ed98a98';
 
+// THE EXPLORATION RECORD (docs/exploration-model.md §6/§7, roadmap 2.5 engine slice 1, 05-10-26):
+// the full hash once FOUND also seeds the guild's `exploration` record with its whole home system
+// (every planet + every resource node, stamped at the founding tick). The delta from
+// GOLDEN_HASH_WITH_STARTER_PACKAGE is that ONE added guild key, proven by asserting
+// `withoutExploration(s)` returns the value above. (One guild, so the end-of-tick public-register
+// observation has no rival to read and writes nothing here.)
+const GOLDEN_HASH_WITH_EXPLORATION = 'dec279894ce250bf7f182ad3d5bec8b8ece3a3b858b6a38533f96a94df4566fe';
+
+// withoutExploration(state) -> a COPY with every guild's `exploration` key removed — the plain
+// added-key strip. It is the newest, OUTERMOST strip: peel it and every earlier golden returns.
+const withoutExploration = (state) => ({
+  ...state,
+  guilds: (state.guilds || []).map((g) => { const { exploration, ...rest } = g; return rest; }),
+});
+
 // withoutStarterPackage(state) -> a COPY of the canonical sequence's state with the human starter
 // package undone. The inverted strip-and-prove idiom, because one part of the delta is a changed VALUE
 // (credits) and cannot be stripped the way an added key can:
@@ -633,6 +648,13 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
+  // THE EXPLORATION RECORD (05-10-26, roadmap 2.5): founding now seeds the home system into the
+  // guild's record, so this sequence's FULL hash moved again. Pin it, check the record really landed
+  // (else the strip is vacuous), then peel it — the newest, OUTERMOST strip — and the starter-package
+  // golden below must return byte-for-byte: the proof that the record is this slice's ONLY delta.
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_EXPLORATION, 'the full state, with the exploration record, is pinned');
+  assert.ok(s.guilds[0].exploration && s.guilds[0].exploration[HOME_PLANET], 'the founding really did seed the home record');
+  s = withoutExploration(s);
   // THE HUMAN STARTER PACKAGE (04-10-26, design.md §13): FOUND is a human founding, so it now opens
   // on the starter credits with four craft and a kit, and this sequence's FULL hash moved. Pin the
   // new full state, check the package really landed (else the undo below is vacuous), then undo it —
@@ -728,7 +750,7 @@ test('no-op proof: subtract the founding fuel grant and the pre-slice golden com
 
   // Undo the human starter package first (04-10-26) — the newest founding delta, which this golden
   // predates. withoutStarterPackage returns a copy, so it stands in for the clone.
-  const ungranted = withoutStarterPackage(s);
+  const ungranted = withoutStarterPackage(withoutExploration(s)); // the 05-10-26 exploration record peeled too
   // …and un-endow the founding (A′, 31-08-26), so what comes back is the state as it stood
   // before ANY of the three slices that have touched founding since.
   ungranted.guilds[0].guildReputation -= ungranted.guilds[0].foundingEndowment;
@@ -778,7 +800,7 @@ test('no-op proof: un-seed the pool and the pre-slice-5a golden comes back', () 
     s.reserve.reserveLevel + s.guilds[0].fuelHoard,
     'conservation: produced − consumed == pool + Σ hoards');
 
-  const unseeded = withoutStarterPackage(s); // a copy, with the 04-10-26 starter package undone first
+  const unseeded = withoutStarterPackage(withoutExploration(s)); // a copy, with the 05-10-26 record and the 04-10-26 starter package undone first
   // The endowment landed after this golden was pinned, so it is undone here too — this
   // test is about the POOL seed being the only delta SLICE 5a made.
   unseeded.guilds[0].guildReputation -= unseeded.guilds[0].foundingEndowment;
@@ -823,7 +845,7 @@ test('no-op proof: un-endow the founding and the pre-endowment golden comes back
   // crosses no boundary, so the newborn's modifier rising to 1.0 granted it nothing here.
   assert.equal(g.lastFuelGrant, undefined);
 
-  const unendowed = withoutStarterPackage(s); // a copy, with the 04-10-26 starter package undone first
+  const unendowed = withoutStarterPackage(withoutExploration(s)); // a copy, with the 05-10-26 record and the 04-10-26 starter package undone first
   unendowed.guilds[0].guildReputation -= unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEndowment;
   delete unendowed.guilds[0].foundingEntitlement; // Slice D′, a later founding-stamped key this golden predates

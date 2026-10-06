@@ -22,7 +22,9 @@
 //                         recipeId?, productionRate?, reputation?),
 //                         assets? ([{ id, kind, systemId, maintenanceCondition }] —
 //                           the guild's ground-asset inventory, §4; absent when empty),
-//                         homeSystemId?, homePlanetId? }]
+//                         homeSystemId?, homePlanetId?,
+//                         exploration? ({ [planetId]: { tick, nodes: { [nodeId]: tick } } } —
+//                           the learned-geography record, exploration-model.md §7; absent when empty) }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
 //   state.reserve    : { reserveLevel, fuelPrice, avgDraw } // SHARED fuel reserve;
@@ -96,7 +98,7 @@ const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
 const { EVENT_TYPES, isEventType } = require('./events.js');
 const { computeGalacticSupply } = require('./supply.js');
 const {
-  getSite, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
+  getSite, getPlanet, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
 const {
@@ -2331,6 +2333,64 @@ function checkNodeLockouts(state) {
   return out;
 }
 
+// Exploration-record integrity (docs/exploration-model.md §3/§7, roadmap 2.5 engine slice 1) — the
+// structural guard for each guild's `exploration` record, `{ [planetId]: { tick, nodes: { [nodeId]:
+// tick } } }`. The record is learned FACTS about real seed landmarks, so a fact that names nothing
+// real, or that claims to have been learned in the future, is corruption to halt on, not to render.
+// A pure read; runs every tick. For each guild that carries the key:
+//   - the record is a non-empty object (OMIT-WHEN-EMPTY — an `exploration: {}` would move the bytes
+//     of a guild that knows nothing, which is exactly what the omission exists to prevent);
+//   - every planet key is a real seed planet (getPlanet);
+//   - its `tick` is a whole tick in [0, state.tick] (§15.2 — every mutation records its tick, and
+//     nothing is learned in the future);
+//   - `nodes` is an object whose every key is a real RESOURCE node ON THAT PLANET (getSite) — a node
+//     filed under the wrong planet would let the per-planet claim gate (§8) pass on the wrong planet;
+//   - every node's tick is a whole tick in [planet tick, state.tick] — a node is never known before
+//     its planet (revealing a node reveals its planet first, sim/exploration.js `reveal`).
+// What this CANNOT see is the record shrinking — that is a fact about two ticks, not one state — so
+// learn-once is pinned across runs in tests/exploration.test.js instead.
+function checkExplorationRecord(state) {
+  const out = [];
+  const now = state.tick;
+  const isTick = (t, min) => Number.isInteger(t) && t >= min && t <= now;
+  for (const g of state.guilds || []) {
+    if (g.exploration === undefined) continue; // knows nothing: no key, nothing to check
+    const rec = g.exploration;
+    const where = `guild:${g.id}.exploration`;
+    if (rec === null || typeof rec !== 'object' || Array.isArray(rec) || Object.keys(rec).length === 0) {
+      out.push({ rule: 'exploration-record-is-a-non-empty-object (omit-when-empty)', where, detail: { value: rec } });
+      continue;
+    }
+    for (const planetId of Object.keys(rec)) {
+      const entry = rec[planetId];
+      const at = `${where}.${planetId}`;
+      if (!getPlanet(planetId)) {
+        out.push({ rule: 'exploration-planet-exists (seed.js)', where: at, detail: { planetId } });
+        continue;
+      }
+      if (entry === null || typeof entry !== 'object' || !isTick(entry.tick, 0)) {
+        out.push({ rule: 'exploration-planet-tick-is-a-past-tick (§15.2)', where: `${at}.tick`, detail: { value: entry && entry.tick, stateTick: now } });
+        continue;
+      }
+      if (entry.nodes === null || typeof entry.nodes !== 'object' || Array.isArray(entry.nodes)) {
+        out.push({ rule: 'exploration-nodes-is-an-object', where: `${at}.nodes`, detail: { value: entry.nodes } });
+        continue;
+      }
+      for (const nodeId of Object.keys(entry.nodes)) {
+        const site = getSite(nodeId);
+        if (!site || site.kind !== 'resource' || site.planetId !== planetId) {
+          out.push({ rule: 'exploration-node-is-a-resource-node-on-its-planet (seed.js)', where: `${at}.nodes.${nodeId}`, detail: { nodeId, planetId, sitePlanetId: site ? site.planetId : null, siteKind: site ? site.kind : null } });
+          continue;
+        }
+        if (!isTick(entry.nodes[nodeId], entry.tick)) {
+          out.push({ rule: 'exploration-node-tick-between-planet-tick-and-now', where: `${at}.nodes.${nodeId}`, detail: { value: entry.nodes[nodeId], planetTick: entry.tick, stateTick: now } });
+        }
+      }
+    }
+  }
+  return out;
+}
+
 // Guild home integrity — a guild's homeSystemId/homePlanetId is a DENORMALISED
 // pointer; this guards it against the seed and against the ownership source of
 // truth (its claim), the same discipline that lets a mining venture's
@@ -2396,6 +2456,7 @@ function checkInvariants(state, tick) {
     ...checkOutpostIntegrity(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),
+    ...checkExplorationRecord(state),
     ...checkGuildHome(state),
   ];
   return violations.map((v) => ({ ...v, tick }));

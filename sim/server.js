@@ -54,6 +54,9 @@
 //                           verbatim) — the one full-galaxy read the client needs
 //   GET  /health         -> liveness JSON + a one-line summary + autotick status
 //   GET  /snapshot       -> buildSnapshot(state) (the debug lens' data)
+//   GET  /snapshot?guild=<id> -> buildSnapshot(state, id): that guild's FOGGED view (roadmap 2.5 (a),
+//                           docs/exploration-model.md §7) — headless proof only; the client wiring
+//                           is a later slice. 404 for a guild that does not exist.
 //   GET  /starters       -> the seed's starter-eligible systems (the home-system
 //                           picker's source; static, derived from the seed only)
 //   GET  /system/:id     -> one system's static layout: planets, each with its
@@ -571,6 +574,21 @@ async function handleRequest(req, res) {
     // A marker the client can read, not a crash and not an empty snapshot that
     // would look like a galaxy with nothing in it.
     if (!hasGalaxy()) { sendJson(res, 200, NO_GALAXY); return; }
+    // THE PER-GUILD LENS (roadmap 2.5 (a), docs/exploration-model.md §7): `?guild=<id>` asks for that
+    // guild's fogged view instead of the god's-eye one. Absent = the god's-eye lens, unchanged — the
+    // operator, /inspect and every existing caller send no query. This is the HEADLESS proof seam
+    // only: it is no auth (the dev rig already lets a client pick its own guild — the deferred
+    // backend hardening, §7, alongside the /galaxy leak), and the client wiring is a later slice.
+    const guildId = new URL(req.url || '/', 'http://localhost').searchParams.get('guild');
+    if (guildId !== null) {
+      const state = getState();
+      if (!(state.guilds || []).some((g) => g.id === guildId)) {
+        sendJson(res, 404, { error: `no guild with id ${JSON.stringify(guildId)}` });
+        return;
+      }
+      sendJson(res, 200, buildSnapshot(state, guildId));
+      return;
+    }
     sendJson(res, 200, buildSnapshot(getState()));
     return;
   }

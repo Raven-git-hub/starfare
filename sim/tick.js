@@ -61,6 +61,7 @@ const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
 const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require('./outposts.js');
 const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
+const { observePublicRegister } = require('./exploration.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
 // `advanceRoute` (dispatch the next leg, or reach the lap boundary: end the run, or start a repeating
@@ -1835,6 +1836,24 @@ function tick(state, actions = []) {
   // galactic-supply refresh below — it is bookkeeping the eight-step contract does not own,
   // run once here after the contract has produced the tick's state.
   recordFuelPriceSample(next, next.tick);
+
+  // THE PUBLIC-REGISTER OBSERVATION (docs/exploration-model.md §3, roadmap 2.5 engine slice 1).
+  // Every guild reads each RIVAL's licensed ventures off the public register and writes the geography
+  // they teach — the node's type and its planet's archetype — into its own exploration record, for
+  // good. That is what lets the fact outlive the venture: when the rival later closes it, the live
+  // view loses the venture type but the record keeps the node.
+  //
+  // WHY HERE, at the END of the tick, and not in the view or inside a step:
+  //   - NOT in buildSnapshot: the view is PURE; a read that wrote state would make the record depend
+  //     on who happened to look, and when (invariant 9).
+  //   - NOT inside one of the eight steps: it is OBSERVATION, not economy. Nothing in any step reads
+  //     the record, so its position cannot change a number any step computes; the eight-step order is
+  //     unchanged. Running last means it reads the register as the tick LEAVES it — after the
+  //     auto-lapse (the last step) has shed whatever licences it sheds this tick.
+  // It is a state MUTATION (serialized), stamped with the tick being built, exactly like the fuel-price
+  // sample above. Ventures licensed by an action are observed at the next tick's end; one licensed and
+  // closed between two ticks was never on the register at a tick and teaches nothing.
+  observePublicRegister(next, next.tick);
 
   // Derive pass, NOT a §15.6 step: refresh the galactic-supply cache from the
   // state the eight steps just produced. Kept out of the STEPS array on purpose

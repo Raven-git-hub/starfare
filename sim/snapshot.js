@@ -15,6 +15,12 @@
 // a snapshot the page loads by file-picker, exactly as seed_viewer.html loads
 // data/seed.json. Nothing is computed in the browser; the browser only renders.
 //
+// ⤳ TWO LENSES since roadmap 2.5 (a) (05-10-26, docs/exploration-model.md §7). Everything this header
+// says is about the GOD'S-EYE lens — `buildSnapshot(state)`, the function body below (renamed
+// `buildGodsEyeSnapshot`, otherwise untouched). `buildSnapshot(state, guildId)` is the PLAYER lens:
+// the same object passed through sim/fog.js, which keeps that guild's own data, cuts every rival to
+// its public facts and adds the guild's geography. See `buildSnapshot` at the end of this file.
+//
 // buildSnapshot(state) is PURE. It derives everything from the state's OWN
 // selectors (computeGalacticSupply, computeOccupancy) plus the read-only seed
 // index (getSite) — it invents no number the engine does not already hold. The
@@ -66,6 +72,7 @@ const { cloneModifierHistory } = require('./modifier-history.js');
 const { liveEvents, cloneEventPayload } = require('./events.js');
 const { DEFAULT_WINDOW_N } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
+const { fogForGuild } = require('./fog.js');
 
 // Bump when the shape below changes so the inspector can refuse a stale file
 // loudly instead of rendering half of it. The inspector checks this.
@@ -1086,7 +1093,7 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
   };
 }
 
-function buildSnapshot(state) {
+function buildGodsEyeSnapshot(state) {
   const supply = computeGalacticSupply(state);
   const occupancy = computeOccupancy(state);
 
@@ -2128,6 +2135,23 @@ function buildSnapshot(state) {
     // hash. See computeAttention.
     attention: computeAttention(state),
   };
+}
+
+// buildSnapshot(state, guildId?) — THE ONE ENTRY POINT, two lenses (docs/exploration-model.md §7,
+// roadmap 2.5 (a) engine slice 1):
+//   - NO GUILD (`buildSnapshot(state)`, or a null/undefined guildId) — the GOD'S-EYE lens, exactly as
+//     it has always been: every guild's data, for the operator, `/inspect`, the tools and the tests.
+//     It is `buildGodsEyeSnapshot` above, untouched — that function's body is the pre-slice
+//     `buildSnapshot`, renamed, and tests/fog.test.js pins its output byte-for-byte to hashes
+//     recorded on main before this slice.
+//   - A GUILD (`buildSnapshot(state, guildId)`) — the PLAYER lens: that guild's own data in full,
+//     every rival cut to its public facts, plus the guild's geography (sim/fog.js). Built FROM the
+//     god's-eye object, so the two lenses can only ever differ by what fog.js removes and adds.
+// Both are PURE: they read state and the seed and never write either. An unknown guildId throws.
+function buildSnapshot(state, guildId) {
+  const full = buildGodsEyeSnapshot(state);
+  if (guildId === undefined || guildId === null) return full;
+  return fogForGuild(full, state, guildId);
 }
 
 module.exports = { buildSnapshot, SNAPSHOT_SCHEMA };

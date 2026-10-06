@@ -8,7 +8,10 @@ headline rulings; **this file is the model**, the same split `territory-model.md
 
 Status by part: the **visibility model (§1–§3)**, the **per-guild snapshot + exploration
 record (§7)**, and the **Deep Scan Array's discovery scan (§5)** are the current build
-(roadmap 2.5, the exploration slice). **Monitoring (§5, the deferred half), L3 espionage,
+(roadmap 2.5, the exploration slice). *(⤳ 05-10-26: the ENGINE half of §3/§6/§7 — the record, the
+one `reveal`, founding state, the rival-licensed-venture source, and the per-guild
+`buildSnapshot(state, guildId)` — is BUILT, roadmap 2.5 (a); see the AS-BUILT notes in §3, §6, §7.
+The Deep Scan Array (§5) and the client are the next slices; §8's gate is recorded, not enforced.)* **Monitoring (§5, the deferred half), L3 espionage,
 the semi-controlled corridors, and the Prefecture self-scan (§4) are design-ahead and
 NOT built here** — recorded so the slices that build them read the real ruling, not a
 paraphrase.
@@ -55,14 +58,30 @@ depends on the guild's situation.
   an array per-planet scan. These are the only systems you *scan* — rival systems are read off
   the public record, not scanned (scanning a rival is L3, deferred).
 - **Rival-controlled systems.** L0 always (position, planet count, controller). Plus, **per node
-  that carries a licensed venture**: that node, its planet's archetype, and the venture *type* —
-  **never the stockpile** (the §405 rule; this also closes the old rival-stockpile leak). A
-  rival's **un-licensed** nodes stay fogged until L3. A craft sent to a rival system reveals
-  **nothing new** — the archetypes are already on the public record and it cannot survey nodes.
+  that carries a licensed venture**: that node, its planet's archetype, the venture *type*, and
+  *(RULED 06-10-26)* the venture's **reputation** — `design.md` §5: "ventures carry a **fully
+  visible** reputation score", the investment-risk signal and takeover trigger a rival watches —
+  but **never the stockpile**, never its **licence terms**, and never a refinery's **recipe /
+  produced good** (the §405 rule: types are visible so a rival *infers* the inputs, it is not told
+  them; this also closes the old rival-stockpile leak). A rival's **un-licensed** nodes stay fogged
+  until L3. A craft sent to a rival system reveals **nothing new** — the archetypes are already on
+  the public record and it cannot survey nodes.
 - **Rival structures.** Outposts and toll gates are **always** visible; transports and deep-scan
   arrays are **never** (until L3).
 - **Syndicate.** Waystations always; your **own** buy-order deliveries visible (already built and
   ruled — out of scope, untouched here); rivals' deliveries not.
+- **Galaxy-wide aggregates — coarsened to posted values (RULED 06-10-26).** `design.md` §5: "the
+  real supply figure is hidden; players see only the value and its history." Public: the posted
+  prices and their histories, the fuel price, the Syndicate pool (`reserve` — shared, nobody's
+  holding) and the controller's demand signal (`avgDraw`, `targetReserve`). Not public: any
+  Σ-of-every-guild total — galactic supply's `resources`, `fuel.guildHeld` / `fuel.total`, and the
+  Syndicate `ledger` (by invariant 2 it moves opposite Σ guild credits) — because a guild that
+  subtracts its own share from one reads its rivals' holdings, exactly when there is one rival.
+- **Node lockouts — filtered (RULED 06-10-26).** A lockout (the Syndicate's bar on re-establishing a
+  torn-down licensed venture's site) is shown only on a node the guild **knows** (its record) or on
+  ground it **controls** (where the lockout gates its own establish). Otherwise it would name a node
+  in a rival system the guild never learned — e.g. one licensed and torn down between two ticks. A
+  settlement slot is not a node, so a slot's lockout shows only on ground the guild controls.
 
 ## 3. The two sources — the architecture
 
@@ -80,6 +99,21 @@ model honest:
    lift and re-fog on their own as the world changes; nothing about them is remembered.
 
 A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live rules (recomputed)**.
+
+> **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a), engine slice 1 — the record half; `sim/exploration.js`).**
+> Source 1 is built as `guild.exploration` (the shape is in §7's AS-BUILT note). The one source this
+> slice wires into it besides founding is **a rival's licensed venture**, observed by
+> `observePublicRegister` at the **END of every tick** (`sim/tick.js`, after the eight steps, beside
+> the fuel-price sample): every guild reads each *rival's* licensed ventures (an ordinary `licence`
+> or a `deuteriumLicence`) off the register and `reveal`s what each teaches — on a resource node, that
+> node (and with it its planet's archetype); on a settlement slot, only the planet's archetype (a slot
+> is not a node). Why there: **not in the view**, which stays pure (a read that wrote state would make
+> the record depend on who looked, and when — invariant 9); **not inside a step**, because it is
+> observation, not economy — no step reads the record, so its position cannot move any number, and the
+> eight-step order is unchanged; **last**, so it reads the register as the tick leaves it. A venture
+> licensed by an action is observed at the next tick's end, so one licensed and closed between two
+> ticks was never on the register at a tick and teaches nothing. A guild never learns from its own
+> ventures. An unlicensed rival venture writes nothing. Closing a licensed venture undoes nothing.
 
 ## 4. The rulings
 
@@ -191,6 +225,15 @@ A newly founded guild knows:
 The home-system knowledge is seeded into the guild's exploration record at founding, by the same
 source-agnostic reveal path (§7) everything else uses.
 
+> **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a)).** The `foundGuild` apply (`sim/actions.js`), right after
+> the home claim, calls `revealSystem(guild, homeSystemId, tick)` — every planet of the home system
+> (L1) and every resource node on each (L2), read from the seed's own layout and stamped with the
+> founding tick. **Every** founding, bot or human (knowing your home is not part of the human starter
+> package). L0 is **not** stored — it is computed for every system in the view. The founding flow is
+> otherwise untouched: no credits, fuel or goods move for it (invariants 1/2/3), and the founding
+> goldens moved by exactly the added `exploration` key (each re-pin carries a strip-and-prove of the
+> pre-slice hash).
+
 ## 7. The per-guild snapshot architecture
 
 The keystone. This is the architectural end of "one snapshot, everyone sees everything," and the
@@ -204,16 +247,78 @@ stands on.
   fact. It is **serialized and covered by the determinism hash** (invariant 9), and it only ever
   grows (learn-once / known-forever, §3), like `lifetimeProduced`. Shape to confirm at build: a
   per-planet / per-node granularity sufficient for the per-planet claim gate (§8).
+  **⤳ AS-BUILT 05-10-26 — the shape:** `guild.exploration = { [planetId]: { tick, nodes: { [nodeId]:
+  tick } } }`. A planet key = its archetype is known (L1); a node key under it = that node and its
+  resource type are known (L2); `nodes` is `{}` for an L1-only planet. **Ids only** — the archetype
+  and the node type are NOT copied in; the seed stays the one map (`design.md` §15.3 "link by
+  reference only", invariant 5) and the view resolves each id through `getPlanet` / `getSite`. Each
+  fact carries the **tick it was learned** (§15.2), and a re-reveal keeps the first. Keyed flat by
+  planet because that is the gate's granularity (§8: "knows ≥ 1 node of planet P" is
+  `Object.keys(exploration[P].nodes).length ≥ 1`); the system a planet sits in is the seed's fact.
+  **Omit-when-empty**: a guild that knows nothing carries no key. Guarded every tick by
+  `checkExplorationRecord` (`sim/invariants.js`: real planets, real resource nodes on their own
+  planet, ticks in `[0, now]` with a node never before its planet, no empty record). Learn-once is a
+  two-tick property, so it is pinned across scripted runs in `tests/exploration.test.js`.
 - **`buildSnapshot` becomes per-guild.** Today `buildSnapshot(state)` (`sim/snapshot.js`) is PURE
   and sees every guild's data, producing one shared view. It becomes **`buildSnapshot(state,
   guildId)`**, producing that guild's filtered view = L0 ∪ record ∪ live rules (§3). The
   god's-eye lens is **preserved for operator / debug** via an explicit all-seeing mode (no guild,
   or a sentinel), so `/inspect` and the operator tools keep their full view; the **player** path
   passes its guild.
+  **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a), part 2 — `sim/snapshot.js`, `sim/fog.js`).**
+  `buildSnapshot(state)` (or a null/undefined guild) is the **god's-eye lens, byte-identical to
+  before**: the old body is renamed `buildGodsEyeSnapshot`, unedited, and `tests/fog.test.js` pins
+  its output to hashes recorded on `main` (8c248d6) before the slice. `buildSnapshot(state,
+  guildId)` builds that same object and passes it through `fogForGuild`, which only **subtracts**
+  rival facts and **adds** two keys — so the two lenses can only differ by what fog.js does:
+  - **own data in full** — the viewer's guild row, ventures, outposts, deliveries, builds,
+    production preview and notices, byte-for-byte the god's-eye rows;
+  - **rival guild rows** cut to an **allow-list**: `id`, `name`, `isBot`, `homeSystemId` (the
+    controller fact). Credits, fuel, stockpiles, reputation, points, assets, **vehicles**, orders,
+    events — gone; `homePlanetId` too (a planet inside a rival system is L1 not yet learned);
+  - **rival ventures**: only those on the public register (`isOnPublicRegister` — the same
+    predicate the record observation uses), each cut to `id`, `ownerGuildId`, `type`, `siteId`,
+    `systemId`, `ventureName`, `reputation` *(⤳ added 06-10-26, §2)*, `site` (the node: kind,
+    planet, system, resource type, name) plus `planetArchetype` from the seed — no licence terms,
+    no recipe. An **unlicensed** rival venture is absent everywhere (`ventures`, `occupancy`) —
+    fogged until L3;
+  - **rival outposts** cut to `id`, `ownerGuildId`, `coords`, `anchorSystemId` (stockpile, used
+    space, capacities and the dock — which names rival craft — dropped);
+  - **rival deliveries, pending Syndicate builds, production preview and notices** removed
+    (your own deliveries stay — ruling 5);
+  - **claims**: every row kept — ownership is public (controllers, waystations, the Citadel) — but
+    a **rival's system claim** has its resolved seed landmark cut to L0 (`id`, `kind`, `name`,
+    `coords`): the god's-eye landmark also carries `terranHomeworldId` / `starterEligible`, which
+    name and type a planet inside the rival system (L1 not learned);
+  - **galaxy-wide aggregates** *(⤳ coarsened 06-10-26, §2)*: `galacticSupply` keeps only
+    `fuel.{reserve, fuelPrice, avgDraw, targetReserve}` (`resources`, `guildHeld`, `total` dropped);
+    `syndicate` is `{}` (the `ledger` dropped; the row carries no other field). Coarsened for EVERY
+    viewer, so the view's shape never depends on how many rivals there are — which is why even a
+    one-guild galaxy's view differs from the god's-eye in exactly these two blocks;
+  - **`nodeLockouts`** *(⤳ filtered 06-10-26, §2)*: only a lockout on a node the viewer `knowsNode`
+    or in a system it holds (`guildHolds`); each shown row is the god's-eye row, unchanged;
+  - **public, passed through untouched:** prices and their histories, fee/contract/asset quotes, the
+    calendar;
+  - **added:** `viewerGuildId`, and `geography = { systems, known }` — `systems` is **L0 for every
+    system** (`id`, `name` (position-derived), `coords`, `planetCount`, `controllerGuildId` from the
+    claims — never fogged, computed, never stored); `known` is the guild's **record**, resolved
+    through the seed, grouped `{ [systemId]: { [planetId]: { archetype, nodes: { [nodeId]:
+    resourceType } } } }`. The live half (a rival's licensed node + archetype) rides on that
+    rival's venture row, so the two sources stay distinct.
+  Every rival row is an **allow-list**, and every top-level god's-eye key must be classified public
+  or filtered in `fog.js` `TOP_LEVEL` — an unclassified key throws, and a test fails on a new one —
+  so nothing new reaches a player by default. The view is pure (it reads the record, writes
+  nothing). `GET /snapshot?guild=<id>` serves it for headless proof (404 for an unknown guild);
+  plain `GET /snapshot` is unchanged. The client wiring is slice (c).
 - **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
   write the record), so it is not speculative generality.
+  **⤳ AS-BUILT 05-10-26:** `reveal(guild, fact, tick)` in `sim/exploration.js`, where `fact` is
+  `{ planetId }` (L1) or `{ nodeId }` (L2 — which also reveals the node's planet). It returns how many
+  NEW facts it learned (0 = a no-op), refuses an id the seed does not hold, and records what and
+  when, never how. Its callers this slice: `revealSystem` (founding) and `observePublicRegister` (a
+  rival's licensed venture). The Deep Scan Array (slice (b)) and the Prefecture become callers later.
 - **Determinism & goldens.** A per-guild snapshot is deterministic given `(state, guildId)`. The
   snapshot shape changing to per-guild is a **large but intended goldens change** that must be
   proven **deliberate, not accidental**: where a guild sees everything (a single-guild galaxy, or
@@ -224,6 +329,9 @@ stands on.
   of the snapshot filter. The **engine's per-guild view is the authority** and the tripwires test
   *it*; hardening the HTTP route (and the no-auth, client-picks-its-own-guild dev rig) is a
   **later backend slice**, recorded here so it is not silently forgotten.
+  *(⤳ 05-10-26, found while building (a): `GET /starters` — the home-system picker's seed route — is
+  the same kind of leak in miniature: it lists every starter system with its `terranHomeworldId`.
+  Same deferral, same later slice; the per-guild view itself does not carry it.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
@@ -234,6 +342,12 @@ lapsed venture). This coupling is **not** in the repo's Prefecture model today (
 `territory-model.md` §4). **This slice does not build the Prefecture** — it records the gate so
 the Prefecture / claims slice (next) reads the real ruling, and so the exploration record is
 already the gate's data source from birth.
+
+> **⤳ AS-BUILT 05-10-26 (roadmap 2.5 (a)) — RECORDED, NOT ENFORCED.** The record this gate reads
+> now exists from founding, keyed per planet exactly as ruling 7 needs it, and `knowsNode(guild,
+> nodeId)` / `exploration[planetId].nodes` (`sim/exploration.js`) is the read the Prefecture slice
+> will gate on ("knows ≥ 1 node of planet P"). Nothing calls it as a gate yet: the claim and
+> establish validations are untouched.
 
 ## 9. Scope & the vertical split
 
