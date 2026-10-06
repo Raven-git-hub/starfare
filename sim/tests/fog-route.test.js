@@ -54,6 +54,11 @@ test('GET /snapshot?guild= serves that guild\'s fogged view; plain /snapshot sta
   assert.deepEqual(Object.keys(mine.body.guilds.find((g) => g.id === 'bot-guild')), ['id', 'name', 'isBot', 'homeSystemId'],
     'the rival cut to its public facts');
   assert.ok('stockpilesBySystem' in mine.body.guilds.find((g) => g.id === 'player-guild'), 'its own row in full');
+  // The galaxy-wide aggregates arrive coarsened to posted values (ruling 1, 06-10-26).
+  assert.deepEqual(Object.keys(mine.body.galacticSupply), ['fuel']);
+  assert.deepEqual(Object.keys(mine.body.galacticSupply.fuel), ['reserve', 'fuelPrice', 'avgDraw', 'targetReserve']);
+  assert.deepEqual(mine.body.syndicate, {});
+  assert.ok('resources' in gods.body.galacticSupply && 'ledger' in gods.body.syndicate, 'while the operator lens keeps them');
 
   const nobody = await req('GET', '/snapshot?guild=nobody');
   assert.equal(nobody.status, 404);

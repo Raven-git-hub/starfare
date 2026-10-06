@@ -58,14 +58,30 @@ depends on the guild's situation.
   an array per-planet scan. These are the only systems you *scan* — rival systems are read off
   the public record, not scanned (scanning a rival is L3, deferred).
 - **Rival-controlled systems.** L0 always (position, planet count, controller). Plus, **per node
-  that carries a licensed venture**: that node, its planet's archetype, and the venture *type* —
-  **never the stockpile** (the §405 rule; this also closes the old rival-stockpile leak). A
-  rival's **un-licensed** nodes stay fogged until L3. A craft sent to a rival system reveals
-  **nothing new** — the archetypes are already on the public record and it cannot survey nodes.
+  that carries a licensed venture**: that node, its planet's archetype, the venture *type*, and
+  *(RULED 06-10-26)* the venture's **reputation** — `design.md` §5: "ventures carry a **fully
+  visible** reputation score", the investment-risk signal and takeover trigger a rival watches —
+  but **never the stockpile**, never its **licence terms**, and never a refinery's **recipe /
+  produced good** (the §405 rule: types are visible so a rival *infers* the inputs, it is not told
+  them; this also closes the old rival-stockpile leak). A rival's **un-licensed** nodes stay fogged
+  until L3. A craft sent to a rival system reveals **nothing new** — the archetypes are already on
+  the public record and it cannot survey nodes.
 - **Rival structures.** Outposts and toll gates are **always** visible; transports and deep-scan
   arrays are **never** (until L3).
 - **Syndicate.** Waystations always; your **own** buy-order deliveries visible (already built and
   ruled — out of scope, untouched here); rivals' deliveries not.
+- **Galaxy-wide aggregates — coarsened to posted values (RULED 06-10-26).** `design.md` §5: "the
+  real supply figure is hidden; players see only the value and its history." Public: the posted
+  prices and their histories, the fuel price, the Syndicate pool (`reserve` — shared, nobody's
+  holding) and the controller's demand signal (`avgDraw`, `targetReserve`). Not public: any
+  Σ-of-every-guild total — galactic supply's `resources`, `fuel.guildHeld` / `fuel.total`, and the
+  Syndicate `ledger` (by invariant 2 it moves opposite Σ guild credits) — because a guild that
+  subtracts its own share from one reads its rivals' holdings, exactly when there is one rival.
+- **Node lockouts — filtered (RULED 06-10-26).** A lockout (the Syndicate's bar on re-establishing a
+  torn-down licensed venture's site) is shown only on a node the guild **knows** (its record) or on
+  ground it **controls** (where the lockout gates its own establish). Otherwise it would name a node
+  in a rival system the guild never learned — e.g. one licensed and torn down between two ticks. A
+  settlement slot is not a node, so a slot's lockout shows only on ground the guild controls.
 
 ## 3. The two sources — the architecture
 
@@ -262,9 +278,10 @@ stands on.
     events — gone; `homePlanetId` too (a planet inside a rival system is L1 not yet learned);
   - **rival ventures**: only those on the public register (`isOnPublicRegister` — the same
     predicate the record observation uses), each cut to `id`, `ownerGuildId`, `type`, `siteId`,
-    `systemId`, `ventureName`, `site` (the node: kind, planet, system, resource type, name) plus
-    `planetArchetype` from the seed. An **unlicensed** rival venture is absent everywhere
-    (`ventures`, `occupancy`) — fogged until L3;
+    `systemId`, `ventureName`, `reputation` *(⤳ added 06-10-26, §2)*, `site` (the node: kind,
+    planet, system, resource type, name) plus `planetArchetype` from the seed — no licence terms,
+    no recipe. An **unlicensed** rival venture is absent everywhere (`ventures`, `occupancy`) —
+    fogged until L3;
   - **rival outposts** cut to `id`, `ownerGuildId`, `coords`, `anchorSystemId` (stockpile, used
     space, capacities and the dock — which names rival craft — dropped);
   - **rival deliveries, pending Syndicate builds, production preview and notices** removed
@@ -273,9 +290,15 @@ stands on.
     a **rival's system claim** has its resolved seed landmark cut to L0 (`id`, `kind`, `name`,
     `coords`): the god's-eye landmark also carries `terranHomeworldId` / `starterEligible`, which
     name and type a planet inside the rival system (L1 not learned);
+  - **galaxy-wide aggregates** *(⤳ coarsened 06-10-26, §2)*: `galacticSupply` keeps only
+    `fuel.{reserve, fuelPrice, avgDraw, targetReserve}` (`resources`, `guildHeld`, `total` dropped);
+    `syndicate` is `{}` (the `ledger` dropped; the row carries no other field). Coarsened for EVERY
+    viewer, so the view's shape never depends on how many rivals there are — which is why even a
+    one-guild galaxy's view differs from the god's-eye in exactly these two blocks;
+  - **`nodeLockouts`** *(⤳ filtered 06-10-26, §2)*: only a lockout on a node the viewer `knowsNode`
+    or in a system it holds (`guildHolds`); each shown row is the god's-eye row, unchanged;
   - **public, passed through untouched:** prices and their histories, fee/contract/asset quotes, the
-    calendar, `nodeLockouts`, and the galaxy-wide `galacticSupply` / `syndicate` figures (see the
-    decision checklist: those aggregates let a guild subtract its own share — not decided here);
+    calendar;
   - **added:** `viewerGuildId`, and `geography = { systems, known }` — `systems` is **L0 for every
     system** (`id`, `name` (position-derived), `coords`, `planetCount`, `controllerGuildId` from the
     claims — never fogged, computed, never stored); `known` is the guild's **record**, resolved

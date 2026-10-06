@@ -8,12 +8,18 @@
 //   2. EVERY top-level snapshot key is classified (public / filtered) — a new key fails here until
 //      somebody decides whether a player may see it.
 //   3. A GUILD THAT SEES EVERYTHING sees the god's-eye bytes: in a one-guild galaxy the per-guild view,
-//      minus the two keys it adds (`viewerGuildId`, `geography`), is byte-identical to the god's-eye.
+//      minus the two keys it adds (`viewerGuildId`, `geography`), is byte-identical to the god's-eye —
+//      except the two galaxy-wide aggregate blocks, which are coarsened for EVERY viewer (ruling 1).
 //   4. THE FOG, ENUMERATED: in a two-guild galaxy the per-guild view differs from the god's-eye by
 //      exactly the hidden rival facts — every public key identical, the own rows identical.
 //   5. The brief's behaviours: rival stockpiles hidden / own full; an un-licensed rival node fogged; a
 //      rival's lapsed venture loses the live fact but the geography stays; transports, deliveries,
 //      builds, production and notices of a rival hidden; L0 for every system; the record resolved.
+//   7. The three RULINGS of 06-10-26 (the design room, on PR #167):
+//      (1) the galaxy-wide aggregates are coarsened to posted values, so a rival's stockpile, fuel hoard
+//          and credits are NOT derivable from the view (perturb them: the view does not move a byte);
+//      (2) a rival LICENSED venture shows its reputation, and still not its terms or recipe;
+//      (3) a node lockout shows only on a node the viewer knows or on ground it controls.
 //   6. PURE and DETERMINISTIC: the view writes nothing, and the same (state, guildId) gives the same
 //      bytes across two runs and across save/restore (invariant 9).
 
@@ -30,7 +36,10 @@ const A_ = require('../actions.js');
 const { buildSnapshot } = require('../snapshot.js');
 const {
   TOP_LEVEL, RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS, RIVAL_SYSTEM_LANDMARK_FIELDS,
+  GALAXY_FUEL_FIELDS,
 } = require('../fog.js');
+const { computeGalacticSupply } = require('../supply.js');
+const { addStock } = require('../stock.js');
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { saveState, loadOrInit } = require('../persist.js');
 const { checkInvariants } = require('../invariants.js');
@@ -142,7 +151,7 @@ test('classification: every god\'s-eye top-level key is public XOR filtered — 
 
 // --- 3. a guild that sees everything sees the god's-eye bytes ---------------------------------------
 
-test('one-guild galaxy: the per-guild view minus its two added keys is byte-identical to the god\'s-eye', () => {
+test('one-guild galaxy: the per-guild view minus its two added keys is the god\'s-eye, aggregates coarsened', () => {
   let s = ok(createZeroState(), [A_.createFoundGuildAction({ guildId: A, name: 'Player', credits: 2000, influence: 100, homeSystemId: A_HOME })]);
   s = ok(s, [
     A_.createEstablishVentureAction({ guildId: A, ventureId: 'a_mine', siteId: `${getTerranHomeworld(A_HOME)}_n01`, assetId: `asset_${A}_miner_01`, resourceType: 'titanium', productionRate: 5 }),
@@ -152,7 +161,16 @@ test('one-guild galaxy: the per-guild view minus its two added keys is byte-iden
   const { viewerGuildId, geography, ...rest } = buildSnapshot(s, A);
   assert.equal(viewerGuildId, A);
   assert.ok(geography.systems.length > 0);
-  assert.equal(bytes(rest), bytes(buildSnapshot(s)), 'no rival, nothing to fog: every byte the same');
+  // No rival, nothing to fog — EXCEPT the galaxy-wide aggregates, which are coarsened for every viewer
+  // (ruling 1, 06-10-26): the view's shape never depends on how many rivals there are. Put the two
+  // coarsened blocks into the god's-eye object and every other byte must be the same.
+  const full = buildSnapshot(s);
+  const expected = {
+    ...full,
+    galacticSupply: { fuel: Object.fromEntries(GALAXY_FUEL_FIELDS.map((f) => [f, full.galacticSupply.fuel[f]])) },
+    syndicate: {},
+  };
+  assert.equal(bytes(rest), bytes(expected), 'every byte the same, bar the two coarsened aggregate blocks');
 });
 
 // --- the two-guild galaxy the fog tests read --------------------------------------------------------
@@ -259,6 +277,14 @@ test('THE FOG, ENUMERATED: the per-guild view differs from the god\'s-eye by exa
     }
   });
 
+  // galacticSupply / syndicate: coarsened to the posted values (ruling 1) — no Σ-of-every-guild total.
+  assert.deepEqual(view.galacticSupply, { fuel: pick(full.galacticSupply.fuel, GALAXY_FUEL_FIELDS) });
+  assert.deepEqual(Object.keys(view.galacticSupply.fuel), ['reserve', 'fuelPrice', 'avgDraw', 'targetReserve']);
+  assert.deepEqual(view.syndicate, {}, 'the ledger encodes Σ guild credits; the row has no other field');
+
+  // nodeLockouts: a subset of the god's-eye rows, each unchanged (ruling 3 — see its own test).
+  for (const l of view.nodeLockouts) assert.ok(full.nodeLockouts.some((fl) => bytes(fl) === bytes(l)));
+
   // shipments / builds / production / attention: A's own only, rows identical.
   assert.equal(bytes(view.shipments), bytes(full.shipments.filter((x) => x.ownerGuildId === A)));
   assert.equal(bytes(view.syndicateBuilds), bytes(full.syndicateBuilds.filter((b) => b.ownerGuildId === A)));
@@ -281,8 +307,9 @@ test('rival STOCKPILES are hidden; the viewing guild\'s own stockpiles are in fu
   assert.deepEqual(rowOf(view, A).stockpiles, rowOf(full, A).stockpiles);
   assert.deepEqual(rowOf(view, A).stockpilesBySystem, rowOf(full, A).stockpilesBySystem);
   // Not even the rival's licensed venture leaks its holdings: no production rate, no licence terms.
+  // (Its `reputation` IS public — ruling 2, 06-10-26 — and has its own test below.)
   const bm = view.ventures.find((v) => v.id === 'b_mine');
-  for (const key of ['productionRate', 'licence', 'batchCarry', 'reputation', 'teardownSettlement']) {
+  for (const key of ['productionRate', 'licence', 'batchCarry', 'teardownSettlement']) {
     assert.equal(key in bm, false, `a rival venture's ${key} is operations, not the public register`);
   }
   // And B's view is the mirror image: its own stockpiles, none of A's.
@@ -414,6 +441,136 @@ test('geography: `known` is exactly the record, resolved through the seed — an
   // A knows its home fully, one rival planet partially (one node), and no other rival planet.
   assert.deepEqual(Object.keys(known).sort(), [A_HOME, B_HOME].sort());
   assert.deepEqual(Object.keys(known[B_HOME]), [B_PLANET]);
+});
+
+// --- 7. the three rulings of 06-10-26 ------------------------------------------------------------------
+
+// Three honest perturbations of the RIVAL's private numbers, each keeping the invariants exact: goods
+// added to its stockpile (the supply cache refreshed), fuel minted into its hoard (recorded as
+// produced, invariant 1), credits moved ledger → rival (invariant 2). Each returns a fresh state.
+const PERTURB_RIVAL = {
+  stockpile: (s) => {
+    const p = structuredClone(s);
+    addStock(guildOf(p, B), B_HOME, 'titanium', 1000);
+    p.galacticSupply = computeGalacticSupply(p);
+    return p;
+  },
+  fuelHoard: (s) => {
+    const p = structuredClone(s);
+    guildOf(p, B).fuelHoard += 500;
+    p.audit.totalProduced += 500;
+    p.galacticSupply = computeGalacticSupply(p);
+    return p;
+  },
+  credits: (s) => {
+    const p = structuredClone(s);
+    guildOf(p, B).credits += 1_000_000;
+    p.syndicate.ledger -= 1_000_000;
+    return p;
+  },
+};
+
+test('RULING 1: a rival\'s stockpile, fuel hoard and credits are NOT derivable from the viewer\'s view', () => {
+  const s = rivalGalaxy();
+  const view = bytes(buildSnapshot(s, A));
+  for (const [what, perturb] of Object.entries(PERTURB_RIVAL)) {
+    const p = perturb(s);
+    assert.deepEqual(checkInvariants(p, p.tick), [], `the ${what} perturbation is an honest state`);
+    // The operator lens DOES see the change — so this test can fail…
+    assert.notEqual(bytes(buildSnapshot(p)), bytes(buildSnapshot(s)), `the god's-eye lens shows B's ${what} moving`);
+    // …and the viewer's lens does not move a single byte: nothing in it is a function of B's ${what}.
+    assert.equal(bytes(buildSnapshot(p, A)), view, `A's view changed when only B's ${what} did — it leaks`);
+  }
+});
+
+test('RULING 1: the aggregates are coarsened, not removed — the posted price and the pool stay public', () => {
+  const s = rivalGalaxy();
+  const full = buildSnapshot(s);
+  const { galacticSupply, syndicate } = buildSnapshot(s, A);
+  assert.equal('resources' in galacticSupply, false, 'Σ every guild\'s stockpiles');
+  assert.equal('guildHeld' in galacticSupply.fuel, false, 'Σ every guild\'s hoard');
+  assert.equal('total' in galacticSupply.fuel, false, 'pool + Σ hoards');
+  assert.equal('ledger' in syndicate, false, 'the balancing account, opposite Σ guild credits');
+  for (const f of ['reserve', 'fuelPrice', 'avgDraw', 'targetReserve']) {
+    assert.equal(galacticSupply.fuel[f], full.galacticSupply.fuel[f], `${f} is the same number the operator sees`);
+  }
+});
+
+// A rival licensed REFINERY beside the licensed mine, so the recipe has something to hide.
+function rivalGalaxyWithRefinery() {
+  let s = ok(rivalGalaxy(), [
+    A_.createEstablishVentureAction({ guildId: B, ventureId: 'b_refinery', siteId: `${B_PLANET}_s01`, type: 'refining', recipeId: 'titanium_alloy', assetId: `asset_${B}_factory_01` }),
+    A_.createApplyForLicenceAction({ guildId: B, ventureId: 'b_refinery', committedOutputPct: 1, windowDays: 7 }),
+  ]);
+  return tick(s);
+}
+
+test('RULING 2: a rival LICENSED venture shows its reputation; its terms and recipe stay hidden', () => {
+  const s = rivalGalaxyWithRefinery();
+  const full = buildSnapshot(s);
+  const view = buildSnapshot(s, A);
+  for (const id of ['b_mine', 'b_refinery']) {
+    const fullRow = full.ventures.find((v) => v.id === id);
+    const row = view.ventures.find((v) => v.id === id);
+    assert.ok(fullRow.licence, `${id} really is licensed`);
+    assert.ok(fullRow.reputation > 0, `${id} carries a real reputation (the signing bump), so the check is not vacuous`);
+    assert.equal(row.reputation, fullRow.reputation, `${id}'s reputation is fully visible (design.md §5)`);
+    for (const key of ['licence', 'deuteriumLicence', 'committedFromTick', 'contractWindow', 'equityPct',
+      'syndicateCommitment', 'equityPerCycle', 'standing', 'renegotiationOffer', 'teardownSettlement',
+      'productionRate', 'recipeId', 'resourceType', 'batchCarry', 'buildQueue']) {
+      assert.equal(key in row, false, `${id}: ${key} is terms or operations, not the register`);
+    }
+  }
+  const refinery = view.ventures.find((v) => v.id === 'b_refinery');
+  assert.equal(full.ventures.find((v) => v.id === 'b_refinery').recipeId, 'titanium_alloy');
+  assert.equal(bytes(refinery).includes('titanium_alloy'), false, 'the recipe / produced good appears nowhere on the row');
+  assert.equal(refinery.type, 'refining', 'the TYPE is public — a rival infers the inputs (§405)');
+  assert.equal(refinery.site.kind, 'settlement');
+  assert.equal(refinery.planetArchetype, getPlanet(B_PLANET).archetype);
+});
+
+// Three lockouts: B's OBSERVED licensed mine (A knows the node), B's licensed mine torn down between
+// two ticks (never observed — A does not know it), and A's own torn-down mine (A controls the ground).
+function lockoutGalaxy() {
+  const aMine = `${getTerranHomeworld(A_HOME)}_n01`;
+  let s = ok(createZeroState(), [
+    A_.createFoundGuildAction({ guildId: A, name: 'Player', credits: 2000, influence: 100, homeSystemId: A_HOME }),
+    A_.createFoundGuildAction({ guildId: B, name: 'Rival', isBot: true, credits: 200000, influence: 100, homeSystemId: B_HOME }),
+  ]);
+  s = ok(s, [
+    A_.createEstablishVentureAction({ guildId: B, ventureId: 'b_seen', siteId: B_MINE, assetId: `asset_${B}_miner_01`, resourceType: 'titanium', productionRate: 5 }),
+    A_.createApplyForLicenceAction({ guildId: B, ventureId: 'b_seen', committedOutputPct: 1, windowDays: 7 }),
+  ]);
+  s = tick(s); // A observes B_MINE on the register
+  s = ok(s, [
+    A_.createDecommissionVentureAction({ guildId: B, ventureId: 'b_seen' }),
+    // Licensed and torn down with no tick between: never on the register at a tick.
+    A_.createEstablishVentureAction({ guildId: B, ventureId: 'b_unseen', siteId: B_MINE_2, assetId: `asset_${B}_miner_02`, resourceType: 'titanium', productionRate: 5 }),
+    A_.createApplyForLicenceAction({ guildId: B, ventureId: 'b_unseen', committedOutputPct: 1, windowDays: 7 }),
+    A_.createDecommissionVentureAction({ guildId: B, ventureId: 'b_unseen' }),
+    // A's own, the same way — so B never learns A's node either.
+    A_.createEstablishVentureAction({ guildId: A, ventureId: 'a_mine', siteId: aMine, assetId: `asset_${A}_miner_01`, resourceType: 'titanium', productionRate: 5 }),
+    A_.createApplyForLicenceAction({ guildId: A, ventureId: 'a_mine', committedOutputPct: 1, windowDays: 7 }),
+    A_.createDecommissionVentureAction({ guildId: A, ventureId: 'a_mine' }),
+  ]);
+  return { s, aMine };
+}
+
+test('RULING 3: a lockout on an UN-KNOWN rival node is not in the view; known or own-ground lockouts are', () => {
+  const { s, aMine } = lockoutGalaxy();
+  const lockedSites = (snap) => snap.nodeLockouts.map((l) => l.siteId).sort();
+  assert.deepEqual(lockedSites(buildSnapshot(s)), [aMine, B_MINE, B_MINE_2].sort(), 'the operator sees all three');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+
+  const aView = buildSnapshot(s, A);
+  assert.deepEqual(lockedSites(aView), [aMine, B_MINE].sort(), 'A: its own ground + the rival node it learned');
+  assert.equal(bytes(aView).includes(B_MINE_2), false, 'the never-observed rival node appears NOWHERE in A\'s view');
+
+  const bView = buildSnapshot(s, B);
+  assert.deepEqual(lockedSites(bView), [B_MINE, B_MINE_2].sort(), 'B: both on its own ground, and not A\'s unseen node');
+  assert.equal(bytes(bView).includes(aMine), false);
+  // Each visible row is the god's-eye row, unchanged.
+  for (const l of aView.nodeLockouts) assert.ok(buildSnapshot(s).nodeLockouts.some((fl) => bytes(fl) === bytes(l)));
 });
 
 // --- 6. pure and deterministic ----------------------------------------------------------------------

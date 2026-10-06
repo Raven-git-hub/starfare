@@ -14,12 +14,17 @@
 //     is learnable, operations are private"):
 //       · its guild row     → who it is and where its home is (id, name, isBot, homeSystemId);
 //       · its ventures      → ONLY the licensed ones (the public register), and of each only the node,
-//                             its planet's archetype and the venture type — never a stockpile (§405);
+//                             its planet's archetype, the venture type and its reputation (design.md
+//                             §5: "fully visible") — never a stockpile, terms or recipe (§405);
 //                             an UNLICENSED rival venture is not in the view at all (fogged until L3);
 //       · its outposts      → where they are and whose (a structure is public; its stockpile and dock
 //                             are not — the dock names the rival's transports, which are never shown);
 //       · its claims        → kept (ownership is public), the claimed system's seed detail cut to L0;
 //       · its deliveries, pending builds, production preview and notices → not in the view.
+//   - GALAXY-WIDE AGGREGATES are coarsened to posted values (design.md §5: "the real supply figure is
+//     hidden; players see only the value and its history"): no Σ-of-every-guild total survives that a
+//     guild could subtract its own share from to read a rival's holdings.
+//   - NODE LOCKOUTS are shown only on a node the viewer knows or on ground it controls.
 //   - `geography` is added: L0 for every system, plus the viewing guild's record, resolved.
 //
 // ALLOW-LISTS, NOT DENY-LISTS, for every rival row: a field added to a guild / venture / outpost row
@@ -28,8 +33,8 @@
 // unclassified key, so no future field reaches the player view by default.
 
 const { getSite, getPlanet, getL0Systems } = require('./seed.js');
-const { systemControllers } = require('./claims.js');
-const { isOnPublicRegister } = require('./exploration.js');
+const { systemControllers, guildHolds } = require('./claims.js');
+const { isOnPublicRegister, knowsNode } = require('./exploration.js');
 
 // What a rival's guild row keeps. `homeSystemId` is the controller fact (L0, public via the claim);
 // `homePlanetId` is NOT kept — it names a planet inside a rival system, which is L1 the guild has not
@@ -39,9 +44,12 @@ const RIVAL_GUILD_FIELDS = ['id', 'name', 'isBot', 'homeSystemId'];
 // What a rival LICENSED venture's row keeps (§2: "that node, its planet's archetype, and the venture
 // type — never the stockpile"). `site` is the node itself: kind, planet, system, the node's resource
 // type and its display name (all facts about the node the register reveals). The archetype is added
-// as `planetArchetype`, from the seed. Everything operational — rate, licence terms, reputation,
-// recipe, carries, settlement preview — is dropped.
-const RIVAL_VENTURE_FIELDS = ['id', 'ownerGuildId', 'type', 'siteId', 'systemId', 'ventureName', 'site'];
+// as `planetArchetype`, from the seed. `reputation` is kept — RULED 06-10-26: design.md §5, "ventures
+// carry a FULLY VISIBLE reputation score" (the investment-risk signal and the takeover trigger), so a
+// rival can watch pressure build. Everything operational — rate, licence terms and fees, a
+// refinery's recipe / produced good (§405: types are visible so a rival INFERS the inputs, it is not
+// told them), carries, settlement preview — is dropped.
+const RIVAL_VENTURE_FIELDS = ['id', 'ownerGuildId', 'type', 'siteId', 'systemId', 'ventureName', 'reputation', 'site'];
 
 // What a rival outpost's row keeps: where the structure is, whose it is, what it anchors to (§2:
 // "outposts and toll gates are always visible"). Its stockpile, used space, capacities and dock
@@ -56,22 +64,31 @@ const RIVAL_OUTPOST_FIELDS = ['id', 'ownerGuildId', 'coords', 'anchorSystemId'];
 // is public (§1). Waystation and Citadel claims, and the viewer's own claims, pass through untouched.
 const RIVAL_SYSTEM_LANDMARK_FIELDS = ['id', 'kind', 'name', 'coords'];
 
+// THE GALAXY-WIDE AGGREGATES — RULED 06-10-26 (design.md §5: "the real supply figure is hidden;
+// players see only the value and its history"). The god's-eye `galacticSupply` and `syndicate` blocks
+// are sums over EVERY guild: `resources` (Σ stockpiles), `fuel.guildHeld` / `fuel.total` (Σ hoards),
+// and `syndicate.ledger` (the balancing account — by invariant 2 it moves opposite Σ guild credits).
+// A guild that subtracts its own share from any of them reads its rivals' holdings — exactly, with one
+// rival. So the per-guild view keeps only the POSTED values and the shared pool's scarcity signal:
+//   fuel — `reserve` (the Syndicate pool every guild draws from — not anyone's holding), `fuelPrice`
+//          (the posted price), `avgDraw` / `targetReserve` (the controller's demand signal and target).
+//   syndicate — no field of today's row is public; the allow-list is empty, so the block is `{}` until
+//          a genuinely public Syndicate fact is added to it deliberately.
+// (A posted price moves with total supply over ticks — that is the value §5 lets players see.)
+const GALAXY_FUEL_FIELDS = ['reserve', 'fuelPrice', 'avgDraw', 'targetReserve'];
+const SYNDICATE_PUBLIC_FIELDS = [];
+
 // EVERY top-level key of the god's-eye snapshot, classified. `public` passes through untouched;
 // `filtered` is rewritten below. A key in neither list fails tests/fog.test.js.
-//
-// `galacticSupply` and `syndicate` are galaxy-wide figures, not a rival's row, so this slice passes
-// them through — but they are AGGREGATES over every guild's holdings, which a guild can subtract its
-// own share from. That is recorded on the roadmap's decision checklist (design.md §5 already says the
-// real supply figure is hidden from players); it is not decided here.
 const TOP_LEVEL = {
   public: [
-    'schemaVersion', 'tick', 'calendar', 'galacticSupply', 'syndicate', 'prices', 'priceHistory',
+    'schemaVersion', 'tick', 'calendar', 'prices', 'priceHistory',
     'fuelPriceHistory', 'priceBase', 'goodVolumes', 'haulerTiers', 'feeQuote', 'tier3Contract',
-    'nodeLockouts',    // the Syndicate's own bar on a node; it carries no guild and no holding
     'assetPurchaseQuote',
   ],
   filtered: [
-    'guilds', 'production', 'ventures', 'occupancy', 'claims', 'outposts', 'shipments', 'syndicateBuilds', 'attention',
+    'galacticSupply', 'syndicate', 'guilds', 'production', 'ventures', 'occupancy', 'claims', 'outposts',
+    'shipments', 'nodeLockouts', 'syndicateBuilds', 'attention',
   ],
 };
 
@@ -97,6 +114,18 @@ function registeredVentureIds(state) {
 function claimRow(row, guildId) {
   if (row.ownerGuildId === guildId || row.landmarkKind !== 'system' || !row.landmark) return row;
   return { ...row, landmark: pick(row.landmark, RIVAL_SYSTEM_LANDMARK_FIELDS) };
+}
+
+// isLockoutVisible(state, guild, lockout) — RULED 06-10-26. A node lockout names a site and the tick
+// it frees. The viewer sees it only if it KNOWS the node (its record, `knowsNode`) or CONTROLS the
+// node's system (its own ground — where the lockout gates its own establish). Anything else would name
+// a node inside a rival system the viewer never learned: e.g. one licensed and torn down between two
+// ticks, so never on the register at a tick. A settlement slot is not a node and is never "known" in
+// the record, so a slot's lockout shows only on ground the viewer controls.
+function isLockoutVisible(state, guild, lockout) {
+  if (knowsNode(guild, lockout.siteId)) return true;
+  const site = getSite(lockout.siteId);
+  return !!site && guildHolds(state, guild.id, site.systemId);
 }
 
 function rivalVentureRow(row) {
@@ -161,6 +190,9 @@ function fogForGuild(full, state, guildId) {
   const out = {};
   for (const key of Object.keys(full)) {
     if (TOP_LEVEL.public.includes(key)) out[key] = full[key];
+    else if (key === 'galacticSupply') out.galacticSupply = { fuel: pick(full.galacticSupply.fuel, GALAXY_FUEL_FIELDS) };
+    else if (key === 'syndicate') out.syndicate = pick(full.syndicate, SYNDICATE_PUBLIC_FIELDS);
+    else if (key === 'nodeLockouts') out.nodeLockouts = full.nodeLockouts.filter((l) => isLockoutVisible(state, guild, l));
     else if (key === 'guilds') out.guilds = full.guilds.map((g) => (g.id === guildId ? g : pick(g, RIVAL_GUILD_FIELDS)));
     else if (key === 'production') out.production = full.production.filter((p) => p.guildId === guildId);
     else if (key === 'ventures') out.ventures = ventures;
@@ -194,4 +226,5 @@ function fogForGuild(full, state, guildId) {
 module.exports = {
   fogForGuild, geographyFor, TOP_LEVEL,
   RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS, RIVAL_SYSTEM_LANDMARK_FIELDS,
+  GALAXY_FUEL_FIELDS, SYNDICATE_PUBLIC_FIELDS,
 };

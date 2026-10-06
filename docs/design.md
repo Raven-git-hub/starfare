@@ -215,7 +215,13 @@ geography, **learn-once / known-forever**, any source writes it permanently — 
 claim gate reads) and the **live rules** (controllers, rival *licensed* venture types, rival
 structures, waystations, your own deliveries — recomputed each tick, lifting and re-fogging on
 their own). A rival's **licensed** node shows its type and its planet's archetype but **never its
-stockpile** (§405); a rival's un-licensed nodes stay fogged until L3.
+stockpile** (§405); a rival's un-licensed nodes stay fogged until L3. *(**RULED 06-10-26**, the design
+room on the engine slice: a rival's licensed venture also shows its **reputation** — "fully visible",
+§5 *Reputation and Hostile Takeovers* — but still never its licence terms or a refinery's recipe; the
+galaxy-wide **aggregates are coarsened to posted values** in a guild's view, per §5's "the real supply
+figure is hidden" — no Σ-of-every-guild total a guild could subtract its own share from; and a **node
+lockout** shows only on a node the guild knows or ground it controls. Model: `docs/exploration-model.md`
+§2.)*
 
 Headline rulings (05-10-26): claiming a system reveals it to L1 and the **settled planet** to L2,
 but its other planets stay L2-fogged until surveyed (a **bounded** reveal); the **claim gate is
@@ -229,7 +235,8 @@ guild knows its **home system fully + L0 everywhere**, nothing else.
 > (`Guild.exploration`, §15.4; seeded with the whole home system at founding; a rival's licensed
 > venture adds its node at the end of each tick, §15.6), and `buildSnapshot(state, guildId)` is the
 > per-guild view — own data in full, every rival cut to its public facts, plus L0 for every system
-> and the guild's record (`sim/fog.js`). `buildSnapshot(state)` stays the god's-eye operator lens,
+> and the guild's record (`sim/fog.js`). *(06-10-26: a rival licensed venture's reputation added; the
+> galaxy-wide aggregates coarsened to posted values; node lockouts filtered — the three rulings above.)* `buildSnapshot(state)` stays the god's-eye operator lens,
 > byte-identical. No Deep Scan Array, no client, no claim gate yet. AS-BUILT detail:
 > `docs/exploration-model.md` §3/§6/§7/§8.
 
@@ -451,7 +458,7 @@ Not yet covered: heavier ship classes, weapons recipes, station module recipes, 
 
 Guilds set up **ventures** — small production companies operating a **ground asset** under Syndicate Venture Licences (or unlicensed, at the legal risk described in Section 2). A ground asset is one of exactly two machines (Section 4): a **miner**, which extracts a raw resource on a resource node, or a **factory**, which sits on a settlement slot and is configured to **refine, manufacture, or construct** — so the two machines between them span all four tiers of the manufacturing tree. Goods sell into a shared market where scarcity commands better prices and abundance worse, with soft logistic floors/ceilings preventing runaway spirals. Guilds aren't required to sell to market: they can stockpile or consume internally, creating the **build-vs-buy** tension between vertical integration (secure, capital-intensive) and specialization (efficient, exposed).
 
-Supply chains are an explicit **attack surface**: a guild can starve a rival's venture by cornering an input market or pressuring a supplier's territory owner — all without direct conflict or rule-breaking. **Partial transparency** supports this: venture _types_ are visible (letting rivals infer likely inputs), but exact stockpiles are hidden, preserving room for market intuition and the future espionage layer. *(**Formalised 05-10-26** by the fog model, "Fog of war — per-guild visibility" above / `docs/exploration-model.md` §2: a rival's **licensed** node shows its venture type and its planet's archetype but never its stockpile, and a rival's **un-licensed** nodes stay fogged entirely until L3 espionage — which is exactly this "venture types visible, exact stockpiles hidden" rule made into per-guild visibility.)*
+Supply chains are an explicit **attack surface**: a guild can starve a rival's venture by cornering an input market or pressuring a supplier's territory owner — all without direct conflict or rule-breaking. **Partial transparency** supports this: venture _types_ are visible (letting rivals infer likely inputs), but exact stockpiles are hidden, preserving room for market intuition and the future espionage layer. *(**Formalised 05-10-26** by the fog model, "Fog of war — per-guild visibility" above / `docs/exploration-model.md` §2: a rival's **licensed** node shows its venture type and its planet's archetype but never its stockpile, and a rival's **un-licensed** nodes stay fogged entirely until L3 espionage — which is exactly this "venture types visible, exact stockpiles hidden" rule made into per-guild visibility. **⤳ 06-10-26:** that licensed node also shows the venture's **reputation** (the "fully visible reputation score" of *Reputation and Hostile Takeovers* below) — and still not its licence terms or a refinery's recipe: the type lets a rival *infer* inputs, it is not told them.)*
 
 **Production is automated.** Players set parameters — production rate, buy/sell thresholds, stop conditions, stockpile targets — rather than micromanaging, so casual players can set conservative defaults while engaged players tune aggressively. Production draws **no fuel**: ventures are renewable-powered, so a guild can mine, refine, and manufacture entirely within its own system without touching Deuterium (§3, open question #54). Fuel is the price of *movement and interaction* — reaching other systems, the Syndicate, and the market — which is where a squeeze actually bites: through fleet and route burn and the shared allocation pool, not through any venture-level draw.
 
@@ -836,7 +843,7 @@ So an LO holding 74% of a venture has **no claim on the VO's machinery** — the
 
 The shared market now has a concrete microstructure — a two-sided exchange:
 
-- **The Syndicate as market-maker.** For Tier 1–3 goods it holds effectively inexhaustible stock and will always buy or sell at a single computed **value**, derived from total galactic supply. The real supply figure is hidden; players see only the value and its history. This generalizes the fuel utility's supply-derived pricing to ordinary goods — and the Phase 1 sandbox's "reuse the fuel curve's shape for the second good" proposal is exactly this line, in miniature.
+- **The Syndicate as market-maker.** For Tier 1–3 goods it holds effectively inexhaustible stock and will always buy or sell at a single computed **value**, derived from total galactic supply. The real supply figure is hidden; players see only the value and its history. *(⤳ Honoured by the per-guild snapshot, 06-10-26 (roadmap 2.5 (a), `sim/fog.js`): a guild's view drops galactic supply's `resources` and the fuel `guildHeld` / `total` totals and the Syndicate ledger, keeping the posted prices, the fuel price, the Syndicate pool and the controller's demand signal — `docs/exploration-model.md` §2. The god's-eye operator lens is unchanged.)* This generalizes the fuel utility's supply-derived pricing to ordinary goods — and the Phase 1 sandbox's "reuse the fuel curve's shape for the second good" proposal is exactly this line, in miniature.
 - **The player order book.** Guilds list asks and bids at any price, sorted conventionally; the book sits alongside the Syndicate line and can diverge from it freely in either direction. The gap between the steady Syndicate line and the scatter of player trades is the "trust nobody, need everybody" premise made visible. Trading with the Syndicate is never strictly better or worse than trading with a guild **on price** — reliable and unglamorous beside noisier and potentially more profitable. Neutrality holds on *price* only: the Syndicate competes on **fuel access**, not rate — Syndicate-facing trade can earn a fuel-allocation benefit a peer trade does not (§8). That benefit rides a separate axis and doesn't make the Syndicate the better *deal*, so it refines this neutrality rather than breaking it. The book proper needs multiple actors, so it lands with Phase 3.
 - **Fuel is never listed.** Syndicate-regulated, not privately tradable (Section 3) — the Exchange enforces that rule rather than being an exception to it.
 
