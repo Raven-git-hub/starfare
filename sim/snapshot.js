@@ -793,6 +793,9 @@ function computeAttention(state) {
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
+//     deepScanArrays?: [ { id, ownerGuildId, coords: {q,r}, anchorSystemId } ],
+//       // 2.5 (b1), docs/exploration-model.md §5 — OMITTED while no array exists (byte-identical to
+//       // pre-slice); in a per-guild view, only the viewer's OWN arrays (sim/fog.js).
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
 //                    arrivalTick, ticksRemaining, assetKind?, destinationOutpostId?,
 //                    originOutpostId, originCoords: {q,r}, departureTick } ],
@@ -1000,7 +1003,8 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // stopped. A fresh copy; cleared by the craft's next dispatch. Omit-when-absent.
     ...(v.laneEnded ? { laneEnded: { ...v.laneEnded } } : {}),
     // deployFailed (roadmap 2.2 deploy pipeline slice 2 — the laneEnded pattern). PRESENT only when the
-    // craft's on-arrival deploy FAILED and it pulled back — `{ reason: 'occupied' | 'out-of-range', tick }` —
+    // craft's on-arrival deploy FAILED and it pulled back — `{ reason: 'occupied' | 'out-of-range' |
+    // 'not-attached', tick }` (the last a Deep Scan Array's, 2.5 (b1)) —
     // so the client can later say "deploy failed — hex taken / out of range; craft pulled back". A fresh
     // copy; cleared by the craft's next dispatch. Omit-when-absent.
     ...(v.deployFailed ? { deployFailed: { ...v.deployFailed } } : {}),
@@ -1090,6 +1094,20 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
         manifest: s.manifest.map(copyManifestLine), // canonical shape (max → { dir, good, max: true })
       };
     }),
+  };
+}
+
+// snapshotDeepScanArrayRow(a) -> the per-array snapshot row (docs/exploration-model.md §5; roadmap 2.5
+// (b1)). The array mirror of `snapshotOutpostRow`: a FRESH derived object, so a consumer mutating the
+// snapshot can't alias into engine state. Identity (`id` / `ownerGuildId`), the single hex (`coords`) and
+// the system it hangs off (`anchorSystemId`) — the same four facts a rival Outpost's row keeps. An array
+// has no stockpile, capacity or dock, and no scan job yet (slice (b2)), so there is nothing else to show.
+function snapshotDeepScanArrayRow(a) {
+  return {
+    id: a.id,
+    ownerGuildId: a.ownerGuildId,
+    coords: { q: a.coords.q, r: a.coords.r },
+    anchorSystemId: a.anchorSystemId,
   };
 }
 
@@ -1772,6 +1790,14 @@ function buildGodsEyeSnapshot(state) {
     .map((o) => snapshotOutpostRow(o, state.tick, vehicleClassById))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
+  // Every Deep Scan Array (docs/exploration-model.md §5; roadmap 2.5 (b1)), fresh rows sorted by stable id
+  // (invariant 9), beside the Outposts. OMITTED WHEN EMPTY — unlike `outposts`, which is always emitted —
+  // because this block is new: a galaxy with no array must serve EXACTLY the god's-eye bytes it served
+  // before the array existed (tests/fog.test.js pins those bytes), so the key appears only once an array does.
+  const deepScanArrays = (state.deepScanArrays || [])
+    .map(snapshotDeepScanArrayRow)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as
   // stored. `ticksRemaining` is the ONE counter derived field — `arrivalTick -
   // tick`, floored at 0 so a delivery due this very tick reads 0 rather than a
@@ -2049,6 +2075,9 @@ function buildGodsEyeSnapshot(state) {
     // stable id (built above). ALWAYS EMITTED as an array (a stable [] when a galaxy holds none),
     // unlike the omit-when-empty STATE field: additive derived-on-read telemetry, no serialized byte.
     outposts,
+    // The Deep Scan Arrays (built above) — omit-when-empty, so a galaxy without one is byte-identical to
+    // pre-slice. A rival's arrays are hidden from the per-guild view entirely (sim/fog.js).
+    ...(deepScanArrays.length ? { deepScanArrays } : {}),
     shipments,
     // The node lockouts (docs/venture-teardown.md §3.3) — sites barred from re-establishment
     // until `releaseTick` after an ordinary-licensed teardown. Echoed as stored, with the one

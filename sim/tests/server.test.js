@@ -1958,7 +1958,7 @@ test('the kit endpoints refuse (200, accepted:false), 400 a malformed body, and 
   await req('POST', '/admin/vehicle/spawn', { guildId: 'player-guild', class: 'heavyTransport', location: freeHexBesideHome() });
   const noKit = await req('POST', '/admin/vehicle/deploy-asset', { guildId: 'player-guild', vehicleId: 'vehicle_player-guild_heavyTransport_02' });
   assert.equal(noKit.body.accepted, false);
-  assert.match(noKit.body.reason, /exactly one outpost_kit/);
+  assert.match(noKit.body.reason, /exactly one kit and nothing else to deploy/); // no kit aboard: no kind to name (2.5 (b1))
   // Structurally malformed requests are 400s — the constructors refuse them.
   for (const [route, body, label] of [
     ['/admin/guild/grant-kit', { guildId: 'player-guild', kind: 'outpost' }, 'grant-kit'],

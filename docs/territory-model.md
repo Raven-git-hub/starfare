@@ -154,7 +154,8 @@ space assets need supply runs) — outpost ≤ **10** hexes from a **system**; t
 §5). The array is **deploy-placed "attached"** — its hex directly adjacent to a system or outpost
 footprint the guild holds — not placed within a 5-hex range. Its *scan* reach is galaxy-wide, so
 placement is a flavour / future-monitoring concern, not a scan concern. The toll-gate 10-hex range
-is unchanged and still open.)*
+is unchanged and still open.)* *(⤳ **BUILT 06-10-26, roadmap 2.5 (b1):** the array rides this pipeline
+with the attached rule — "AS-BUILT — the Deep Scan Array rides the pipeline" at the end of this section.)*
 
 **Painting the range (the snapshot contract).** The engine tells the client WHERE a
 deploy is legal; the client never computes that itself (§18 — the range distance is a game
@@ -551,6 +552,33 @@ quote is asked once at Finalise, as Dispatch's is. **Renamed:** `deployAction` /
 `#noticeShowMap`, and the `window.__craftCoords` bridge only it used. **Still a gap:** a kit left aboard by a dispatch
 refused after its load (the popup then closed), or by an operator `load-kit`, writes no `deploy_failed` notice, so no
 fork reaches it. It stays operator-recoverable (decision checklist). Not built: the kit sources and the other kinds.
+
+**AS-BUILT — the Deep Scan Array rides the pipeline, with the attached rule (06-10-26; roadmap 2.5 (b1);
+engine + operator CLI, no client).** The second space-lane kind, built as an ADDITIVE generalisation of the
+one deploy rule and apply — not a second pipeline. A `deepScan` kit (`deep_scan_array_kit`, one new
+`DEPLOYABLE_KITS` row) is granted, loaded, ferried and unloaded by the existing kit actions unchanged, and is
+deployed by the existing triggers: the manual `deployAsset` and a dispatch's final-waypoint `{ type:
+'deploy', kind: 'deepScan' }`. **`deployCheck` now takes the kind** it is placing — the waypoint's, or (for
+the manual deploy, which names only the craft) the kind of the kit aboard — and keeps its shared checks in
+their order: `not-bare-hex`; `kit`, now "exactly one kit **of that kind**" (a waypoint naming the other kind
+is refused up front); `occupied` (`hexOccupant` now also sees Deep Scan Arrays — one structure per hex
+across both kinds, `spawnOutpost` included). Then the **placement** check dispatches on the kind
+(`DEPLOYABLE_STRUCTURES`, `sim/actions.js`): the Outpost's range rule (`outpostPlacement` — the old lines,
+moved, not changed) or the array's **attached** rule (`attachedPlacement`: a bare hex exactly `claimRadius
++ 1` from a held system's centre, or 1 from an Outpost the guild owns; `exploration-model.md` §5 has the
+detail and the anchor pick). `deployKit` mints by kind — `mintOutpost` or the new `mintDeepScanArray`
+into `state.deepScanArrays`. **Arrival** re-validates through the same rule: a lost attachment fails as the
+new retreatable reason **`not-attached`** (beside `occupied` / `out-of-range` in `DEPLOY_FAILED_REASONS`)
+and retreats by the existing `retreatLanding`, unchanged, with the `deploy_failed` notice (`cause:
+'not-attached'`, `kind: 'deepScan'`). **The outpost path is byte-identical** to `main` before the slice —
+a scripted run of the manual deploy, the on-arrival deploy, the on-arrival retreat and every outpost
+refusal hashes to the bytes recorded on a60d98e (`sim/tests/deep-scan-array.test.js`). One refusal TEXT
+moved, outside the outpost path: a manual deploy by a craft carrying **no kit at all** now asks for
+"exactly one kit" (with two kinds it can no longer assume the Outpost's). Operator surface: no new
+endpoint or command — `tools/admin.js grant-kit --kind deepScan`, `load-kit`, `deploy-asset`, `dispatch-route
+"<q>,<r>@deploy:deepScan"` — but the CLI's printouts now list idle kits of every kind and `deploy-asset` names
+the structure it placed (`docs/cli-runbook.md`, the Deep Scan Array section). Not built: the `deployRange.deepScan` paint lane and every client piece, a
+dockyard build path for any installation, teardown / removal of an array, and the scan (2.5 (b2)).
 
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 

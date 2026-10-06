@@ -615,7 +615,8 @@ test('invariants: deployFailed must be { known reason, whole tick <= now } on a 
     mutate(bad.guilds[0].vehicles[0]);
     return checkInvariants(bad, bad.tick).map((v) => v.rule);
   };
-  assert.deepEqual(DEPLOY_FAILED_REASONS, ['occupied', 'out-of-range']);
+  // 'not-attached' joined 2.5 (b1): the Deep Scan Array's retreatable placement failure.
+  assert.deepEqual(DEPLOY_FAILED_REASONS, ['occupied', 'out-of-range', 'not-attached']);
   assert.ok(rules((v) => { v.deployFailed.reason = 'bad-luck'; }).includes('vehicle-deploy-failed-valid'));
   assert.ok(rules((v) => { v.deployFailed.tick = 1.5; }).includes('vehicle-deploy-failed-valid'));
   assert.ok(rules((v) => { v.deployFailed.tick = s.tick + 1; }).includes('vehicle-deploy-failed-valid'), 'not in the future');

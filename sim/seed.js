@@ -227,6 +227,19 @@ function getSystem(id) {
   return index().bySystem.get(id) || null;
 }
 
+// getClaimRadius(systemId) -> the system's control-disk radius in hexes (`claimRadius` in
+// data/seed.json — every hex within it of the system's centre is the system's footprint,
+// docs/territory-model.md §2), or null for an unknown system or one whose seed row carries no
+// whole-number radius. A SEPARATE reader on purpose, not a new field on `getSystem`'s landmark: that
+// landmark is what a claim row resolves and the god's-eye snapshot serializes, so widening it would
+// move every claim row's bytes. Its first consumer is the Deep Scan Array's "attached" deploy rule
+// (sim/actions.js, roadmap 2.5 (b1)).
+function getClaimRadius(systemId) {
+  const sys = index().bySystemRaw.get(systemId);
+  if (!sys || !Number.isInteger(sys.claimRadius) || sys.claimRadius < 0) return null;
+  return sys.claimRadius;
+}
+
 function getOutpost(id) {
   return index().byOutpost.get(id) || null;
 }
@@ -371,7 +384,7 @@ function getSeedNumber() {
 module.exports = {
   setSeed,
   getSite, getPlanet, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
-  getCitadel, getSystem, getOutpost, getOutposts, getLandmark,
+  getCitadel, getSystem, getClaimRadius, getOutpost, getOutposts, getLandmark,
   hexToPixel, isHexInBounds, seedLandmarkAtHex,
   isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getL0Systems, getSeedNumber,
 };

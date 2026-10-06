@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,090 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,110 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -3652,7 +3652,8 @@ boundary so the later hex-map swap doesn't touch it.
   per-guild `buildSnapshot(state, guildId)` + the exploration record + the two sources + founding
   state (home fully known + L0 everywhere) + the claim-gate coupling recorded; **(b) the Deep Scan
   Array** — entity + "attached" deploy + the scan-job queue (one active job, L1/L2, the chain,
-  completion-revalidation) + reveal-to-record; **(c) client** — the fog UI. *Deferred: monitoring
+  completion-revalidation) + reveal-to-record *(⤳ split 06-10-26: **(b1)** the entity + the attached deploy
+  — BUILT, below; **(b2)** the scan job + reveal — next)*; **(c) client** — the fog UI. *Deferred: monitoring
   (the array's directional watch-fan → detection/corridors/catch-fine), L3 espionage, the
   Prefecture self-scan, squatting. Still open: espionage cost/risk; the scan durations remain
   `[FIRST-CUT]` for the tuner.*
@@ -3699,6 +3700,40 @@ boundary so the later hex-map swap doesn't touch it.
     visible"), its terms and recipe still hidden; (3) `nodeLockouts` filtered to known nodes and held
     ground. The rival guild row, rival outpost row, end-of-tick observation timing and the L0 system
     name are confirmed as built. The god's-eye hashes still hold. Checklist items below: closed.
+  - **(b1) the Deep Scan Array, deployable — ⤳ AS-BUILT 06-10-26 (engine + operator, no scan, no
+    client).** `docs/exploration-model.md` §5 "Form" + "Deploy placement" (AS-BUILT note there);
+    `territory-model.md` §5 (the pipeline it rides). **No new number.** One new kit row, `deepScan` →
+    `deep_scan_array_kit` (`sim/resources.js`), so the kit is granted (`grantKit`), loaded, ferried and
+    unloaded by the existing actions; **no dockyard build path** (`BUILDABLE_KINDS` untouched). The
+    structure is its own top-level list, **`state.deepScanArrays`** (omit-when-empty; rows `{ id,
+    ownerGuildId, coords, anchorSystemId, createdAtTick }`, ids `deepScanArray_<guild>_NN` from
+    `guild.deepScanArraySerial` — new `sim/deep-scan-arrays.js`, `createDeepScanArray` in `sim/state.js`).
+    **The one deploy rule generalised by kind**: `deployCheck` takes the kind it places (the waypoint's, or
+    the manual deploy's kit aboard); `not-bare-hex` / `kit` (now exactly one kit OF THAT KIND) / `occupied`
+    stay shared, and `hexOccupant` sees arrays (one structure per hex across both kinds); placement
+    dispatches on kind (`DEPLOYABLE_STRUCTURES`): the Outpost's range rule moved verbatim, or the array's
+    **attached** rule — a bare hex exactly `claimRadius + 1` from a held system's centre (`claimRadius` from
+    the seed via the new `getClaimRadius`), or 1 from an owned Outpost; anchor = the lowest-id held system
+    touched, else the lowest-id owned Outpost's own `anchorSystemId`. `deployKit` mints by kind (new
+    `mintDeepScanArray`); both triggers (manual, on-arrival) get it at once. A lost attachment on arrival
+    fails as the new retreatable reason **`not-attached`** and retreats by the unchanged `retreatLanding`,
+    with the `deploy_failed` notice. Snapshot: a god's-eye `deepScanArrays` block (omit-when-empty);
+    `sim/fog.js` classifies it **filtered** — a viewer sees only its own arrays, and the key only when it
+    owns one, so a rival's array is in the view nowhere (`exploration-model.md` §2). Tripwire
+    `checkDeepScanArrayIntegrity` (`sim/invariants.js`). **Proved:** the outpost deploy path is
+    byte-identical to `main` (a scripted manual deploy, on-arrival deploy, on-arrival retreat and every
+    outpost refusal hash to bytes recorded on a60d98e — `tests/outpost-deploy-script.js`), and the five
+    god's-eye hashes of (a) still hold. One refusal text moved, outside the outpost path: a manual deploy
+    with NO kit aboard now asks for "exactly one kit" (3 assertions updated); the vocabulary pins
+    (`DEPLOYABLE_GOODS`, `KIT_ASSET_KINDS`, `DEPLOY_FAILED_REASONS`, the "known:" kinds) and the fog
+    classification test (which now allows an omit-when-empty key) were updated to the two-kind vocabulary.
+    **Operator CLI:** `tools/admin.js` already passed `--kind` through, but its printouts read only the
+    outpost — `grant-kit` named the wrong minted kit and `deploy-asset` printed only Outposts. Now the idle
+    kits list every kit kind (`KIT_KINDS`, quoted from `KIT_ASSET_KINDS` and tied by a test) and
+    `deploy-asset` prints the structure the craft now stands on (`structureUnder`); an Outpost deploy prints
+    exactly what it did. `docs/cli-runbook.md` gains the array section. Tests: `tests/deep-scan-array.test.js`
+    (18), `tests/fog.test.js` (+2), `tools/admin.test.js` (+1). Sim 2,090 → **2,110**, tools 77 → **78**.
+    Next: **(b2)** the scan job. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4729,6 +4764,13 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   5. **When the register is observed.** At the END of each tick only — so a venture licensed and closed between two ticks is never observed and teaches nothing. Confirm, or rule that the licence action itself also observes. **⤳ CONFIRMED AS-BUILT 06-10-26 — CLOSED** (end of each tick only).
   6. **`nodeLockouts` stays public** (the Syndicate's own bar on a node; no guild, no holding) — it names the site of a torn-down licensed venture. Confirm. **⤳ RULED 06-10-26 — CLOSED, the other way: FILTERED.** A lockout is omitted unless the viewer knows the node (`knowsNode`) or controls its system (`guildHolds`); a settlement slot is never a known node, so a slot lockout shows only on held ground. Tripwire: a lockout on an un-known rival node is not in the view.
   7. **L0 rows carry the system `name`** (the generator derives it from position alone — sector + a coords catalog number), alongside `id`, `coords`, `planetCount`, controller. Confirm. **⤳ CONFIRMED AS-BUILT 06-10-26 — CLOSED.**
+- **Deep Scan Array slice (b1) (2.5, deployable array) — items for a ruling or a confirm** — *surfaced 06-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **A hex INSIDE a held footprint.** Built literally: "attached" is `hexDistance === claimRadius + 1`, so a bare hex inside a held system's control disk (today, the 6 hexes 1 from the centre) is refused as `not-attached` — it is *in* the footprint, not touching it. One quirk follows: such a hex **does** pass when it also sits beside an Outpost the guild owns. Confirm, or rule that inside-the-disk is legal too (the predicate would become `1 ≤ distance ≤ claimRadius + 1`).
+  2. **The anchor of an Outpost-attached array.** Stored as that Outpost's own `anchorSystemId`, so `anchorSystemId` always names a system; *which* Outpost it touched is not recorded (that id would dangle once the Outpost is packed up). Confirm, or name the slice that needs the Outpost id.
+  3. **Attachment is judged at deploy only.** An array stays when the Outpost it touched is later packed up or removed (no invariant demands it stay attached). Confirm, or rule what happens to it.
+  4. **No way to remove an array.** No existing operator remove lever generalises (`removeOutpost` is Outpost-only) and a reclaim flow was out of scope, so an array is permanent this slice. Needed when ruled: an operator remove lever and/or the reclaim.
+  5. **Two spellings of one installation.** The kit kind is `deepScan` (the deploy-range lane key, as the build prompt named it), but the installation bill's kind is `deep_scan_array` (`sim/asset-recipes.js` `INSTALLATION_BILLS`). The slice that gives installations a dockyard build path must map one to the other, or rule a rename.
+  6. **Client seams for (c) / the deploy map — not decisions, recorded so they are not lost:** `deployRange.deepScan` is not published (adding it moves every held-system guild row of the god's-eye lens, so it should land with the client that paints it); the `deploy_failed` Reason fact has no label for `not-attached` (reads "—") and the inbox title prints the raw kind ("Deployment failed — deepScan"-ish via `prettyGood`); the client's `KIT_GOOD` knows only the outpost, so the notice's Redeploy / Return forks cannot reach a retreated array kit (operator-recoverable: `unload-kit`); an idle array kit has no Deploy button; arrays are not drawn on the map.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

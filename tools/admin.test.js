@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const A = require('./admin.js');
 const { MINE_BASELINE } = require('../sim/baseline.js');
 const { STARTER_HUMAN_CREDITS, STARTER_HUMAN_FLEET, STARTER_HUMAN_KITS } = require('../sim/starter-package.js');
+const { KIT_ASSET_KINDS } = require('../sim/assets.js');
 
 // The engine's 100%-titanium commitment over one 1,440-tick day, DERIVED from the table
 // (⤳ 24-09-26, yield tiers: this was the literal 7,200 = 5 × 1,440 under the old uniform
@@ -531,6 +532,30 @@ test('the deploy-pipeline bodies: a missing required flag throws rather than pos
 
 test('DEPLOY_COMMANDS lists the deploy subcommands (grant-kit / load-kit / unload-kit / deploy-asset)', () => {
   assert.deepEqual([...A.DEPLOY_COMMANDS].sort(), ['deploy-asset', 'grant-kit', 'load-kit', 'unload-kit']);
+});
+
+test('the deploy printouts read EVERY kit kind and whichever structure a deploy placed (2.5 (b1))', () => {
+  // KIT_KINDS is the engine's vocabulary, quoted not authored.
+  assert.deepEqual([...A.KIT_KINDS], [...KIT_ASSET_KINDS]);
+  // A /snapshot guild block as sim/snapshot.js emits it: two idle kits of different kinds, a deployed miner.
+  const snap = {
+    guilds: [{
+      id: 'g1',
+      assets: [
+        { id: 'asset_g1_miner_01', kind: 'miner', systemId: 'sys_0001', deployedToVentureId: 'v1' },
+        { id: 'asset_g1_outpost_01', kind: 'outpost', systemId: 'sys_0001', deployedToVentureId: null },
+        { id: 'asset_g1_deepScan_02', kind: 'deepScan', systemId: 'sys_0001', deployedToVentureId: null },
+      ],
+    }],
+    outposts: [{ id: 'outpost_g1_01', ownerGuildId: 'g1', coords: { q: 5, r: 5 }, anchorSystemId: 'sys_0001' }],
+    deepScanArrays: [{ id: 'deepScanArray_g1_01', ownerGuildId: 'g1', coords: { q: 7, r: 5 }, anchorSystemId: 'sys_0001' }],
+  };
+  assert.deepEqual(A.idleKitsIn(snap, 'g1').map((a) => a.id), ['asset_g1_outpost_01', 'asset_g1_deepScan_02']);
+  assert.deepEqual(A.structureUnder(snap, { location: { q: 5, r: 5 } }), { kind: 'outpost', row: snap.outposts[0] });
+  assert.deepEqual(A.structureUnder(snap, { location: { q: 7, r: 5 } }), { kind: 'deepScanArray', row: snap.deepScanArrays[0] });
+  assert.equal(A.structureUnder(snap, { location: { q: 9, r: 9 } }), null, 'a bare hex with nothing on it');
+  assert.equal(A.structureUnder(snap, { location: { landmarkKind: 'system', landmarkId: 'sys_0001' } }), null, 'berthed at a landmark');
+  assert.equal(A.structureUnder({ guilds: [] }, { location: { q: 5, r: 5 } }), null, 'a galaxy with neither block');
 });
 
 test('dispatchVehicleBody: builds the exact request body; a missing required flag throws', () => {

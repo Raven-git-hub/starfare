@@ -38,8 +38,9 @@ const ASSET_KINDS = [FACTORY, MINER];
 
 // The KIT asset kinds — an undeployed kit sitting idle in a system's inventory. Read off
 // the deployable-kit table (sim/resources.js `DEPLOYABLE_KITS`), so a kind is a kit asset
-// exactly when it has a kit good, and adding a kind later (toll gate, deep scan) is one row
-// THERE. Today: ['outpost']. Sorted for a stable order (invariant 9).
+// exactly when it has a kit good, and adding a kind later (toll gate) is one row THERE.
+// Today: ['deepScan', 'outpost'] (the Deep Scan Array kit joined 2.5 (b1) by exactly that one
+// row). Sorted for a stable order (invariant 9).
 const KIT_ASSET_KINDS = Object.freeze(Object.keys(DEPLOYABLE_KITS).sort());
 
 // maintenanceCondition — DESIGN-AHEAD, INERT IN THIS SLICE (design.md §4,

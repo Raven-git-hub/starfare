@@ -101,6 +101,7 @@ const {
   getSite, getPlanet, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
+const { deepScanArrayId, deepScanArrayNumberOf } = require('./deep-scan-arrays.js');
 const {
   REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
@@ -2222,6 +2223,96 @@ function checkOutpostIntegrity(state) {
   return out;
 }
 
+// Deep Scan Array integrity — the structural guard for the SHARED array rows (state.deepScanArrays,
+// docs/exploration-model.md §5; roadmap 2.5 (b1)). The array sibling of checkOutpostIntegrity. The deploy
+// rule (sim/actions.js `deployCheck`) is what keeps these true; this ASSERTS them every tick, so a
+// save-reload, a later slice or a bad scenario that writes a malformed array is caught by the harness, not
+// by a review pass. A pure read. A galaxy with no array carries no `deepScanArrays` key — legal, the
+// byte-identical no-op path.
+//
+// The list, when present, is a NON-EMPTY array (omit-when-empty: an empty one should have been dropped, or
+// a galaxy that never had an array would hash differently from one that did). For each array:
+//   - `ownerGuildId` resolves to a REAL guild (the row is shared, so the back-pointer is checked);
+//   - its id is `deepScanArray_<owner>_NN` for THAT owner, and unique (ids never repeat, §15.4);
+//   - `anchorSystemId` resolves to a real SYSTEM (an array always hangs off a system);
+//   - `coords` is an in-bounds integer hex;
+//   - `createdAtTick` is a whole tick in [0, now] (§15.2 — it records when the array was deployed);
+//   - ONE STRUCTURE PER HEX (§4 / §2): its hex holds no seed landmark, no guild Outpost and no OTHER array.
+// And per guild: `deepScanArraySerial` ≥ the highest live suffix, so a future mint can never reissue a live id.
+// NOT asserted: that the hex is STILL attached to held territory. Attachment is the deploy's rule, judged
+// when the array is placed; the Outpost it touched may later be packed up, and the array stays.
+function checkDeepScanArrayIntegrity(state) {
+  const out = [];
+  const arrays = state.deepScanArrays;
+  if (arrays === undefined) return out;
+  if (!Array.isArray(arrays) || arrays.length === 0) {
+    out.push({ rule: 'deepScanArrays-is-a-non-empty-array (omit-when-empty)', where: 'deepScanArrays', detail: { value: arrays } });
+    return out;
+  }
+  const guildById = (id) => (state.guilds || []).find((g) => g.id === id);
+  const outpostAt = new Map(); // "q,r" -> the guild Outpost on that hex
+  for (const o of state.outposts || []) {
+    if (o && o.coords) outpostAt.set(`${o.coords.q},${o.coords.r}`, o.id);
+  }
+  const seenIds = new Set();
+  const byHex = new Map();            // "q,r" -> the first array id seen there
+  const maxSuffixByGuild = new Map(); // ownerGuildId -> highest live array suffix
+  for (const a of arrays) {
+    const where = `deepScanArray:${a && a.id}`;
+    if (!a || typeof a !== 'object') {
+      out.push({ rule: 'deepScanArray-is-an-object', where, detail: { value: a } });
+      continue;
+    }
+    if (!guildById(a.ownerGuildId)) {
+      out.push({ rule: 'deepScanArray-owner-exists', where: `${where}.ownerGuildId`, detail: { ownerGuildId: a.ownerGuildId } });
+    }
+    const n = deepScanArrayNumberOf(a.id);
+    if (n === null || a.id !== deepScanArrayId(a.ownerGuildId, n)) {
+      out.push({ rule: 'deepScanArray-id-names-its-owner (deep-scan-arrays.js)', where, detail: { id: a.id, ownerGuildId: a.ownerGuildId } });
+    }
+    if (seenIds.has(a.id)) {
+      out.push({ rule: 'deepScanArray-id-unique', where, detail: { id: a.id } });
+    }
+    seenIds.add(a.id);
+    if (n !== null && n > (maxSuffixByGuild.get(a.ownerGuildId) || 0)) maxSuffixByGuild.set(a.ownerGuildId, n);
+    if (!getSystem(a.anchorSystemId)) {
+      out.push({ rule: 'deepScanArray-anchor-is-a-system (seed.js)', where: `${where}.anchorSystemId`, detail: { anchorSystemId: a.anchorSystemId } });
+    }
+    if (!Number.isInteger(a.createdAtTick) || a.createdAtTick < 0 || a.createdAtTick > state.tick) {
+      out.push({ rule: 'deepScanArray-createdAtTick-is-a-past-tick (§15.2)', where: `${where}.createdAtTick`, detail: { createdAtTick: a.createdAtTick, tick: state.tick } });
+    }
+    const c = a.coords;
+    const coordsOk = c && typeof c === 'object' && !Array.isArray(c) && isHexInBounds(c.q, c.r);
+    if (!coordsOk) {
+      out.push({ rule: 'deepScanArray-coords-in-bounds (seed.js)', where: `${where}.coords`, detail: { coords: c } });
+      continue; // the hex checks below need a real hex
+    }
+    // One structure per hex (§4 / §2): not on a seed landmark, not on an Outpost, not on another array.
+    const key = `${c.q},${c.r}`;
+    const landmark = seedLandmarkAtHex(c.q, c.r);
+    if (landmark) {
+      out.push({ rule: 'deepScanArray-hex-unoccupied-by-seed (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, occupiedBy: { kind: landmark.kind, id: landmark.id } } });
+    }
+    if (outpostAt.has(key)) {
+      out.push({ rule: 'deepScanArray-hex-unoccupied-by-outpost (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, outpostId: outpostAt.get(key) } });
+    }
+    if (byHex.has(key)) {
+      out.push({ rule: 'deepScanArray-hex-unique (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, alsoHeldBy: byHex.get(key) } });
+    } else {
+      byHex.set(key, a.id);
+    }
+  }
+  // The per-guild serial can never sit below a suffix it has minted (design.md §15.4 "Ids never repeat").
+  for (const [guildId, maxSuffix] of maxSuffixByGuild) {
+    const guild = guildById(guildId);
+    const serial = (guild && guild.deepScanArraySerial) || 0;
+    if (serial < maxSuffix) {
+      out.push({ rule: 'deepScanArray-serial-monotonic', where: `guild:${guildId}.deepScanArraySerial`, detail: { deepScanArraySerial: serial, highestLiveSuffix: maxSuffix } });
+    }
+  }
+  return out;
+}
+
 // Saved-route integrity — the structural guard for each guild's SAVED ROUTES (transport-model.md
 // §11.9, roadmap 2.2 automation slice 2a). `saveRoute` / `deleteRoute` (sim/actions.js) MAINTAIN these
 // properties; this ASSERTS them every tick, so a save-reload, a future slice or a client bug that writes
@@ -2454,6 +2545,7 @@ function checkInvariants(state, tick) {
     ...checkOrders(state),
     ...checkClaimIntegrity(state),
     ...checkOutpostIntegrity(state),
+    ...checkDeepScanArrayIntegrity(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkExplorationRecord(state),

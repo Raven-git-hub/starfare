@@ -22,6 +22,9 @@
 //      (3) a node lockout shows only on a node the viewer knows or on ground it controls.
 //   6. PURE and DETERMINISTIC: the view writes nothing, and the same (state, guildId) gives the same
 //      bytes across two runs and across save/restore (invariant 9).
+//   8. DEEP-SCAN ARRAYS (2.5 (b1)): a rival's arrays are in the view NOWHERE — not even the key — while
+//      the viewer's own are in full and the god's-eye lens shows every one; a rival's array deploy moves
+//      not one byte of the viewer's view.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -35,8 +38,8 @@ const { createZeroState } = require('../scenarios/zero-state.js');
 const A_ = require('../actions.js');
 const { buildSnapshot } = require('../snapshot.js');
 const {
-  TOP_LEVEL, RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS, RIVAL_SYSTEM_LANDMARK_FIELDS,
-  GALAXY_FUEL_FIELDS,
+  TOP_LEVEL, OMIT_WHEN_EMPTY_TOP_LEVEL, RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS,
+  RIVAL_SYSTEM_LANDMARK_FIELDS, GALAXY_FUEL_FIELDS,
 } = require('../fog.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { addStock } = require('../stock.js');
@@ -47,8 +50,9 @@ const { guildHolds } = require('../claims.js');
 const { hexDistance } = require('../transport.js');
 const {
   getStarterSystems, getTerranHomeworld, getSystem, getPlanet, getSite, getSystemLayout,
-  getL0Systems, isHexInBounds, seedLandmarkAtHex,
+  getL0Systems, isHexInBounds, seedLandmarkAtHex, getClaimRadius,
 } = require('../seed.js');
+const { kitAboard, placeCraft } = require('./kit-fixtures.js');
 
 const A = 'player-guild';
 const B = 'bot-guild';
@@ -143,8 +147,15 @@ test('classification: every god\'s-eye top-level key is public XOR filtered — 
   const overlap = TOP_LEVEL.public.filter((k) => TOP_LEVEL.filtered.includes(k));
   assert.deepEqual(overlap, [], 'a key cannot be both');
   const classified = [...TOP_LEVEL.public, ...TOP_LEVEL.filtered].sort();
+  // A key the god's-eye lens OMITS WHEN EMPTY (`deepScanArrays`, 2.5 (b1)) may be absent from these states
+  // — none has an array — but it must be classified all the same, so it is filtered the moment it appears
+  // (tests/deep-scan-array.test.js checks a state where it is present). Every other classified key must be
+  // present, and every present key classified, exactly as before.
+  assert.deepEqual(OMIT_WHEN_EMPTY_TOP_LEVEL.filter((k) => !classified.includes(k)), [], 'an omit-when-empty key is classified too');
   for (const s of Object.values(godsEyeScript())) {
-    assert.deepEqual(Object.keys(buildSnapshot(s)).sort(), classified,
+    const keys = Object.keys(buildSnapshot(s));
+    const absentOptional = OMIT_WHEN_EMPTY_TOP_LEVEL.filter((k) => !keys.includes(k));
+    assert.deepEqual([...keys, ...absentOptional].sort(), classified,
       'the god\'s-eye snapshot gained or lost a top-level key: classify it in sim/fog.js TOP_LEVEL (public or filtered) before it reaches a player');
   }
 });
@@ -374,6 +385,53 @@ test('a rival\'s deliveries, builds, production and notices are not in the view;
   assert.ok(view.shipments.length > 0 && view.shipments.every((x) => x.ownerGuildId === A), 'A\'s own delivery is shown');
   assert.equal(view.syndicateBuilds.some((b) => b.ownerGuildId === B), false);
   assert.deepEqual(view.production.map((p) => p.guildId), [A]);
+});
+
+// --- deep-scan arrays (2.5 (b1)): never visible to a rival ------------------------------------------
+
+// deployArray(s, guildId, home) -> `s` with one Deep Scan Array of `guildId`'s on a bare hex touching its
+// home's footprint (claimRadius + 1 out): an array kit granted at home and loaded onto the guild's starter
+// heavy (kit-fixtures.js), the heavy PLACED on the hex (the stand-in for a flight), then the real deploy.
+function deployArray(s, guildId, home) {
+  const heavy = `vehicle_${guildId}_heavyTransport_01`;
+  const centre = getSystem(home).coords;
+  const ring = getClaimRadius(home) + 1;
+  const hex = [{ q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 1 }, { q: -1, r: 0 }, { q: 0, r: -1 }, { q: 1, r: -1 }]
+    .map((d) => ({ q: centre.q + ring * d.q, r: centre.r + ring * d.r }))
+    .find((h) => isHexInBounds(h.q, h.r) && !seedLandmarkAtHex(h.q, h.r));
+  const laden = placeCraft(kitAboard(s, guildId, heavy, 'deepScan'), guildId, heavy, hex);
+  return ok(laden, [A_.createDeployAssetAction({ guildId, vehicleId: heavy })]);
+}
+
+test('rival DEEP-SCAN ARRAYS are in the view NOWHERE; the viewer\'s own are in full; the god\'s-eye shows both', () => {
+  const s = deployArray(deployArray(rivalGalaxy(), A, A_HOME), B, B_HOME);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  const full = buildSnapshot(s);
+  const A_ARRAY = `deepScanArray_${A}_01`;
+  const B_ARRAY = `deepScanArray_${B}_01`;
+  assert.deepEqual(full.deepScanArrays.map((a) => a.id), [B_ARRAY, A_ARRAY], 'the operator lens: every array, id order');
+  assert.ok(TOP_LEVEL.filtered.includes('deepScanArrays'), 'classified, so it is filtered the moment it appears');
+  for (const [viewer, own, rival] of [[A, A_ARRAY, B_ARRAY], [B, B_ARRAY, A_ARRAY]]) {
+    const view = buildSnapshot(s, viewer);
+    assert.deepEqual(Object.keys(view), [...Object.keys(full), 'viewerGuildId', 'geography'], `${viewer}: the key stays in place`);
+    assert.equal(bytes(view.deepScanArrays), bytes(full.deepScanArrays.filter((a) => a.id === own)), `${viewer}: its own array, in full`);
+    assert.equal(bytes(view).includes(rival), false, `${viewer}: the rival's array id appears nowhere in the view`);
+  }
+});
+
+test('a rival\'s array deploy moves NOT ONE BYTE of the viewer\'s view — the key does not even appear', () => {
+  const before = rivalGalaxy();
+  const after = deployArray(before, B, B_HOME);
+  assert.equal(after.deepScanArrays.length, 1);
+  assert.notEqual(bytes(buildSnapshot(after)), bytes(buildSnapshot(before)), 'the operator lens sees it');
+  // B's laden heavy was PLACED before the deploy, so compare A's view of B mid-way (placed, kit aboard)
+  // with A's view after: the only thing between them is B's deploy.
+  const heavy = `vehicle_${B}_heavyTransport_01`;
+  const placed = placeCraft(kitAboard(before, B, heavy, 'deepScan'), B, heavy, after.deepScanArrays[0].coords);
+  const viewAfter = buildSnapshot(after, A);
+  assert.equal('deepScanArrays' in viewAfter, false, 'A owns no array, so A\'s view carries no deepScanArrays key at all');
+  assert.equal(bytes(viewAfter), bytes(buildSnapshot(placed, A)));
+  assert.equal(bytes(viewAfter), bytes(buildSnapshot(before, A)), 'nor did B\'s grant, load or placing');
 });
 
 test('rival OUTPOSTS stay on the map — where and whose — and every CLAIM (the controllers) stays public', () => {
