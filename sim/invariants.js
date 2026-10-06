@@ -101,7 +101,10 @@ const {
   getSite, getPlanet, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
-const { deepScanArrayId, deepScanArrayNumberOf } = require('./deep-scan-arrays.js');
+const {
+  deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS,
+} = require('./deep-scan-arrays.js');
+const { knowsPlanet } = require('./exploration.js');
 const {
   REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
@@ -2238,6 +2241,7 @@ function checkOutpostIntegrity(state) {
 //   - `coords` is an in-bounds integer hex;
 //   - `createdAtTick` is a whole tick in [0, now] (§15.2 — it records when the array was deployed);
 //   - ONE STRUCTURE PER HEX (§4 / §2): its hex holds no seed landmark, no guild Outpost and no OTHER array.
+//   - its `scan` job (2.5 (b2)), when it carries one, is well-formed — see `checkScanJob` below.
 // And per guild: `deepScanArraySerial` ≥ the highest live suffix, so a future mint can never reissue a live id.
 // NOT asserted: that the hex is STILL attached to held territory. Attachment is the deploy's rule, judged
 // when the array is placed; the Outpost it touched may later be packed up, and the array stays.
@@ -2281,6 +2285,7 @@ function checkDeepScanArrayIntegrity(state) {
     if (!Number.isInteger(a.createdAtTick) || a.createdAtTick < 0 || a.createdAtTick > state.tick) {
       out.push({ rule: 'deepScanArray-createdAtTick-is-a-past-tick (§15.2)', where: `${where}.createdAtTick`, detail: { createdAtTick: a.createdAtTick, tick: state.tick } });
     }
+    if ('scan' in a) out.push(...checkScanJob(state, a, guildById(a.ownerGuildId), `${where}.scan`));
     const c = a.coords;
     const coordsOk = c && typeof c === 'object' && !Array.isArray(c) && isHexInBounds(c.q, c.r);
     if (!coordsOk) {
@@ -2309,6 +2314,53 @@ function checkDeepScanArrayIntegrity(state) {
     if (serial < maxSuffix) {
       out.push({ rule: 'deepScanArray-serial-monotonic', where: `guild:${guildId}.deepScanArraySerial`, detail: { deepScanArraySerial: serial, highestLiveSuffix: maxSuffix } });
     }
+  }
+  return out;
+}
+
+// checkScanJob(state, array, owner, where) -> violations of ONE array's scan job (docs/exploration-model.md
+// §5; roadmap 2.5 (b2)). `queueScan` builds a job and `stepScanCompletions` clears it (sim/actions.js,
+// sim/deep-scan-arrays.js); this asserts every tick that what sits between them is a job they could have made:
+//   - OMIT-WHEN-IDLE: the key is present only as a job object — never `null` or an empty value;
+//   - `level` is a ruled one (SCAN_LEVELS), and the job names EXACTLY its level's target — an L1 a real
+//     system (`targetSystemId`), an L2 a real planet (`targetPlanetId`) — and not the other;
+//   - `startedTick` is a whole tick in [the array's createdAtTick, now] (§15.2: the tick it was queued);
+//   - `completeTick` is exactly `startedTick + SCAN_TICKS[level]` — the ruled duration, never another;
+//   - NEVER OVERDUE: `completeTick > now`. The end-of-tick step clears a job on the tick it falls due, so a
+//     job still here at or past its completeTick means the completion step did not run;
+//   - THE L1→L2 CHAIN STILL HOLDS: an L2's planet is in the owner's record. It was checked at queue time,
+//     and the record never shrinks (learn-once), so if it fails now something took a fact away.
+// NOT asserted: that the target is still unclaimed. A rival may claim it mid-scan — legal, and the job then
+// completes to nothing (the completion re-check, not this invariant, handles it).
+function checkScanJob(state, array, owner, where) {
+  const out = [];
+  const job = array.scan;
+  if (!job || typeof job !== 'object' || Array.isArray(job)) {
+    out.push({ rule: 'deepScanArray-scan-is-a-job-object (omit-when-idle)', where, detail: { scan: job } });
+    return out;
+  }
+  if (!SCAN_LEVELS.includes(job.level)) {
+    out.push({ rule: 'deepScanArray-scan-level-is-ruled (deep-scan-arrays.js)', where: `${where}.level`, detail: { level: job.level, ruled: SCAN_LEVELS } });
+    return out; // the target and duration checks below depend on the level
+  }
+  if (job.level === 'L1') {
+    if (!getSystem(job.targetSystemId) || job.targetPlanetId !== undefined) {
+      out.push({ rule: 'deepScanArray-scan-L1-targets-one-real-system', where, detail: { targetSystemId: job.targetSystemId, targetPlanetId: job.targetPlanetId } });
+    }
+  } else if (!getPlanet(job.targetPlanetId) || job.targetSystemId !== undefined) {
+    out.push({ rule: 'deepScanArray-scan-L2-targets-one-real-planet', where, detail: { targetPlanetId: job.targetPlanetId, targetSystemId: job.targetSystemId } });
+  }
+  if (!Number.isInteger(job.startedTick) || job.startedTick < array.createdAtTick || job.startedTick > state.tick) {
+    out.push({ rule: 'deepScanArray-scan-startedTick-in-the-array-lifetime (§15.2)', where: `${where}.startedTick`, detail: { startedTick: job.startedTick, createdAtTick: array.createdAtTick, tick: state.tick } });
+  }
+  if (job.completeTick !== job.startedTick + SCAN_TICKS[job.level]) {
+    out.push({ rule: 'deepScanArray-scan-duration-is-the-ruled-one (phase-1-tuning.md)', where: `${where}.completeTick`, detail: { level: job.level, startedTick: job.startedTick, completeTick: job.completeTick, ruledTicks: SCAN_TICKS[job.level] } });
+  }
+  if (!(job.completeTick > state.tick)) {
+    out.push({ rule: 'deepScanArray-scan-never-overdue (stepScanCompletions)', where: `${where}.completeTick`, detail: { completeTick: job.completeTick, tick: state.tick } });
+  }
+  if (job.level === 'L2' && getPlanet(job.targetPlanetId) && owner && !knowsPlanet(owner, job.targetPlanetId)) {
+    out.push({ rule: 'deepScanArray-scan-L2-chain-holds (§5)', where, detail: { ownerGuildId: array.ownerGuildId, targetPlanetId: job.targetPlanetId } });
   }
   return out;
 }

@@ -579,6 +579,8 @@ endpoint or command — `tools/admin.js grant-kit --kind deepScan`, `load-kit`, 
 "<q>,<r>@deploy:deepScan"` — but the CLI's printouts now list idle kits of every kind and `deploy-asset` names
 the structure it placed (`docs/cli-runbook.md`, the Deep Scan Array section). Not built: the `deployRange.deepScan` paint lane and every client piece, a
 dockyard build path for any installation, teardown / removal of an array, and the scan (2.5 (b2)).
+*(⤳ 06-10-26, 2.5 (b2): the scan is built, and an operator `removeDeepScanArray`; a player teardown /
+reclaim of an array is still not — `docs/exploration-model.md` §5.)*
 
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 

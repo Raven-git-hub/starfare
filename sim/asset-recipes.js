@@ -134,7 +134,10 @@ const VEHICLE_BILLS = Object.freeze({
 // would invent that path.
 //
 // The kind names are spelled ONCE, here, as the build prompt named them. None is used as an
-// entity kind anywhere else yet.
+// entity kind anywhere else yet. The deployed array's KIT kind is `deepScan` (sim/resources.js, the
+// deploy-lane spelling, as `tollGate` will be) — RULED 06-10-26 a DELIBERATE seam: the slice that gives
+// installations a dockyard build path maps `deep_scan_array` → `deepScan` (and `toll_gate` → its kit
+// kind) for both together, rather than renaming either (docs/exploration-model.md §5).
 const OUTPOST = 'outpost';
 const DEEP_SCAN_ARRAY = 'deep_scan_array';
 const TOLL_GATE = 'toll_gate';

@@ -35,6 +35,7 @@ const { OUTPOST_CAPACITY, OUTPOST_DOCK_SLOTS } = require('./outposts.js');
 const { copyRouteWaypoint } = require('./routes.js');
 const { DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
 const { cloneExploration } = require('./exploration.js');
+const { copyScanJob } = require('./deep-scan-arrays.js');
 
 // cloneShipments(list) -> a deep-enough copy of the IN-FLIGHT rows. `cargo` is the
 // only nested object a shipment carries (§6: no origin, no route, no status), so
@@ -981,11 +982,14 @@ function createOutpost({
 //                    Always a system (a seed id, so it can never dangle), the same field and meaning an
 //                    Outpost carries.
 //   createdAtTick  — the tick it was deployed (§15.2).
+//   scan           — 2.5 (b2): the ONE scan job it is running, `{ level, targetSystemId | targetPlanetId,
+//                    startedTick, completeTick }` (shape: sim/deep-scan-arrays.js). OMITTED WHEN IDLE, so
+//                    an idle array is exactly the b1 row. COPIED, never aliased.
 //
-// Deliberately NOTHING else: the scan job is slice (b2) and the monitoring fan is deferred, and a field
-// nothing reads only muddies the determinism hash (exploration-model.md §5). This file ASSEMBLES the
-// shape; legality is `deployCheck` and `checkDeepScanArrayIntegrity`'s.
-function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, createdAtTick }) {
+// Nothing else: the monitoring fan is deferred, and a field nothing reads only muddies the determinism
+// hash (exploration-model.md §5). This file ASSEMBLES the shape; legality is `deployCheck`'s and
+// `queueScan`'s (sim/actions.js), and `checkDeepScanArrayIntegrity` asserts it every tick.
+function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, createdAtTick, scan }) {
   if (id === undefined) throw new Error('createDeepScanArray: id is required');
   if (ownerGuildId === undefined) throw new Error('createDeepScanArray: ownerGuildId is required');
   if (coords === undefined) throw new Error('createDeepScanArray: coords is required');
@@ -997,6 +1001,7 @@ function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, created
     coords: { q: coords.q, r: coords.r },
     anchorSystemId,
     createdAtTick,
+    ...(scan ? { scan: copyScanJob(scan) } : {}),
   };
 }
 

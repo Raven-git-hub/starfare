@@ -25,6 +25,8 @@
 //   8. DEEP-SCAN ARRAYS (2.5 (b1)): a rival's arrays are in the view NOWHERE — not even the key — while
 //      the viewer's own are in full and the god's-eye lens shows every one; a rival's array deploy moves
 //      not one byte of the viewer's view.
+//   9. SCAN JOBS (2.5 (b2)): the job rides the owner's array row — the owner and the god's-eye see it, a
+//      rival sees neither array nor job; a rival's scan, queued or completed, moves not one byte of the view.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -432,6 +434,35 @@ test('a rival\'s array deploy moves NOT ONE BYTE of the viewer\'s view — the k
   assert.equal('deepScanArrays' in viewAfter, false, 'A owns no array, so A\'s view carries no deepScanArrays key at all');
   assert.equal(bytes(viewAfter), bytes(buildSnapshot(placed, A)));
   assert.equal(bytes(viewAfter), bytes(buildSnapshot(before, A)), 'nor did B\'s grant, load or placing');
+});
+
+// --- the scan job (2.5 (b2)): it rides the owner's array row, so it is never visible to a rival ----------
+
+const SCAN_TARGET = getStarterSystems()[2].id; // unclaimed in the rival galaxy (A and B hold [0] and [1])
+const queueL1 = (s) => ok(s, [A_.createQueueScanAction({ guildId: A, arrayId: `deepScanArray_${A}_01`, level: 'L1', targetSystemId: SCAN_TARGET })]);
+
+test('a SCAN JOB rides the owner\'s array row: the owner and the god\'s-eye see it; a rival sees neither the array nor the job', () => {
+  const s = deployArray(rivalGalaxy(), A, A_HOME);
+  const queued = queueL1(s);
+  const full = buildSnapshot(queued);
+  assert.deepEqual(full.deepScanArrays[0].scan, queued.deepScanArrays[0].scan, 'the operator lens carries the job');
+  assert.equal(bytes(buildSnapshot(queued, A).deepScanArrays), bytes(full.deepScanArrays), 'the owner: its array and its job, in full');
+  const rival = buildSnapshot(queued, B);
+  assert.equal('deepScanArrays' in rival, false);
+  assert.equal(bytes(rival).includes(`deepScanArray_${A}_01`), false);
+  assert.equal(bytes(rival), bytes(buildSnapshot(s, B)), 'A queuing a scan moves not one byte of B\'s view');
+});
+
+test('a rival\'s scan COMPLETING moves not one byte of the viewer\'s view — the reveal lands in the scanner\'s record only', () => {
+  // Two timelines from one start, ticked alike: in one A runs an L1 scan to completion, in the other it does not.
+  const start = deployArray(rivalGalaxy(), A, A_HOME);
+  let scanned = queueL1(start);
+  let idle = start;
+  for (let i = 0; i < 720; i += 1) { scanned = tick(scanned); idle = tick(idle); }
+  assert.equal('scan' in scanned.deepScanArrays[0], false, 'the job completed');
+  assert.ok(buildSnapshot(scanned, A).geography.known[SCAN_TARGET], 'A\'s view now knows the target system');
+  assert.equal(SCAN_TARGET in buildSnapshot(idle, A).geography.known, false);
+  assert.equal(bytes(buildSnapshot(scanned, B)), bytes(buildSnapshot(idle, B)), 'B\'s view is identical either way');
 });
 
 test('rival OUTPOSTS stay on the map — where and whose — and every CLAIM (the controllers) stays public', () => {

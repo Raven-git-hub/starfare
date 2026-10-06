@@ -189,3 +189,27 @@ packed up) retreats exactly as an Outpost deploy does, flagged `deployFailed: { 
 
 A guild sees only its OWN arrays: `GET /snapshot?guild=<id>` carries `deepScanArrays` with that guild's rows
 only, and no `deepScanArrays` key at all when it owns none; a rival's array is not in the view.
+
+### The scan (2.5 (b2))
+
+A deployed array runs ONE scan job at a time (`docs/exploration-model.md` §5): an **L1** system scan (720
+ticks — every planet's archetype, no node) or an **L2** planet scan (480 ticks — that planet's resource
+nodes, legal only once its archetype is known). Targets must be unclaimed. There is no `tools/admin.js`
+command for it; post the action to the server directly (`$U` is the server's base URL):
+
+    curl -s -X POST $U/action -d '{"type":"queueScan","guildId":"seat_demo","arrayId":"deepScanArray_seat_demo_01","level":"L1","targetSystemId":"sys_0012"}'
+    node tools/admin.js tick 720 $B
+    curl -s "$U/snapshot?guild=seat_demo"      # geography.known.sys_0012: every planet's archetype, nodes {}
+    curl -s -X POST $U/action -d '{"type":"queueScan","guildId":"seat_demo","arrayId":"deepScanArray_seat_demo_01","level":"L2","targetPlanetId":"pl_00048"}'
+    node tools/admin.js tick 480 $B            # geography.known.sys_0012.pl_00048.nodes: all of them
+
+While it runs, the owner's array row carries `scan: { level, targetSystemId | targetPlanetId, startedTick,
+completeTick }`; it reveals at the end of tick `completeTick` and the key goes. Refused with a reason: a second
+job on a busy array, a rival's system ("espionage (L3), not built"), your own ("your own ground"), an L2 on a
+planet whose archetype is unknown. If a rival claims the target before the job completes, it completes to
+nothing. The operator removes an array — and with it any running job, which then never reveals — with:
+
+    curl -s -X POST $U/action -d '{"type":"removeDeepScanArray","guildId":"seat_demo","arrayId":"deepScanArray_seat_demo_01"}'
+
+(The ids above are seed 42's: the array deployed on `106,55`, and `sys_0012` / `pl_00048` an unclaimed system
+and one of its planets.)
