@@ -17,7 +17,9 @@
 //   8. DETERMINISM (invariant 9): a mid-flight job survives save → restore and a journal replay, and completes
 //      identically; createState copies a handed-in job.
 //   9. OMIT-WHEN-IDLE: a galaxy whose arrays are idle is byte-identical to main before the scan (hashes
-//      recorded on 52e5e3f), and an array whose job finished is the idle row again.
+//      recorded on 52e5e3f), and an array whose job finished is the idle row again. (⤳ 08-10-26, ruling 11:
+//      the two per-guild VIEWS re-pinned — each now shows the rival's home at full L2 — with a strip-and-prove
+//      back to the 52e5e3f bytes; the state and the god's-eye lens did not move.)
 //  10. INVARIANTS: a malformed job fails loudly; the completion step halts, naming the tick.
 // The per-guild view (a rival never sees the job) is tested with the rest of the fog, in fog.test.js.
 
@@ -42,6 +44,7 @@ const {
 const { getStarterSystems, getSystem, getSystemLayout, getL0Systems } = require('../seed.js');
 const { placeCraft } = require('./kit-fixtures.js');
 const { idleArrayScript } = require('./idle-array-script.js');
+const { withoutRivalGround } = require('./rival-leak-script.js');
 const {
   validateAction, applyAction, createQueueScanAction, createRemoveDeepScanArrayAction, createFoundGuildAction,
 } = require('../actions.js');
@@ -321,6 +324,12 @@ test('createState carries a handed-in job, as a copy — never an alias', () => 
 // of that commit and hashing each step's state (hashState), the god's-eye lens and both guilds' views
 // (JSON.stringify(buildSnapshot(state[, guildId]))). If one moves, an idle array (or the end-of-tick block
 // over one) changed: find out why before re-pinning.
+// ⤳ 08-10-26 (ruling 11, docs/exploration-model.md §4): the two VIEW pins below are no longer the full view —
+// each view now also shows the RIVAL's home system at full L2 (control ⇒ L2, live), so the full view moved. They
+// are kept as the STRIP-AND-PROVE: the view with the rival-held ground taken out (`withoutRivalGround`) still
+// hashes to these 52e5e3f bytes, so that is the ONLY place it moved. The full views are re-pinned in
+// IDLE_ARRAY_VIEWS_RULING_11. The state and god's-eye pins did not move (no rival licensed venture here, so the
+// removed register step never wrote anything; and the god's-eye lens carries no record).
 const IDLE_ARRAY_ON_MAIN = {
   deployed: {
     state: 'fc84495b309522a7d149244ebc6e19ccc8dc0acd628ff1c95e4b09adf82a4bb0',
@@ -336,14 +345,30 @@ const IDLE_ARRAY_ON_MAIN = {
   },
 };
 
+// The full per-guild views of the same two steps, recorded 08-10-26 after ruling 11's cleanup.
+const IDLE_ARRAY_VIEWS_RULING_11 = {
+  deployed: {
+    [A]: '391732fa01bc185ae808a453a27d976a84cede75b50a7ebb998b7bf8e91226a4',
+    [B]: '200edd07a2326975fea876ecf498cbf8c9ad19f1f0c6595baa7dcd6cfaa3ce09',
+  },
+  ticked: {
+    [A]: 'cbee284fda1137d9e86fabb00fce7b3d4012e1fb0ed3ff1a9cdd54c81f294ca9',
+    [B]: '66671e61072618973f624e8ea4f616440aac2cc29f94d11e159e49778ef0d87a',
+  },
+};
+
 test('OMIT-WHEN-IDLE: a galaxy whose array is idle is byte-identical to main before the scan — state, god\'s-eye, both views', () => {
   const { steps } = idleArrayScript();
   for (const [name, pins] of Object.entries(IDLE_ARRAY_ON_MAIN)) {
     const s = steps[name];
     assert.equal(hashState(s), pins.state, `the state moved at "${name}"`);
     assert.equal(sha(JSON.stringify(buildSnapshot(s))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
-    assert.equal(sha(JSON.stringify(buildSnapshot(s, A))), pins[A], `the owner's view moved at "${name}"`);
-    assert.equal(sha(JSON.stringify(buildSnapshot(s, B))), pins[B], `the rival's view moved at "${name}"`);
+    for (const guildId of [A, B]) {
+      const view = buildSnapshot(s, guildId);
+      assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_VIEWS_RULING_11[name][guildId], `${guildId}'s view moved at "${name}"`);
+      // Strip the rival's ground (ruling 11's projection) and it is the 52e5e3f view, byte for byte.
+      assert.equal(sha(JSON.stringify(withoutRivalGround(view))), pins[guildId], `${guildId}'s view moved OUTSIDE the rival's ground at "${name}"`);
+    }
   }
 });
 

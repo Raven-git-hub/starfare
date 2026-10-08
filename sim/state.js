@@ -424,7 +424,7 @@ function createGuild({
     // `{ [planetId]: { tick, nodes: { [nodeId]: tick } } }`, the static geography it has LEARNED,
     // learn-once / known-forever. Ids only: the archetype and node types stay in the seed (§15.3).
     // WRITTEN ONLY through `reveal` (sim/exploration.js) — by the `foundGuild` apply (the home system)
-    // and the end-of-tick public-register observation (a rival's licensed venture) — never set here.
+    // and the guild's own Deep Scan Array scans (never from a rival — ruling 11) — never set here.
     // CARRIED here so a scenario or a restored save that HANDS ONE IN keeps it, deep-copied through
     // cloneExploration so a caller's object can never alias into engine state. OMITTED when empty,
     // like `assets`: a guild that knows nothing (every guild built by a scenario rather than founded)

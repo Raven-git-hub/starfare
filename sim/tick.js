@@ -61,7 +61,6 @@ const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
 const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require('./outposts.js');
 const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
-const { observePublicRegister } = require('./exploration.js');
 const { stepScanCompletions } = require('./deep-scan-arrays.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
@@ -1838,38 +1837,24 @@ function tick(state, actions = []) {
   // run once here after the contract has produced the tick's state.
   recordFuelPriceSample(next, next.tick);
 
-  // THE PUBLIC-REGISTER OBSERVATION (docs/exploration-model.md §3, roadmap 2.5 engine slice 1).
-  // Every guild reads each RIVAL's licensed ventures off the public register and writes the geography
-  // they teach — the node's type and its planet's archetype — into its own exploration record, for
-  // good. That is what lets the fact outlive the venture: when the rival later closes it, the live
-  // view loses the venture type but the record keeps the node.
-  //
-  // WHY HERE, at the END of the tick, and not in the view or inside a step:
-  //   - NOT in buildSnapshot: the view is PURE; a read that wrote state would make the record depend
-  //     on who happened to look, and when (invariant 9).
-  //   - NOT inside one of the eight steps: it is OBSERVATION, not economy. Nothing in any step reads
-  //     the record, so its position cannot change a number any step computes; the eight-step order is
-  //     unchanged. Running last means it reads the register as the tick LEAVES it — after the
-  //     auto-lapse (the last step) has shed whatever licences it sheds this tick.
-  // It is a state MUTATION (serialized), stamped with the tick being built, exactly like the fuel-price
-  // sample above. Ventures licensed by an action are observed at the next tick's end; one licensed and
-  // closed between two ticks was never on the register at a tick and teaches nothing.
-  observePublicRegister(next, next.tick);
-
   // THE DEEP SCAN ARRAY'S SCAN COMPLETIONS (docs/exploration-model.md §5, roadmap 2.5 (b2)). Every array
   // whose scan job falls due on this tick finishes it: unless a RIVAL now holds the target's system, the
   // job's geography goes into its guild's record through the one `reveal`; either way the job clears.
   //
-  // WHY HERE, beside the public-register observation, for the same reasons (§15.6):
+  // WHY HERE, at the END of the tick (§15.6):
   //   - NOT inside one of the eight steps: a scan is OBSERVATION, not economy. It moves no credits, fuel or
   //     goods, and no step reads the record or a scan job, so where it runs cannot change any number a step
   //     computes. The eight-step order is unchanged.
   //   - AFTER the steps: the completion RE-CHECKS the target's controller, so it reads the claims as the
   //     tick leaves them.
-  //   - ORDER against observePublicRegister is free: both only ADD facts to records, each stamped
-  //     `next.tick`, and learn-once keeps the first stamp — so the record ends the same either way.
   // `next.tick` is the tick just built, so a job is due when `completeTick <= next.tick`: queued at tick T,
-  // it reveals at the end of tick T + its duration. It is a state MUTATION (serialized), like the two above.
+  // it reveals at the end of tick T + its duration. It is a state MUTATION (serialized), like the fuel-price
+  // sample above.
+  //
+  // (Until 08-10-26 a second end-of-tick observation sat beside this one, `observePublicRegister`, banking
+  // each rival's licensed node into every guild's record. Ruling 11 removed it — docs/exploration-model.md
+  // §4: a controlled system is shown live in the view instead — so this scan and founding are now the
+  // record's only writers.)
   stepScanCompletions(next, next.tick);
 
   // Derive pass, NOT a §15.6 step: refresh the galactic-supply cache from the

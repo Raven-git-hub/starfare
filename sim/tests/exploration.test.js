@@ -7,9 +7,11 @@
 //      a node reveals its planet, and a place the seed does not hold is refused loudly.
 //   2. FOUNDING seeds the home record: every home planet (L1) and every home node (L2), stamped at
 //      the founding tick — and nothing about any other system (L0 is computed, never recorded).
-//   3. THE PUBLIC REGISTER teaches rivals: a rival's LICENSED venture writes its node (and planet)
-//      into every other guild's record at the end of the tick; an UNLICENSED one writes nothing.
-//   4. KNOWN-FOREVER: closing that venture takes nothing back — the record never shrinks.
+//   3. A RIVAL TEACHES THE RECORD NOTHING (§4 ruling 11, 08-10-26): a rival's venture — licensed or not,
+//      open or closed — never writes any guild's record. The record holds only the guild's own surveys
+//      (founding + its Deep Scan Array); a controlled system's surface is shown LIVE in the view instead
+//      (tests/fog.test.js). The byte proof of the removal is tests/rival-leak-removed.test.js.
+//   4. KNOWN-FOREVER: what the guild did learn is never taken back — the record never shrinks.
 //   5. DETERMINISM (invariant 9): the record survives save/restore byte-identically, and two runs agree.
 //   6. THE INVARIANT HALTS on a corrupt record (checkExplorationRecord).
 
@@ -34,9 +36,9 @@ const {
   getSystemLayout, getStarterSystems, getTerranHomeworld, getPlanet, getSite,
 } = require('../seed.js');
 const {
-  reveal, revealSystem, knowsPlanet, knowsNode, cloneExploration,
-  isOnPublicRegister, publicRegisterFacts, observePublicRegister,
+  reveal, revealSystem, knowsPlanet, knowsNode, cloneExploration, isOnPublicRegister,
 } = require('../exploration.js');
+const exploration = require('../exploration.js');
 
 // Two guilds on the seed's first two starter systems — A the observer (a human founding), B the
 // rival (a bot). Both homes and B's mine sites are DERIVED from the seed, never typed in.
@@ -185,65 +187,38 @@ test('founding: the record moves no credits, fuel or goods (it is pure knowledge
   assert.equal(s.audit.expectedCreditTotal, stripped.audit.expectedCreditTotal);
 });
 
-// --- 3. the public register teaches rivals ----------------------------------------------------------
+// --- 3. a rival teaches the record nothing (ruling 11) ----------------------------------------------
 
 test('isOnPublicRegister: an ordinary or a deuterium licence is public; no licence is private', () => {
+  // Still the one definition of "licensed = public" (§0): the per-guild view uses it to decide which rival
+  // ventures it SHOWS (sim/fog.js). It no longer feeds the record.
   assert.equal(isOnPublicRegister({ licence: { committedOutputPct: 1 } }), true);
   assert.equal(isOnPublicRegister({ deuteriumLicence: { signedTick: 0 } }), true);
   assert.equal(isOnPublicRegister({}), false);
   assert.equal(isOnPublicRegister({ deuteriumRefinery: true }), false, 'an illegal refinery is never declared');
 });
 
-test('publicRegisterFacts: a node teaches its node; a settlement slot teaches only its planet', () => {
-  const s = createState({
-    guilds: [{
-      id: B, credits: 0, fuelHoard: 0,
-      ventures: [
-        { id: 'v_node', ownerGuildId: B, type: 'mining', siteId: B_MINE, resourceType: 'titanium', productionRate: 1, licence: { committedOutputPct: 1 } },
-        { id: 'v_slot', ownerGuildId: B, type: 'refining', siteId: `${B_PLANET}_s01`, recipeId: 'x', productionRate: 1, licence: { committedOutputPct: 1 } },
-        { id: 'v_private', ownerGuildId: B, type: 'mining', siteId: B_MINE_2, resourceType: 'titanium', productionRate: 1 },
-      ],
-    }],
-    reserve: { reserveLevel: 0 },
-    syndicate: { ledger: 0 },
-  });
-  assert.deepEqual(publicRegisterFacts(s), [
-    { ownerGuildId: B, fact: { nodeId: B_MINE } },
-    { ownerGuildId: B, fact: { planetId: B_PLANET } },
-  ], 'the unlicensed venture is not on the register');
+test('the removed register observation is GONE from the module — nothing left to call by mistake', () => {
+  assert.equal('observePublicRegister' in exploration, false);
+  assert.equal('publicRegisterFacts' in exploration, false);
 });
 
-test('observePublicRegister: a guild never learns from its OWN ventures', () => {
-  const s = createState({
-    guilds: [{
-      id: B, credits: 0, fuelHoard: 0,
-      ventures: [{ id: 'v', ownerGuildId: B, type: 'mining', siteId: B_MINE, resourceType: 'titanium', productionRate: 1, licence: { committedOutputPct: 1 } }],
-    }],
-    reserve: { reserveLevel: 0 },
-    syndicate: { ledger: 0 },
-  });
-  observePublicRegister(s, 1);
-  assert.equal('exploration' in s.guilds[0], false);
-});
-
-test('a rival LICENSED venture: at the end of the next tick the observer knows its node and planet', () => {
-  let s = withRivalMine(twoGuilds(), { licensed: true });
-  // Between ticks the register has the venture, but nothing has been OBSERVED yet — observation is a
-  // tick step, never a side effect of an action (or of anyone reading a snapshot).
-  assert.equal(knowsNode(guildOf(s, A), B_MINE), false);
-  s = tickOnce(s);
-  const rec = guildOf(s, A).exploration;
-  assert.deepEqual(rec[B_PLANET], { tick: s.tick, nodes: { [B_MINE]: s.tick } },
-    'A learned exactly the planet archetype and THAT node — stamped with the tick it was observed');
-  // Only that one node: the planet's other nodes, and B's other planets, stay unknown to A.
-  assert.equal(knowsNode(guildOf(s, A), B_MINE_2), false);
-  for (const planetId of planetIdsOf(B_HOME)) {
-    if (planetId !== B_PLANET) assert.equal(knowsPlanet(guildOf(s, A), planetId), false, `${planetId} stays fogged`);
+test('a rival LICENSED venture teaches the record NOTHING: the observer\'s record is its founding record, tick after tick', () => {
+  const founded = twoGuilds();
+  const atFounding = canonicalStringify(guildOf(founded, A).exploration);
+  let s = withRivalMine(founded, { licensed: true });
+  assert.ok(guildOf(s, B).ventures.some((v) => v.id === 'b_mine' && isOnPublicRegister(v)), 'it really is on the register');
+  for (let i = 0; i < 5; i += 1) {
+    s = tickOnce(s);
+    assert.equal(canonicalStringify(guildOf(s, A).exploration), atFounding, `tick ${s.tick}: A's record moved`);
   }
+  // Not the node, not its planet, not any planet of B's home: the record holds only A's own home.
+  assert.equal(knowsNode(guildOf(s, A), B_MINE), false);
+  for (const planetId of planetIdsOf(B_HOME)) assert.equal(knowsPlanet(guildOf(s, A), planetId), false, `${planetId}`);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
 
-test('a rival UNLICENSED venture teaches nothing: the observer record is byte-identical after many ticks', () => {
+test('a rival UNLICENSED venture teaches nothing either: the observer record is byte-identical after many ticks', () => {
   let s = withRivalMine(twoGuilds(), { licensed: false });
   const before = canonicalStringify(guildOf(s, A).exploration);
   for (let i = 0; i < 5; i += 1) s = tickOnce(s);
@@ -251,27 +226,31 @@ test('a rival UNLICENSED venture teaches nothing: the observer record is byte-id
   assert.equal(knowsNode(guildOf(s, A), B_MINE), false);
 });
 
-// --- 4. known-forever: the lapsed venture keeps the geography ---------------------------------------
-
-test('KNOWN-FOREVER: the rival closes its licensed venture and the observer keeps the node', () => {
+test('and the rival CLOSING its licensed venture moves nothing either — there was nothing banked to keep or lose', () => {
   let s = tickOnce(withRivalMine(twoGuilds(), { licensed: true }));
-  const learnedAt = s.tick;
-  assert.equal(knowsNode(guildOf(s, A), B_MINE), true);
-
+  const before = canonicalStringify(guildOf(s, A).exploration);
   const { state: closed, results } = intake(s, [createDecommissionVentureAction({ guildId: B, ventureId: 'b_mine' })]);
   assert.equal(results[0].accepted, true, results[0].reason);
   s = tickOnce(tickOnce(closed));
   assert.equal(guildOf(s, B).ventures.some((v) => v.id === 'b_mine'), false, 'the venture is really gone');
-  assert.deepEqual(guildOf(s, A).exploration[B_PLANET], { tick: learnedAt, nodes: { [B_MINE]: learnedAt } },
-    'the geographic fact — and the tick it was learned — survive the venture');
+  assert.equal(canonicalStringify(guildOf(s, A).exploration), before);
 });
 
+// --- 4. known-forever: what the guild learned stays --------------------------------------------------
+
+// A frontier system — a starter neither guild founded on — for the guild's OWN survey, standing in here for a
+// Deep Scan Array completion (tests/deep-scan-job.test.js runs the real scan; both write through `reveal`).
+const FRONTIER = getStarterSystems()[2].id;
+const FRONTIER_PLANET = planetIdsOf(FRONTIER)[0];
+
 test('LEARN-ONCE across a run: every tick\'s record contains the last, fact for fact, tick for tick', () => {
-  // A scripted run that licenses, re-licenses elsewhere, and closes — every way the register moves.
+  // A scripted run in which the rival licenses, runs an unlicensed mine and closes — every way the register
+  // moves — while A surveys a frontier planet of its own in the middle. What A learned stays, first tick kept.
   let s = twoGuilds();
   const steps = [
     (x) => withRivalMine(x, { licensed: true }),
     tickOnce, tickOnce,
+    (x) => { revealSurvey(x, A, FRONTIER_PLANET); return x; },
     (x) => withRivalMine(x, { licensed: false, ventureId: 'b_mine_2', siteId: B_MINE_2, assetId: B_MINER_2 }),
     tickOnce,
     (x) => intake(x, [createDecommissionVentureAction({ guildId: B, ventureId: 'b_mine' })]).state,
@@ -291,7 +270,17 @@ test('LEARN-ONCE across a run: every tick\'s record contains the last, fact for 
       }
     }
   }
+  assert.ok(knowsPlanet(guildOf(s, A), FRONTIER_PLANET), 'the survey is still known at the end');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
 });
+
+// revealSurvey(state, guildId, planetId) — the guild surveys one planet's whole surface at the state's tick,
+// in place, through the one write path: its archetype and every node (what an L2 scan completion writes).
+function revealSurvey(state, guildId, planetId) {
+  const guild = guildOf(state, guildId);
+  reveal(guild, { planetId }, state.tick);
+  for (const nodeId of nodeIdsOf(planetId)) reveal(guild, { nodeId }, state.tick);
+}
 
 // --- 5. determinism (invariant 9) -------------------------------------------------------------------
 

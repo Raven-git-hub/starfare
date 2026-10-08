@@ -3655,8 +3655,11 @@ boundary so the later hex-map swap doesn't touch it.
   completion-revalidation) + reveal-to-record *(⤳ split 06-10-26: **(b1)** the entity + the attached deploy
   — BUILT, below; **(b2)** the scan job + reveal — BUILT 06-10-26, below)*; **(c) client** — the fog UI. *Deferred: monitoring
   (the array's directional watch-fan → detection/corridors/catch-fine), L3 espionage, the
-  Prefecture self-scan, squatting. Still open: espionage cost/risk; the scan durations remain
-  `[FIRST-CUT]` for the tuner.*
+  Prefecture self-scan *(⤳ retired 08-10-26, `exploration-model.md` §4 ruling 11)*, squatting. Still open:
+  espionage cost/risk; the scan durations remain `[FIRST-CUT]` for the tuner.*
+  *(⤳ 08-10-26 — **the simplification, ruling 11** (`exploration-model.md` §4): control ⇒ full L2, live, for
+  every guild; no partial surface knowledge; the record holds only your own surveys. Its cleanup slice is
+  BUILT — the last entry below.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -3666,7 +3669,7 @@ boundary so the later hex-map swap doesn't touch it.
     licensed venture** (an ordinary or deuterium licence) teaches every other guild its node + planet
     archetype, observed at the END of each tick (`sim/tick.js`, beside the fuel-price sample — the
     eight-step order unchanged; the view stays pure); closing it later takes nothing back, an
-    unlicensed venture teaches nothing. `createGuild` carries the record; `seed.js` gained
+    unlicensed venture teaches nothing. *(⤳ 08-10-26: this source is REMOVED — ruling 11's cleanup, below.)* `createGuild` carries the record; `seed.js` gained
     `getPlanet`; tripwire `checkExplorationRecord` (`sim/invariants.js`). The **claim-gate coupling**
     (`exploration-model.md` §8) is RECORDED, not enforced: the record is the gate's data source from
     birth (`knowsNode`), and the Prefecture slice enforces it. **Goldens moved by exactly the added
@@ -3766,6 +3769,39 @@ boundary so the later hex-map swap doesn't touch it.
     the outpost-path hashes of (b1) still hold. Driven headless over `POST /action` (no new endpoint).
     Tests: `tests/deep-scan-job.test.js` (21), `tests/fog.test.js` (+2). Sim 2,110 → **2,133**, tools
     **78** (unchanged). Next: **(c)** the client. Checklist items below.
+  - **The ruling-11 cleanup (the "simplification") — ⤳ AS-BUILT 08-10-26 (engine only; no client, no
+    settlement slots, no claim gate).** `docs/exploration-model.md` §4 ruling 11 (AS-BUILT notes in §3 and §7).
+    **No new number.** **(1) The rival leak is removed:** `observePublicRegister` and `publicRegisterFacts` are
+    deleted from `sim/exploration.js`, and their end-of-tick call (and its "why here" block) from `sim/tick.js`;
+    `isOnPublicRegister` stays (the view's one "licensed = public" question). The record is now written only by
+    founding (`revealSystem`) and the guild's own scan completions (`stepScanCompletions`, unchanged) — never
+    from a rival. Its shape is unchanged. **(2) Controlled systems at full L2, live:** `sim/fog.js`
+    `geographyFor` builds `known` as the record **∪ every controlled system** (`systemControllers` — own and
+    rival alike): every planet's archetype and every resource node → its type, from the seed's own
+    `getSystemLayout` (no new accessor). Merged with the record (a planet named by both is one entry), keys
+    sorted at every level (invariant 9), entry shape `{ archetype, nodes }` unchanged; recomputed on every view,
+    so it drops out when control lapses. Settlement slots are **not** projected yet — the settlement-surface
+    slice adds them to the record and the projection together. A rival's licensed-venture rows are unchanged.
+    **Proved against `main` (41fe84c)** with a new script that runs unchanged there
+    (`tests/rival-leak-script.js`) and `tests/rival-leak-removed.test.js` (7): the **god's-eye lens did not
+    move** at any step (it never carried the record — so none of the five god's-eye hashes of (a) needed a
+    re-pin); a **one-guild** galaxy is byte-identical in state, god's-eye and view; a two-guild state with a
+    rival's licensed mine + licensed refinery moved by **exactly the leaked facts** — main's state with every
+    record fact in a rival-held system stripped hashes to the new state, and an in-test replay of the removed
+    step rebuilds main's exact bytes; every per-guild view, with the rival-held ground stripped, is main's byte
+    for byte (the full new views are pinned). **Tripwire:** every tick of that script, no guild's record moves
+    from its founding bytes while the rival's licensed ventures sit on the register (checked to fail when the
+    step is re-injected). **Re-pinned:** only the (b2) idle-array script's two per-guild VIEW hashes
+    (`tests/deep-scan-job.test.js`), each with a strip-and-prove back to the 52e5e3f bytes; its state and
+    god's-eye pins held. No `run_*`, persist or founding golden moved (none pins a rival licensed venture's
+    state). **Rewritten to ruling 11:** `tests/fog.test.js` — the marquee (a rival-controlled system shows its
+    whole surface live; a lapsed venture loses only the venture), a new live-control test (shown while any
+    guild — rival or the viewer — holds the system, back to exactly the viewer's survey when control lapses,
+    the record untouched), the un-licensed-venture test (the ground is shown, the venture is not), frontier
+    planet ids fogged until surveyed, `known` = record ∪ controlled, and ruling 3's lockout test;
+    `tests/exploration.test.js` — the register-observation tests replaced by "a rival teaches the record
+    nothing" (licensed, unlicensed, closed). Sim 2,133 → **2,140**, tools **78** (unchanged). Checklist items
+    below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4805,11 +4841,15 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   6. **Client seams for (c) / the deploy map — not decisions, recorded so they are not lost:** `deployRange.deepScan` is not published (adding it moves every held-system guild row of the god's-eye lens, so it should land with the client that paints it); the `deploy_failed` Reason fact has no label for `not-attached` (reads "—") and the inbox title prints the raw kind ("Deployment failed — deepScan"-ish via `prettyGood`); the client's `KIT_GOOD` knows only the outpost, so the notice's Redeploy / Return forks cannot reach a retreated array kit (operator-recoverable: `unload-kit`); an idle array kit has no Deploy button; arrays are not drawn on the map.
 - **Deep Scan Array slice (b2) (2.5, the discovery scan) — items for a ruling or a confirm** — *surfaced 06-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
   1. **A scan costs nothing but time.** §5 rules "no fuel and no craft travel"; no credit price is ruled, so `queueScan` charges nothing. Confirm, or rule a price.
-  2. **A redundant scan is accepted.** An L1 of a system whose archetypes the guild already knows, or an L2 of a planet whose nodes it already knows (e.g. from a rival's lapsed venture), is not refused — it runs its full time and completes as a learn-once no-op. Confirm, or rule a refusal (the gate would be "the target holds at least one unknown fact").
+  2. **A redundant scan is accepted.** An L1 of a system whose archetypes the guild already knows, or an L2 of a planet whose nodes it already knows (e.g. from a rival's lapsed venture *— ⤳ no longer possible since 08-10-26: the record never learns from a rival*), is not refused — it runs its full time and completes as a learn-once no-op. Confirm, or rule a refusal (the gate would be "the target holds at least one unknown fact").
   3. **No completion notice.** A finished scan — and a scan voided by a rival's claim — writes no inbox notice: the job simply clears (`docs/event-log.md` has no such type). For the client slice (c) to decide, with a ruled notice type if one is wanted.
-  4. **The array cannot survey your own far planets.** Own ground is refused (§5 "your own systems you already know"), but a claimed system's other planets stay L2-fogged (§4 ruling 6) — the ruled way to fill them in is the Prefecture self-scan (§4 ruling 9, deferred). Today the only held systems are homes, fully known from founding, so nothing is blocked yet. Confirm when the claim slice lands.
+  4. **The array cannot survey your own far planets.** Own ground is refused (§5 "your own systems you already know"), but a claimed system's other planets stay L2-fogged (§4 ruling 6) — the ruled way to fill them in is the Prefecture self-scan (§4 ruling 9, deferred). Today the only held systems are homes, fully known from founding, so nothing is blocked yet. Confirm when the claim slice lands. **⤳ 08-10-26: moot — ruling 11 retired ruling 6, and the per-guild view now shows every system the guild controls at full L2, live (built), so its far planets are never fogged. (They are not in the RECORD; nothing that reads the record — the claim gate — concerns ground the guild already holds.)**
   5. **No scan cancel.** Not ruled, not built: a running job finishes or is lost with its array.
   6. **Seams for (c) — not decisions:** the job row carries `startedTick` / `completeTick` but no derived `ticksRemaining` (the shipment row has one) — (c) may want it engine-side so the client computes no number; `queueScan` and `removeDeepScanArray` have no `/admin` endpoint or `tools/admin.js` command (they are driven over `POST /action`, as any action is).
+- **The ruling-11 cleanup (2.5) — items for a ruling or a confirm** — *surfaced 08-10-26 by the build; each was built the way stated (the conservative way where it was a choice — hide what is not ruled public), and none is decided by the code beyond that.*
+  1. **Node lockouts on rival-held ground.** Ruling 3 (06-10-26) shows a lockout "on a node the guild **knows** (its record) or on ground it **controls**". Built literally — unchanged code. With the leak removed the record never learns a rival's node, so a lockout on a rival's ground now shows **only to that rival**, though `geography.known` shows the node itself (ruling 11). Before this slice a viewer saw it once the node had been banked off the register. Confirm (hidden), or rule that "knows" includes the live controlled-system projection (a one-line change in `sim/fog.js` `isLockoutVisible`). Pinned both ways in `tests/rival-leak-removed.test.js` / `tests/fog.test.js`.
+  2. **Two rival cuts whose stated reason ruling 11 removed.** The rival guild row drops `homePlanetId`, and a rival system claim's landmark drops `terranHomeworldId` / `starterEligible` — each because it names or types "a planet inside a rival system, L1 not yet learned" (`sim/fog.js`; `ring` is dropped with them only to keep the row to L0). Under ruling 11 every planet's archetype of a controlled system IS shown, so the reason no longer holds. **Still hidden — no byte of either moved here.** Confirm, or lift them (lifting moves the per-guild view bytes, so it wants its own small slice).
+  3. **Seams — not decisions, recorded so the next slices find them:** (a) the projection carries **archetype + nodes only**; ruling 11's "every settlement slot" lands with the settlement-surface slice (record `slots` track + this projection); (b) `known` does not mark **which** source an entry came from (surveyed vs live-because-controlled) — the client slice (c) can tell from the L0 `controllerGuildId`, but may want an engine-side flag if it should warn "you lose this view if control lapses"; (c) a planet surveyed to L2 and one known only at L1 differ in `known` only by `nodes` being non-empty — sound today (every planet on the seed has ≥ 1 node), worth a real level marker once slots exist.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

@@ -27,14 +27,15 @@
 //     hidden; players see only the value and its history"): no Σ-of-every-guild total survives that a
 //     guild could subtract its own share from to read a rival's holdings.
 //   - NODE LOCKOUTS are shown only on a node the viewer knows or on ground it controls.
-//   - `geography` is added: L0 for every system, plus the viewing guild's record, resolved.
+//   - `geography` is added: L0 for every system, plus every planet the guild may see — its own
+//     record, and every CONTROLLED system (own or rival) at full L2, live (§4 ruling 11).
 //
 // ALLOW-LISTS, NOT DENY-LISTS, for every rival row: a field added to a guild / venture / outpost row
 // later is HIDDEN from rivals until someone decides it is public. And every top-level key of the
 // god's-eye snapshot must be classified in TOP_LEVEL below — tests/fog.test.js fails loudly on a new,
 // unclassified key, so no future field reaches the player view by default.
 
-const { getSite, getPlanet, getL0Systems } = require('./seed.js');
+const { getSite, getPlanet, getL0Systems, getSystemLayout } = require('./seed.js');
 const { systemControllers, guildHolds } = require('./claims.js');
 const { isOnPublicRegister, knowsNode } = require('./exploration.js');
 
@@ -106,8 +107,9 @@ function pick(row, fields) {
 }
 
 // registeredVentureIds(state) -> the ids of every venture on the public register, asked of the STORED
-// ventures through the SAME `isOnPublicRegister` the end-of-tick record observation uses — so "a
-// rival venture this view shows" and "a rival venture the record learns from" are one question.
+// ventures through `isOnPublicRegister` (sim/exploration.js) — the one definition of "licensed = public"
+// (§0). Since ruling 11 it only decides what this view SHOWS; nothing writes a rival's venture into any
+// guild's record.
 function registeredVentureIds(state) {
   const ids = new Set();
   for (const g of state.guilds || []) {
@@ -126,9 +128,12 @@ function claimRow(row, guildId) {
 // isLockoutVisible(state, guild, lockout) — RULED 06-10-26. A node lockout names a site and the tick
 // it frees. The viewer sees it only if it KNOWS the node (its record, `knowsNode`) or CONTROLS the
 // node's system (its own ground — where the lockout gates its own establish). Anything else would name
-// a node inside a rival system the viewer never learned: e.g. one licensed and torn down between two
-// ticks, so never on the register at a tick. A settlement slot is not a node and is never "known" in
-// the record, so a slot's lockout shows only on ground the viewer controls.
+// a node inside a rival system the viewer never learned. A settlement slot is not a node and is never
+// "known" in the record, so a slot's lockout shows only on ground the viewer controls.
+// ⤳ 08-10-26 (ruling 11): "knows" still means the RECORD, unchanged. Since the record no longer banks a
+// rival's licensed node, a lockout on a node in a RIVAL's system now shows to nobody but that rival —
+// even though `geography.known` shows the node itself. Whether "knows" should widen to the live
+// controlled-system projection is OPEN on the roadmap's decision checklist; hidden until ruled.
 function isLockoutVisible(state, guild, lockout) {
   if (knowsNode(guild, lockout.siteId)) return true;
   const site = getSite(lockout.siteId);
@@ -145,11 +150,19 @@ function rivalVentureRow(row) {
 // geographyFor(state, guild) -> { systems, known } — what the guild may draw as MAP:
 //   systems — L0, every system, id order: { id, name, coords, planetCount, controllerGuildId }.
 //             Never fogged (§1), so computed here for all, never stored per guild.
-//   known   — the guild's exploration RECORD, resolved through the seed and grouped by system:
+//   known   — every planet the guild may see past L0, resolved through the seed and grouped by system:
 //             { [systemId]: { [planetId]: { archetype, nodes: { [nodeId]: resourceType } } } }.
-//             Only what the record holds; keys in sorted order so the bytes are stable (invariant 9).
-// The live half of the map — a rival's licensed node and its planet's archetype — rides on that
-// rival's venture row instead (`ventures`), so the two sources stay distinct (§3).
+//             It is the UNION of the two sources (§3):
+//               1. the guild's exploration RECORD — what it surveyed itself (or was founded on); and
+//               2. every CONTROLLED system — its own and every rival's alike — at FULL L2: every planet's
+//                  archetype and every resource node on it (§4 ruling 11: control is public, so a settled
+//                  system's geography is too). LIVE: read from the seed + the claims on every call, never
+//                  banked, so it drops out of the view the moment control lapses and leaves only (1).
+//             Keys in sorted order at every level so the bytes are stable (invariant 9).
+// A rival's licensed venture rows (`ventures`) are separate and unchanged: they say what is BUILT on a
+// node (type + reputation); `known` says what the ground IS.
+// NOT YET: a planet's settlement slots. Ruling 11's end state is "every node AND every slot"; the slots
+// arrive with the settlement-surface slice, which adds them to the record and to this projection together.
 function geographyFor(state, guild) {
   const controllers = systemControllers(state);
   const systems = getL0Systems().map((s) => ({
@@ -160,23 +173,58 @@ function geographyFor(state, guild) {
     controllerGuildId: controllers.get(s.id) || null,
   }));
 
+  // Collected unsorted first, then copied out in sorted order at the end (`sortedKnown`).
   const known = {};
+  // knownPlanet(systemId, planetId, archetype) -> that planet's entry, created on first sight. Both
+  // sources go through it, so a planet named by BOTH is one entry with both sources' nodes merged — never
+  // one source overwriting the other.
+  const knownPlanet = (systemId, planetId, archetype) => {
+    if (!known[systemId]) known[systemId] = {};
+    if (!known[systemId][planetId]) known[systemId][planetId] = { archetype, nodes: {} };
+    return known[systemId][planetId];
+  };
+
+  // 1. THE RECORD — permanent, the guild's own surveys.
   const record = guild.exploration || {};
-  for (const planetId of Object.keys(record).sort()) {
+  for (const planetId of Object.keys(record)) {
     const planet = getPlanet(planetId);
     if (!planet) continue; // a dangling id is the record invariant's to halt on, not the view's to draw
-    const nodes = {};
-    for (const nodeId of Object.keys(record[planetId].nodes).sort()) {
+    const entry = knownPlanet(planet.systemId, planetId, planet.archetype);
+    for (const nodeId of Object.keys(record[planetId].nodes)) {
       const site = getSite(nodeId);
-      if (site) nodes[nodeId] = site.resourceType;
+      if (site) entry.nodes[nodeId] = site.resourceType;
     }
-    if (!known[planet.systemId]) known[planet.systemId] = {};
-    known[planet.systemId][planetId] = { archetype: planet.archetype, nodes };
   }
-  // Systems in sorted order too (planets were visited in planet order, which need not be system order).
-  const knownSorted = {};
-  for (const systemId of Object.keys(known).sort()) knownSorted[systemId] = known[systemId];
-  return { systems, known: knownSorted };
+
+  // 2. CONTROLLED SYSTEMS — live, the whole surface (ruling 11). The seed's own layout says which planets
+  // and nodes a system has; nothing is listed here by hand. A planet already in from the record resolves to
+  // the very same seed facts, so this only ever ADDS what the record lacked.
+  for (const systemId of controllers.keys()) {
+    const layout = getSystemLayout(systemId);
+    if (!layout) continue; // a claim on a system the seed lacks is the claim invariant's to halt on
+    for (const planet of layout.planets) {
+      const entry = knownPlanet(systemId, planet.id, planet.archetype);
+      for (const node of planet.resourceNodes) entry.nodes[node.id] = node.resourceType;
+    }
+  }
+
+  return { systems, known: sortedKnown(known) };
+}
+
+// sortedKnown(known) -> the same map with its system, planet and node keys in sorted order. The two sources
+// above add keys in whatever order they meet them; the bytes must not depend on that (invariant 9).
+function sortedKnown(known) {
+  const out = {};
+  for (const systemId of Object.keys(known).sort()) {
+    out[systemId] = {};
+    for (const planetId of Object.keys(known[systemId]).sort()) {
+      const { archetype, nodes } = known[systemId][planetId];
+      const sortedNodes = {};
+      for (const nodeId of Object.keys(nodes).sort()) sortedNodes[nodeId] = nodes[nodeId];
+      out[systemId][planetId] = { archetype, nodes: sortedNodes };
+    }
+  }
+  return out;
 }
 
 // fogForGuild(full, state, guildId) -> the per-guild view. `full` is a FRESH god's-eye snapshot of

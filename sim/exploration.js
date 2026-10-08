@@ -28,11 +28,17 @@
 // OMIT-WHEN-EMPTY: a guild that knows nothing carries no `exploration` key at all, so a guild-less
 // state, and every guild built by a scenario rather than founded, serializes exactly as before.
 //
-// THE ONE WRITE PATH is `reveal` below. Every source funnels through it — founding (§6) and a
-// rival's licensed venture (§3) since 2.5 (a); the Deep Scan Array's scan (§5) since 2.5 (b2), through
-// the two loops `revealSystemArchetypes` (L1) and `revealPlanetNodes` (L2); a craft visit and the
-// Prefecture later. It is source-agnostic on purpose: it records WHAT was learned and WHEN, never
-// HOW, so a new source adds a caller, not a second writer.
+// THE ONE WRITE PATH is `reveal` below. Every source funnels through it — founding (§6) since 2.5 (a);
+// the Deep Scan Array's scan (§5) since 2.5 (b2), through the two loops `revealSystemArchetypes` (L1)
+// and `revealPlanetNodes` (L2); a craft visit later. It is source-agnostic on purpose: it records WHAT
+// was learned and WHEN, never HOW, so a new source adds a caller, not a second writer.
+//
+// ONLY YOUR OWN SURVEYS (§4 ruling 11, 08-10-26). The record is written by founding and by the guild's
+// own scans — never from a RIVAL. A rival's licensed venture used to be banked here (the removed
+// `observePublicRegister`); it is not any more, because a controlled system's whole surface is now shown
+// LIVE in the view (sim/fog.js `geographyFor`), so there is nothing to remember. That also keeps every
+// planet in the record at L1 or at full L2 — the rival leak was the only thing that ever wrote one node
+// of a planet and not its siblings.
 
 const { getSite, getPlanet, getSystemLayout } = require('./seed.js');
 
@@ -151,54 +157,13 @@ function cloneExploration(record) {
 // (§0: "licensed = declared to the Syndicate = public".) Two licence shapes exist: the ordinary
 // windowed `licence` (Tier-1/2, and the Tier-3 contract) and the windowless `deuteriumLicence` on a
 // licensed deuterium mine. Either one puts the venture on the public register; an unlicensed venture
-// (including an illegal refinery) is private operations and teaches a rival nothing.
+// (including an illegal refinery) is private operations. Its one reader is the per-guild view
+// (sim/fog.js), which shows a rival's venture only if this answers true. It never writes the record.
 function isOnPublicRegister(venture) {
   return !!(venture && (venture.licence || venture.deuteriumLicence));
 }
 
-// publicRegisterFacts(state) -> [{ ownerGuildId, fact }] — what every licensed, seated venture in the
-// galaxy teaches a rival about geography, in guild-then-venture array order (invariant 9):
-//   - on a resource NODE: { nodeId } — the node's type, and with it its planet's archetype;
-//   - on a settlement SLOT: { planetId } — a slot is not a resource node, so there is no node fact,
-//     only the planet's archetype (§2: "that node, its planet's archetype, and the venture type").
-// A venture whose site does not resolve is skipped here; the site-occupancy invariant halts on it.
-function publicRegisterFacts(state) {
-  const out = [];
-  for (const owner of state.guilds || []) {
-    for (const v of owner.ventures || []) {
-      if (!isOnPublicRegister(v) || !v.siteId) continue;
-      const site = getSite(v.siteId);
-      if (!site) continue;
-      const fact = site.kind === 'resource' ? { nodeId: site.id } : { planetId: site.planetId };
-      out.push({ ownerGuildId: owner.id, fact });
-    }
-  }
-  return out;
-}
-
-// observePublicRegister(state, tick) — the observe-and-record step (§3's "a rival's licensed venture
-// teaches you one node", made permanent). Every guild reads every RIVAL's licensed ventures off the
-// public register and writes what they teach into its own record, through `reveal`. Its own ventures
-// are skipped: what a guild learns from the register is what OTHER guilds declared.
-//
-// Learn-once does the rest: a venture that stays licensed for a thousand ticks writes its facts once,
-// and when it later closes, the venture TYPE drops out of the live view but nothing here is undone —
-// the node stays known (§3). Runs at the END of every tick (sim/tick.js); mutates `state` in place, as
-// every tick step does on the tick's own clone. Deterministic: guilds in array order, the register
-// in its own fixed order, and each fact carries its own tick, so no value depends on visiting order.
-function observePublicRegister(state, tick) {
-  const register = publicRegisterFacts(state);
-  if (register.length === 0) return state;
-  for (const observer of state.guilds || []) {
-    for (const { ownerGuildId, fact } of register) {
-      if (ownerGuildId === observer.id) continue;
-      reveal(observer, fact, tick);
-    }
-  }
-  return state;
-}
-
 module.exports = {
   reveal, revealSystem, revealSystemArchetypes, revealPlanetNodes, knowsPlanet, knowsNode, cloneExploration,
-  isOnPublicRegister, publicRegisterFacts, observePublicRegister,
+  isOnPublicRegister,
 };

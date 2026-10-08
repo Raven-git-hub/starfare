@@ -21,9 +21,11 @@ the semi-controlled corridors are design-ahead and NOT built here** — recorded
 build them read the real ruling, not a paraphrase.
 *(⤳ 08-10-26 — the simplification, §4 ruling 11: control ⇒ full L2 live, partial surface knowledge
 removed, the rival-licensed-venture source (`observePublicRegister`) retired, and rulings 6 & 9
-(bounded no, Prefecture self-scan) retired. A Claude Code cleanup slice removes `observePublicRegister`
-and projects controlled systems at L2; until it lands, §3/§6/§7's AS-BUILT notes describe the shipped
-code as-is.)*
+(bounded no, Prefecture self-scan) retired.)* *(⤳ 08-10-26 — the cleanup slice is BUILT (roadmap 2.5, the
+ruling-11 cleanup): `observePublicRegister` is **removed**, so the record is written only by founding and the
+guild's own Deep Scan Array scans; and the per-guild view projects **every controlled system** (own or rival)
+at full L2, live — every planet's archetype and every resource node; settlement slots follow with the
+settlement-surface slice. AS-BUILT notes in §3 and §7.)*
 
 ## 0. The through-line
 
@@ -130,10 +132,21 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
 > licensed by an action is observed at the next tick's end, so one licensed and closed between two
 > ticks was never on the register at a tick and teaches nothing. A guild never learns from its own
 > ventures. An unlicensed rival venture writes nothing. Closing a licensed venture undoes nothing.
-> *(⤳ RETIRED 08-10-26, §4 ruling 11: `observePublicRegister` is **removed** by the cleanup slice —
-> rival geography is no longer banked into any guild's record; a controlled system is shown at full
-> L2 **live** instead. This AS-BUILT note describes the shipped slice-(a) code only until that slice
-> lands; the 07-10 slot-leak extension is dropped with it.)*
+> *(⤳ REMOVED 08-10-26 — AS-BUILT, §4 ruling 11 (roadmap 2.5, the ruling-11 cleanup).* The note above
+> is **history**: `observePublicRegister` and its helper `publicRegisterFacts` are **deleted**
+> (`sim/exploration.js`), and so is their end-of-tick call (`sim/tick.js`). The record's writers are now
+> founding (`revealSystem`) and the guild's own Deep Scan Array scan completions (`stepScanCompletions`,
+> the end-of-tick block's one remaining record writer) — **no guild's record is written from a rival**.
+> The record's **shape is unchanged**; it simply stops growing from rivals. A rival's surface is shown
+> live instead (§7's AS-BUILT note on the controlled-system projection). `isOnPublicRegister` stays: it is
+> still the one "licensed = public" predicate, now read only by the view to pick which rival ventures it
+> shows. The 07-10 slot-leak extension was never built and is dropped. **Proved** byte for byte against
+> `main` at 41fe84c (`tests/rival-leak-removed.test.js`): the god's-eye lens did not move at all (it never
+> carried the record); a one-guild galaxy is byte-identical in state, god's-eye and view; a two-guild
+> state moved by **exactly** the leaked facts (main's state with every record fact in a rival-held system
+> stripped hashes to the new state, and an in-test replay of the removed step rebuilds main exactly). A
+> tripwire checks every tick that no record gains a fact while a rival runs a licensed mine and a licensed
+> refinery.)*
 
 ## 4. The rulings
 
@@ -340,7 +353,8 @@ queue depth**:
 >   `knowsPlanet(guild, targetPlanetId)`. **No reach check** — any system in the galaxy is a target. The
 >   apply stamps the job from the current tick. A scan costs no fuel and no credits (no price is ruled).
 > - **Completion — a due-tick reveal**, `stepScanCompletions` (`sim/deep-scan-arrays.js`), run in
->   `sim/tick.js`'s **end-of-tick observation block** right after `observePublicRegister`: observation, not
+>   `sim/tick.js`'s **end-of-tick observation block** right after `observePublicRegister` *(⤳ removed 08-10-26,
+>   ruling 11 — the scan completion is now that block's only record writer)*: observation, not
 >   economy (no step reads a job or the record, so the eight-step order is untouched), after the steps so it
 >   reads the claims as the tick leaves them, and stamped with the tick just built, so its order against the
 >   register observation changes no value. Arrays in id order; a job is due when `completeTick <= tick`, so
@@ -436,8 +450,10 @@ stands on.
   track beside `nodes` — `{ [planetId]: { tick, nodes: {…}, slots: { [slotId]: tick } } }` — so a
   known settlement slot is representable (the claim gate reads it; §8). Revealed with its node
   siblings by a surface survey, or one slot at a time by a rival's licensed factory (the
-  public-register leak, §3). `checkExplorationRecord` extends to guard real slots on their own
-  planet. The settlement-surface slice builds it; until then the record is nodes-only, as above.
+  public-register leak, §3) *(⤳ that second source is RETIRED by §4 ruling 11 and its code removed
+  08-10-26 — a slot enters the record only by your own survey or founding)*. `checkExplorationRecord`
+  extends to guard real slots on their own planet. The settlement-surface slice builds it; until then
+  the record is nodes-only, as above.
 - **`buildSnapshot` becomes per-guild.** Today `buildSnapshot(state)` (`sim/snapshot.js`) is PURE
   and sees every guild's data, producing one shared view. It becomes **`buildSnapshot(state,
   guildId)`**, producing that guild's filtered view = L0 ∪ record ∪ live rules (§3). The
@@ -456,7 +472,7 @@ stands on.
     controller fact). Credits, fuel, stockpiles, reputation, points, assets, **vehicles**, orders,
     events — gone; `homePlanetId` too (a planet inside a rival system is L1 not yet learned);
   - **rival ventures**: only those on the public register (`isOnPublicRegister` — the same
-    predicate the record observation uses), each cut to `id`, `ownerGuildId`, `type`, `siteId`,
+    predicate the record observation used; *⤳ that observation is removed, 08-10-26*), each cut to `id`, `ownerGuildId`, `type`, `siteId`,
     `systemId`, `ventureName`, `reputation` *(⤳ added 06-10-26, §2)*, `site` (the node: kind,
     planet, system, resource type, name) plus `planetArchetype` from the seed — no licence terms,
     no recipe. An **unlicensed** rival venture is absent everywhere (`ventures`, `occupancy`) —
@@ -483,12 +499,36 @@ stands on.
     claims — never fogged, computed, never stored); `known` is the guild's **record**, resolved
     through the seed, grouped `{ [systemId]: { [planetId]: { archetype, nodes: { [nodeId]:
     resourceType } } } }`. The live half (a rival's licensed node + archetype) rides on that
-    rival's venture row, so the two sources stay distinct.
+    rival's venture row, so the two sources stay distinct. *(⤳ 08-10-26, ruling 11: `known` is now the
+    record **∪ every controlled system at full L2** — see the AS-BUILT note below.)*
   Every rival row is an **allow-list**, and every top-level god's-eye key must be classified public
   or filtered in `fog.js` `TOP_LEVEL` — an unclassified key throws, and a test fails on a new one —
   so nothing new reaches a player by default. The view is pure (it reads the record, writes
   nothing). `GET /snapshot?guild=<id>` serves it for headless proof (404 for an unknown guild);
   plain `GET /snapshot` is unchanged. The client wiring is slice (c).
+  **⤳ AS-BUILT 08-10-26 — the controlled-system projection (§4 ruling 11; roadmap 2.5, the ruling-11
+  cleanup; `sim/fog.js` `geographyFor`).** `geography.known` is now the **union** of the two sources
+  (§3): (1) the guild's **record**, resolved through the seed as before; and (2) **every controlled
+  system** — `systemControllers(state)`, so the viewer's own systems and every rival's alike — at **full
+  L2**: for each planet of the system (the seed's own `getSystemLayout`; no new accessor), its archetype
+  and **every** resource node → its `resourceType`. Computed **live** on every view from the seed + the
+  claims, **never banked**: it shows while the system is held and is gone the moment control lapses,
+  leaving only what the viewer surveyed itself. **Merged, not clobbered** — a planet named by both
+  sources is one entry; the record's facts for it are the same seed facts, so the overlay only adds. Keys
+  are sorted at all three levels (system, planet, node) so the bytes never depend on which source met a
+  key first (invariant 9). The entry shape is unchanged, `{ archetype, nodes }`. **Not yet: settlement
+  slots** — ruling 11's end state is "every node **and every slot**"; the slots arrive with the
+  settlement-surface slice, which adds a `slots` track to the record and to this projection together. A
+  rival's licensed-venture rows are unchanged (type + reputation, "plus every licensed venture"). The view
+  stays pure — it computes no game number and writes nothing. **What moved:** a multi-guild view gains
+  each rival's held system(s) in `known` (and, for an own system, nothing new — the home is already in the
+  record in full); a one-guild view is byte-identical. Strip the rival-held ground from a view and it is
+  `main`'s byte for byte (`tests/rival-leak-removed.test.js`; the 2.5 (b2) idle-array view pins re-pinned
+  the same way, `tests/deep-scan-job.test.js`). **One consequence, left as ruled and flagged:** a node
+  lockout still shows only on a node the viewer's **record** knows or ground it holds (§2, ruling 3 of
+  06-10-26), so with the leak gone a lockout on a rival's ground shows only to that rival — although `known`
+  now shows the node itself. Whether "knows" should follow the live projection is on the roadmap's decision
+  checklist (ruling-11 cleanup items).
 - **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
@@ -500,9 +540,9 @@ stands on.
   rival's licensed venture). The Deep Scan Array (slice (b)) and the Prefecture become callers later.
   *(⤳ 06-10-26, 2.5 (b2): the Deep Scan Array is now a caller — its scan completion reveals through
   `revealSystemArchetypes` (L1) and `revealPlanetNodes` (L2), two loops over `reveal`.)*
-  *(⤳ RETIRED 08-10-26, §4 ruling 11: `observePublicRegister` is removed by the cleanup slice, so the
-  `reveal` callers become `revealSystem` (founding) and the Deep Scan Array only — a rival's surface is
-  shown live, never revealed into the record.)*
+  *(⤳ REMOVED 08-10-26 — AS-BUILT, §4 ruling 11: `observePublicRegister` is deleted, so the `reveal`
+  callers are `revealSystem` (founding) and the Deep Scan Array's two loops only — a rival's surface is
+  shown live in the view (the projection note above), never revealed into the record.)*
 - **Determinism & goldens.** A per-guild snapshot is deterministic given `(state, guildId)`. The
   snapshot shape changing to per-guild is a **large but intended goldens change** that must be
   proven **deliberate, not accidental**: where a guild sees everything (a single-guild galaxy, or
