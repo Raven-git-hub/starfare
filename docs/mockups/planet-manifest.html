@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planet Manifest — redesign mockup (Starfare)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:#030408; color:#c7d3e6; font-family:'JetBrains Mono',monospace; }
+  :root{ --bg:#030408; --line-bright:#2c3a52; --text:#c7d3e6; --text-dim:#5c6b85; --accent:#43d9c8; }
+
+  /* top bar */
+  .topbar{ display:flex; align-items:center; gap:22px; padding:11px 20px; background:linear-gradient(to bottom,#06080e,#05060a); border-bottom:1px solid rgba(44,58,82,0.5); }
+  .wordmark{ font-family:'Rajdhani',sans-serif; font-weight:700; font-size:19px; letter-spacing:3px; color:var(--accent); text-shadow:0 0 12px rgba(67,217,200,0.35); }
+  .chip{ font-size:10px; letter-spacing:1.5px; color:var(--text-dim); border:1px solid var(--line-bright); border-radius:3px; padding:3px 8px; }
+  .kv{ line-height:1.35; } .kv .k{ font-size:8.5px; letter-spacing:1.5px; color:var(--text-dim); } .kv .v{ font-size:12.5px; color:var(--accent); } .kv .v.plain{ color:var(--text); }
+  .tbtn{ font-size:10.5px; letter-spacing:1.3px; color:var(--accent); border:1px solid rgba(67,217,200,0.45); background:rgba(67,217,200,0.06); border-radius:3px; padding:7px 12px; }
+  .spacer{ flex:1; } .clock{ text-align:right; line-height:1.3; } .clock .t{ font-size:12.5px; color:var(--text); letter-spacing:1px; } .clock .l{ font-size:8px; letter-spacing:1.5px; color:var(--text-dim); }
+  /* tab nav */
+  .tabnav{ display:flex; padding:0 16px; background:#05060a; border-bottom:1px solid rgba(44,58,82,0.5); }
+  .nav-tab{ font-size:11px; letter-spacing:2px; color:var(--text-dim); padding:11px 26px 12px; cursor:pointer; clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%); }
+  .nav-tab.active{ color:var(--accent); background:rgba(67,217,200,0.08); border-bottom:2px solid var(--accent); }
+
+  /* detail screen tokens — from #detail-screen */
+  #detail-screen{ position:relative; background:#0B0D12; color:#E8DFC8; font-family:'IBM Plex Sans',sans-serif;
+    --bg-panel:#12151C; --bg-chip:#1C212B; --ink:#E8DFC8; --ink-muted:#8B8F9C; --ink-faint:#565B68;
+    --brass:#C9A227; --brass-dim:#7A6420; --brass-glow:rgba(201,162,39,0.35); --line:rgba(232,223,200,0.10);
+    --c-terran:#5C8A4E; --c-terran-l:#8DBB78; --c-terran-d:#2F4A27; --panel-w:360px; --hero-r:220px;
+    --hero-img:url('../../client/assets/planets/terran.jpg'); }
+  .app{ display:grid; grid-template-columns:var(--panel-w) 1fr; min-height:640px; }
+
+  .index{ position:relative; background:var(--bg-panel); border-right:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden; }
+  .back-btn{ align-self:flex-start; margin:18px 0 0 20px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--ink-muted); background:var(--bg-chip); border:1px solid var(--line); padding:7px 12px; border-radius:6px; cursor:pointer; }
+  .index-header{ padding:16px 24px 14px; }
+  .title-block h1{ font-family:'Cinzel',serif; font-weight:600; font-size:24px; letter-spacing:0.02em; color:var(--ink); }
+  .title-sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-faint); margin-top:5px; }
+  .arch-blurb{ margin:4px 20px 0; padding:15px 17px; border:1px solid var(--line); border-left:3px solid var(--c-terran); border-radius:10px; background:linear-gradient(180deg,rgba(92,138,78,0.12),rgba(92,138,78,0.02)); position:relative; z-index:2; }
+  .arch-blurb .eyebrow{ display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--c-terran-l); margin-bottom:9px; }
+  .arch-blurb .pdot{ width:10px; height:10px; border-radius:50%; background:radial-gradient(circle at 35% 30%,var(--c-terran-l),var(--c-terran-d)); box-shadow:0 0 10px rgba(141,187,120,0.5); }
+  .arch-blurb p{ font-size:12.5px; line-height:1.6; color:#D9D2BD; }
+  /* the hero artwork stays in the left panel, docked bottom-left (VERBATIM shape) */
+  .hero-dock{ position:absolute; left:0; bottom:0; width:100%; height:calc(var(--hero-r)*1.15); pointer-events:none; overflow:hidden; }
+  .hero{ position:absolute; left:calc(var(--hero-r)*-1); bottom:calc(var(--hero-r)*-1); width:calc(var(--hero-r)*2); height:calc(var(--hero-r)*2); border-radius:50%; border:1px solid rgba(201,162,39,0.35); background-size:cover; background-position:center; background-image:var(--hero-img); }
+  .hero-ring{ position:absolute; inset:14px; border-radius:50%; border:1px dashed rgba(232,223,200,0.25); }
+
+  .main{ position:relative; padding:28px 34px; display:flex; flex-direction:column; }
+  .main-header{ display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--line); padding-bottom:16px; }
+  .main-header h2{ font-family:'Cinzel',serif; font-weight:600; font-size:15px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-muted); }
+  .main-header .stamp{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--brass-dim); letter-spacing:0.08em; }
+  .pm-split{ display:grid; grid-template-columns:1fr 1fr; flex:1; }
+  .pm-col.sites{ border-right:1px solid var(--line); padding-right:28px; }
+  .pm-col.blank{ padding-left:30px; display:flex; align-items:center; justify-content:center; }
+  .blank-ph{ text-align:center; color:var(--ink-faint); }
+  .blank-ph .g{ width:44px; height:44px; margin:0 auto 10px; border:1px solid var(--line); border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:17px; color:var(--brass-dim); }
+  .blank-ph .t{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; }
+  .blank-ph .s{ font-size:11px; margin-top:8px; max-width:30ch; line-height:1.6; }
+
+  .pv-tabs{ display:flex; gap:8px; padding:18px 0 10px; }
+  .pv-tab{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-muted); background:rgba(201,162,39,.05); border:1px solid var(--line); padding:8px 22px 9px; cursor:pointer; clip-path:polygon(0 0,100% 0,calc(100% - 13px) 100%,13px 100%); }
+  .pv-tab.active{ color:var(--brass); border-color:var(--brass-dim); background:rgba(201,162,39,.12); }
+  .stack{ display:flex; flex-direction:column; }
+  .list-row{ position:relative; display:flex; width:100%; text-align:left; cursor:pointer; color:inherit; }
+  .list-row.tab{ overflow:hidden; border:1px solid rgba(232,223,200,0.08); border-radius:10px; transition:transform 120ms ease,border-color 120ms ease; }
+  .list-row.tab:hover{ transform:translateY(-1px); border-color:rgba(201,162,39,0.45); }
+  .tex-node{ background:repeating-linear-gradient(135deg,rgba(232,223,200,0.035) 0px,rgba(232,223,200,0.035) 1px,transparent 1px,transparent 12px),var(--bg-chip); }
+  .list-row.tab.tex-node{ flex-direction:row; align-items:stretch; min-height:30px; margin-bottom:4px; }
+  .node-meta{ display:flex; flex-direction:column; justify-content:center; flex:0 0 42%; max-width:42%; padding:0 12px; min-width:0; }
+  .node-name{ font-size:13px; color:var(--ink); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .venture-btn{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:0.04em; text-transform:uppercase; white-space:nowrap; color:var(--ink-muted); flex:1 1 auto; min-width:0; border-left:1px solid var(--line); padding:0 14px; display:flex; align-items:center; justify-content:flex-end; text-align:right; }
+  .venture-btn.vacant{ color:var(--ink-faint); }
+  .venture-btn.own{ color:#8DBB78; border-left-color:rgba(141,187,120,0.35); background:rgba(92,138,78,0.14); flex-direction:column; align-items:flex-end; justify-content:center; gap:1px; }
+  .venture-btn .sb-guild{ font-size:9px; text-transform:none; letter-spacing:0.02em; opacity:0.72; }
+
+  .note{ font-family:'IBM Plex Mono',monospace; font-size:11px; line-height:1.7; color:var(--ink-faint); padding:16px 34px 30px; border-top:1px dashed var(--line); }
+  .note b{ color:var(--ink-muted); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="wordmark">STARFARE</span><span class="chip">SEED 42</span>
+    <span class="kv"><div class="k">PLAYER GUILD</div><div class="v plain">Test Guild</div></span>
+    <span class="kv"><div class="k">CREDITS</div><div class="v">31,472,610</div></span>
+    <span class="tbtn">⊕ MY SYSTEM</span><span class="tbtn">♪ MUSIC</span>
+    <span class="spacer"></span>
+    <span class="clock"><div class="t">001d 18:04:42</div><div class="l">SERVER UPTIME</div></span>
+    <span class="clock"><div class="t">09:52 UTC+8</div><div class="l">SERVER TIME</div></span>
+  </div>
+  <div class="tabnav">
+    <span class="nav-tab active">SYSTEM MANIFEST</span><span class="nav-tab">TRADE</span><span class="nav-tab">DEUTERIUM</span><span class="nav-tab">OPERATIONS</span><span class="nav-tab">GUILD HALL</span>
+  </div>
+
+  <div id="detail-screen"><div class="app">
+
+    <!-- LEFT: artwork + blurb (node list has moved to the main; buttons are gone from here) -->
+    <div class="index">
+      <button class="back-btn">‹ Return to System</button>
+      <div class="index-header">
+        <div class="title-block"><h1>COR-2054 IV</h1></div>
+        <div class="title-sub">Terran · pl_00048</div>
+      </div>
+      <div class="arch-blurb">
+        <div class="eyebrow"><span class="pdot"></span> Terran archetype</div>
+        <p>A rich, biodiverse world with a breathable atmosphere and a stable climate suited to permanent
+        settlement. Crustal surveys show an unusually complete spread of common and precious ores alike,
+        from titanium and copper through to veins of gold, silver, and tungsten. Few worlds offer this
+        range of accessible resources alongside genuine habitability.</p>
+      </div>
+      <div class="hero-dock"><div class="hero"><div class="hero-ring"></div></div></div>
+    </div>
+
+    <!-- RIGHT: node list | blank stat panel (stat sheet is a later pass) -->
+    <div class="main">
+      <div class="main-header"><h2>Planet Manifest</h2><span class="stamp">15 nodes · 15 slots</span></div>
+      <div class="pm-split">
+        <div class="pm-col sites">
+          <div class="pv-tabs"><button class="pv-tab active">Resources</button><button class="pv-tab">Settlements</button></div>
+          <div class="stack">
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Titanium</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Titanium</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Copper</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Lead</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Silica</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Lithium</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Polymers</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Carbon Products</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Nitrogen</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Gold</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Silver</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Tungsten</span></span><span class="venture-btn own"><span>MINING</span><span class="sb-guild">Test Guild</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Lead</span></span><span class="venture-btn vacant"><span>VACANT</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Silica</span></span><span class="venture-btn vacant"><span>VACANT</span></span></div>
+            <div class="list-row tab tex-node"><span class="node-meta"><span class="node-name">Lead</span></span><span class="venture-btn vacant"><span>VACANT</span></span></div>
+          </div>
+        </div>
+        <div class="pm-col blank">
+          <div class="blank-ph"><div class="g">§</div><div class="t">Venture detail</div><div class="s">A later pass. Selecting a site opens its Establish / Manage popup exactly as it does today.</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+    <div class="note">
+      MOCKUP · planet-manifest redesign (grounded in the live screen). Left panel = <b>artwork + blurb</b> only (node list &
+      buttons removed from here). Main = <b>node list | blank stat panel</b> (the stat sheet is a later design pass). The node
+      rows keep their <b>exact current behaviour</b> — a click opens the same Establish (vacant) / Venture-Management (your
+      venture) / node overlay popups; they've only moved to the centre. Authority for the per-level fog behaviour (L0/L1/L2) and the survey flow is <b>docs/exploration-model.md &sect;10</b>; THIS mock is the layout only (no fog).
+    </div>
+  </div>
+</body>
+</html>
