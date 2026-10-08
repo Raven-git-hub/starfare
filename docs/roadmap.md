@@ -3653,7 +3653,8 @@ boundary so the later hex-map swap doesn't touch it.
   state (home fully known + L0 everywhere) + the claim-gate coupling recorded; **(b) the Deep Scan
   Array** — entity + "attached" deploy + the scan-job queue (one active job, L1/L2, the chain,
   completion-revalidation) + reveal-to-record *(⤳ split 06-10-26: **(b1)** the entity + the attached deploy
-  — BUILT, below; **(b2)** the scan job + reveal — BUILT 06-10-26, below)*; **(c) client** — the fog UI. *Deferred: monitoring
+  — BUILT, below; **(b2)** the scan job + reveal — BUILT 06-10-26, below)*; **(c) client** — the fog UI *(⤳ **(c1)**
+  the planet-manifest layout, no fog — BUILT 08-10-26, below)*. *Deferred: monitoring
   (the array's directional watch-fan → detection/corridors/catch-fine), L3 espionage, the
   Prefecture self-scan *(⤳ retired 08-10-26, `exploration-model.md` §4 ruling 11)*, squatting. Still open:
   espionage cost/risk; the scan durations remain `[FIRST-CUT]` for the tuner.*
@@ -3802,6 +3803,21 @@ boundary so the later hex-map swap doesn't touch it.
     `tests/exploration.test.js` — the register-observation tests replaced by "a rival teaches the record
     nothing" (licensed, unlicensed, closed). Sim 2,133 → **2,140**, tools **78** (unchanged). Checklist items
     below.
+  - **(c1) client — the planet-manifest LAYOUT — ⤳ AS-BUILT 08-10-26 (client only; no fog, no engine, no
+    snapshot change).** `exploration-model.md` §10's two zones, to `docs/mockups/planet-manifest.html`, in
+    `client/game.html`. **Left (the index) is the archetype:** the title block, a new blurb block (eyebrow
+    "<Archetype> archetype" + the fixed text from the new `ARCHETYPE_BLURB` map — the nine `ARCHETYPE_LABEL`
+    keys, tinted from the existing `--c-<archetype>` palette tokens) and the existing hero art; the pv-tabs
+    and the node list are gone from it. **Main:** "Planet Manifest" + a stamp (the planet's node / slot
+    count, read off the seed geometry) over **two equal columns** — the Resources / Settlements tabs and
+    rows on the left (moved, not rewritten: each row's click is byte-identical — vacant → `openEstablishFor`
+    (deuterium → `openDeut`), own → `__openVentureManagement`, rival → `openNodeOverlay`), a blank
+    venture-detail panel on the right. One class, `planet-layout` on `#detail-screen`, set by `render()`,
+    switches it; the system manifest and the waystation view keep the index list. **No new number.**
+    **Proved:** headless on the dev rig (`seat-demo --seed 42` + a founded rival with one mine) — the layout,
+    all nine archetypes' blurbs, every row route, the tab switch, back-to-system and waystation-after-planet,
+    zero console errors; the **system manifest renders pixel-identical to `main`** (served the same state,
+    incl. a planet→back round trip). Sim **2,140**, tools **78** (both unchanged). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4850,6 +4866,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   1. **Node lockouts on rival-held ground.** Ruling 3 (06-10-26) shows a lockout "on a node the guild **knows** (its record) or on ground it **controls**". Built literally — unchanged code. With the leak removed the record never learns a rival's node, so a lockout on a rival's ground now shows **only to that rival**, though `geography.known` shows the node itself (ruling 11). Before this slice a viewer saw it once the node had been banked off the register. Confirm (hidden), or rule that "knows" includes the live controlled-system projection (a one-line change in `sim/fog.js` `isLockoutVisible`). Pinned both ways in `tests/rival-leak-removed.test.js` / `tests/fog.test.js`. **⤳ RULED 08-10-26 (design room): keep hidden — closed.** A lockout only bars a guild from *re-establishing* on that site; Gate 3 already bars establishing on rival-held ground, so a lockout there can never affect the viewer. Where it *could* matter — an unclaimed system the viewer may yet claim — it still shows, via `knowsNode` (its own survey) or `guildHolds`. The only case left hidden is the irrelevant one, so `isLockoutVisible` stays exactly as built.
   2. **Two rival cuts whose stated reason ruling 11 removed.** The rival guild row drops `homePlanetId`, and a rival system claim's landmark drops `terranHomeworldId` / `starterEligible` — each because it names or types "a planet inside a rival system, L1 not yet learned" (`sim/fog.js`; `ring` is dropped with them only to keep the row to L0). Under ruling 11 every planet's archetype of a controlled system IS shown, so the reason no longer holds. **Still hidden — no byte of either moved here.** Confirm, or lift them (lifting moves the per-guild view bytes, so it wants its own small slice). **⤳ RULED 08-10-26 (design room): keep hidden.** Allow-list discipline — a rival row widens only when a feature needs the field, and none does yet; both leak nothing either way, since a controlled system's archetypes are already shown. Minor follow-up: the `sim/fog.js` comment still justifying the hide via "L1 not yet learned" is now stale and can be tidied in a later slice.
   3. **Seams — not decisions, recorded so the next slices find them:** (a) the projection carries **archetype + nodes only**; ruling 11's "every settlement slot" lands with the settlement-surface slice (record `slots` track + this projection); (b) `known` does not mark **which** source an entry came from (surveyed vs live-because-controlled) — the client slice (c) can tell from the L0 `controllerGuildId`, but may want an engine-side flag if it should warn "you lose this view if control lapses"; (c) a planet surveyed to L2 and one known only at L1 differ in `known` only by `nodes` being non-empty — sound today (every planet on the seed has ≥ 1 node), worth a real level marker once slots exist.
+- **Planet-manifest layout slice (c1) (2.5, client) — items for a confirm** — *surfaced 08-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **The blank venture panel's copy.** Built verbatim from the mock: "Venture detail — A later pass. Selecting a site opens its Establish / Manage popup exactly as it does today." That sentence was written for the reviewer, and players now see it. Confirm, or supply player-facing copy (a text change only).
+  2. **Where the live screen and the mock differ, the live screen was kept.** The back button stays top-right of the index (the mock shows it top-left, in flow); the hero stays the live full-height art (the mock draws the base quarter-disc, without the shell's overrides); the main keeps its live padding and the rows their live height. Confirm, or rule the mock's treatment.
+  3. **The node / slot stamp sits close under "✕ Back to map".** It is the first right-aligned item in the main header, and the map-exit button floats above that corner (≈ 8 px clear at 1440 × 900; they do not overlap). Confirm, or rule a move.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**
