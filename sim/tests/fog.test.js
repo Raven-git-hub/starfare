@@ -12,14 +12,18 @@
 //      except the two galaxy-wide aggregate blocks, which are coarsened for EVERY viewer (ruling 1).
 //   4. THE FOG, ENUMERATED: in a two-guild galaxy the per-guild view differs from the god's-eye by
 //      exactly the hidden rival facts — every public key identical, the own rows identical.
-//   5. The brief's behaviours: rival stockpiles hidden / own full; an un-licensed rival node fogged; a
-//      rival's lapsed venture loses the live fact but the geography stays; transports, deliveries,
-//      builds, production and notices of a rival hidden; L0 for every system; the record resolved.
+//   5. The brief's behaviours: rival stockpiles hidden / own full; an un-licensed rival venture fogged;
+//      transports, deliveries, builds, production and notices of a rival hidden; L0 for every system.
+//      ⤳ RE-WRITTEN 08-10-26 to §4 ruling 11 (control ⇒ full L2, live): a CONTROLLED system — own or rival —
+//      shows every planet's archetype and every node, computed live from the seed + the claims, never from
+//      the record; it stays while the system is held and drops out when control lapses, leaving only what
+//      the viewer surveyed itself; an UNCONTROLLED frontier system shows only that; and the record is never
+//      written from a rival. (The byte proof of the removed leak: tests/rival-leak-removed.test.js.)
 //   7. The three RULINGS of 06-10-26 (the design room, on PR #167):
 //      (1) the galaxy-wide aggregates are coarsened to posted values, so a rival's stockpile, fuel hoard
 //          and credits are NOT derivable from the view (perturb them: the view does not move a byte);
 //      (2) a rival LICENSED venture shows its reputation, and still not its terms or recipe;
-//      (3) a node lockout shows only on a node the viewer knows or on ground it controls.
+//      (3) a node lockout shows only on a node the viewer knows (its RECORD) or on ground it controls.
 //   6. PURE and DETERMINISTIC: the view writes nothing, and the same (state, guildId) gives the same
 //      bytes across two runs and across save/restore (invariant 9).
 //   8. DEEP-SCAN ARRAYS (2.5 (b1)): a rival's arrays are in the view NOWHERE — not even the key — while
@@ -55,6 +59,7 @@ const {
   getL0Systems, isHexInBounds, seedLandmarkAtHex, getClaimRadius,
 } = require('../seed.js');
 const { kitAboard, placeCraft } = require('./kit-fixtures.js');
+const { reveal } = require('../exploration.js');
 
 const A = 'player-guild';
 const B = 'bot-guild';
@@ -69,6 +74,17 @@ const bytes = (snap) => JSON.stringify(snap);
 const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 const rowOf = (snap, id) => snap.guilds.find((g) => g.id === id);
 const tick = (s) => advance(s, []).state;
+
+// fullSurface(systemId) -> what §4 ruling 11 says a CONTROLLED system shows in `geography.known`: every planet's
+// archetype and every resource node's type, straight from the seed's own layout (settlement slots: not yet —
+// the settlement-surface slice adds them).
+function fullSurface(systemId) {
+  const out = {};
+  for (const p of getSystemLayout(systemId).planets) {
+    out[p.id] = { archetype: p.archetype, nodes: Object.fromEntries(p.resourceNodes.map((n) => [n.id, n.resourceType])) };
+  }
+  return out;
+}
 
 function ok(state, actions) {
   const { state: next, results } = A_.intake(state, actions);
@@ -344,37 +360,84 @@ test('rival TRANSPORTS are never shown: no vehicles on the rival row, no rival c
   }
 });
 
-test('an UN-LICENSED rival node stays fogged: in no rival-visible list, and written to no record', () => {
+test('an UN-LICENSED rival VENTURE stays fogged: the ground under it is shown, the venture on it is not', () => {
   const s = rivalGalaxy();
   const view = buildSnapshot(s, A);
   assert.equal(view.ventures.some((v) => v.id === 'b_mine_2'), false, 'not in ventures');
-  assert.equal(B_MINE_2 in view.occupancy, false, 'not in occupancy');
-  assert.equal(bytes(view).includes(B_MINE_2), false, 'its node id appears nowhere in A\'s view');
-  assert.equal(guildOf(s, A).exploration[B_PLANET].nodes[B_MINE_2], undefined, 'and A\'s record never learned it');
+  assert.equal(B_MINE_2 in view.occupancy, false, 'not in occupancy — nothing says the node is worked');
+  assert.equal(bytes(view).includes('b_mine_2'), false, 'the venture appears nowhere in A\'s view (L3, deferred)');
+  // Ruling 11: B controls the system, so the NODE is public ground — its type, like every node there.
+  assert.equal(view.geography.known[B_HOME][B_PLANET].nodes[B_MINE_2], 'titanium');
+  assert.equal(B_PLANET in guildOf(s, A).exploration, false, 'and A\'s record learned nothing of B\'s planet');
 });
 
-test('THE MARQUEE: a rival\'s lapsed venture loses the live fact but the geography stays', () => {
+test('THE MARQUEE (ruling 11): a rival-controlled system shows its WHOLE surface, live; a lapsed venture loses only the venture', () => {
   let s = rivalGalaxy();
-  // Licensed and observed: A's view shows the venture TYPE live, and the node's geography from the record.
+  // Licensed: A's view shows the venture TYPE on the register, and B's whole home system as ground.
   let view = buildSnapshot(s, A);
   const live = view.ventures.find((v) => v.id === 'b_mine');
   assert.equal(live.type, 'mining', 'the venture type is on the public register');
   assert.equal(live.planetArchetype, getPlanet(B_PLANET).archetype, 'with its planet\'s archetype');
   assert.equal(live.site.resourceType, 'titanium', 'and its node\'s type');
   assert.equal(view.occupancy[B_MINE], 'b_mine');
-  assert.deepEqual(view.geography.known[B_HOME][B_PLANET].nodes, { [B_MINE]: 'titanium' });
-  assert.equal(guildOf(s, A).exploration[B_PLANET].nodes[B_MINE], 1, 'learned at the end of the first tick');
+  // (a) EVERY planet's archetype and ALL nodes — not just the licensed one — because B controls the system.
+  assert.deepEqual(view.geography.known[B_HOME], fullSurface(B_HOME));
+  assert.ok(Object.keys(view.geography.known[B_HOME][B_PLANET].nodes).length > 2,
+    'every node of the planet — not just the licensed one, and the unlicensed one too — so "whole" is tested');
+  // (c) And none of it is from A's record: the record holds only A's own home, never a rival's node.
+  for (const planetId of Object.keys(guildOf(s, A).exploration)) assert.equal(getPlanet(planetId).systemId, A_HOME);
 
-  // B closes it. Two ticks later the live fact is gone; the geographic fact is not.
+  // B closes it. Two ticks later the venture is gone; the surface is not — B still controls the system.
   s = ok(s, [A_.createDecommissionVentureAction({ guildId: B, ventureId: 'b_mine' })]);
   s = tick(tick(s));
   view = buildSnapshot(s, A);
   assert.equal(view.ventures.some((v) => v.id === 'b_mine'), false, 'the venture is gone from the view');
   assert.equal(B_MINE in view.occupancy, false, 'and from occupancy');
-  assert.deepEqual(view.geography.known[B_HOME][B_PLANET], { archetype: getPlanet(B_PLANET).archetype, nodes: { [B_MINE]: 'titanium' } },
-    'but A still knows node and planet');
-  assert.equal(guildOf(s, A).exploration[B_PLANET].nodes[B_MINE], 1, 'and the record still holds it, first tick and all');
+  assert.deepEqual(view.geography.known[B_HOME], fullSurface(B_HOME), 'the ground stays while B holds it');
+  assert.equal(B_PLANET in guildOf(s, A).exploration, false, 'and still nothing was banked');
   assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+// The claims slice (Prefecture plant-and-claim) is not built, so a guild cannot yet come to hold — or lose — a
+// system other than its home. A claim row is pushed and removed by hand here, the same stand-in
+// tests/deep-scan-job.test.js uses, so the LIVE rule can be shown both ways.
+// FRONTIER: an unclaimed starter with at least three planets (A and B hold starters [0] and [1]), derived from
+// the seed so a regen carries the tests — several planets, so "only the one you surveyed" has others to leave out.
+const FRONTIER = getStarterSystems().map((x) => x.id)
+  .find((id) => id !== A_HOME && id !== B_HOME && getSystemLayout(id).planets.length >= 3);
+const FRONTIER_PLANET = getSystemLayout(FRONTIER).planets[0].id;
+const claimFor = (guildId, systemId, at) => ({ claimId: `claim_${guildId}_${systemId}`, ownerGuildId: guildId, landmarkId: systemId, landmarkKind: 'system', claimedAtTick: at, contested: false });
+
+test('ruling 11: the surface is LIVE — shown while ANY guild controls the system, gone when control lapses, leaving only what you surveyed', () => {
+  // A has surveyed ONE frontier planet to L1 (its archetype — no node), at the current tick.
+  const s = rivalGalaxy();
+  reveal(guildOf(s, A), { planetId: FRONTIER_PLANET }, s.tick);
+  const recordBefore = canonicalStringify(guildOf(s, A).exploration);
+  const surveyed = { [FRONTIER_PLANET]: { archetype: getPlanet(FRONTIER_PLANET).archetype, nodes: {} } };
+
+  // (b) Uncontrolled: only what A surveyed — one planet, archetype only.
+  assert.deepEqual(buildSnapshot(s, A).geography.known[FRONTIER], surveyed);
+  assert.equal(FRONTIER in buildSnapshot(s, B).geography.known, false, 'B surveyed nothing there, so B sees nothing past L0');
+
+  // (a) A RIVAL takes it: A sees the whole surface; so does B, its holder.
+  const rivalHeld = structuredClone(s);
+  rivalHeld.claims.push(claimFor(B, FRONTIER, s.tick));
+  assert.deepEqual(checkInvariants(rivalHeld, rivalHeld.tick), [], 'an honest state');
+  assert.deepEqual(buildSnapshot(rivalHeld, A).geography.known[FRONTIER], fullSurface(FRONTIER));
+  assert.deepEqual(buildSnapshot(rivalHeld, B).geography.known[FRONTIER], fullSurface(FRONTIER));
+  // (c) Seeing it wrote nothing: A's record is exactly what A surveyed.
+  assert.equal(canonicalStringify(guildOf(rivalHeld, A).exploration), recordBefore);
+
+  // The VIEWER takes it instead: its own system, at full L2, from the moment it holds it (§2).
+  const ownHeld = structuredClone(s);
+  ownHeld.claims.push(claimFor(A, FRONTIER, s.tick));
+  assert.deepEqual(buildSnapshot(ownHeld, A).geography.known[FRONTIER], fullSurface(FRONTIER));
+
+  // Control LAPSES (the claim row goes): back to exactly what A surveyed. Nothing was banked.
+  const lapsed = structuredClone(rivalHeld);
+  lapsed.claims = lapsed.claims.filter((c) => c.landmarkId !== FRONTIER);
+  assert.deepEqual(buildSnapshot(lapsed, A).geography.known[FRONTIER], surveyed);
+  assert.equal(FRONTIER in buildSnapshot(lapsed, B).geography.known, false, 'B, which held it, keeps nothing either');
 });
 
 test('a rival\'s deliveries, builds, production and notices are not in the view; your own are', () => {
@@ -438,7 +501,7 @@ test('a rival\'s array deploy moves NOT ONE BYTE of the viewer\'s view — the k
 
 // --- the scan job (2.5 (b2)): it rides the owner's array row, so it is never visible to a rival ----------
 
-const SCAN_TARGET = getStarterSystems()[2].id; // unclaimed in the rival galaxy (A and B hold [0] and [1])
+const SCAN_TARGET = FRONTIER; // the unclaimed frontier system (defined with the ruling-11 tests above)
 const queueL1 = (s) => ok(s, [A_.createQueueScanAction({ guildId: A, arrayId: `deepScanArray_${A}_01`, level: 'L1', targetSystemId: SCAN_TARGET })]);
 
 test('a SCAN JOB rides the owner\'s array row: the owner and the god\'s-eye see it; a rival sees neither the array nor the job', () => {
@@ -482,14 +545,20 @@ test('rival OUTPOSTS stay on the map — where and whose — and every CLAIM (th
   assert.equal(aHome.landmark.terranHomeworldId, getTerranHomeworld(A_HOME));
 });
 
-test('a rival system\'s interior planet ids appear NOWHERE in the view until the guild learns them', () => {
-  // Founded, no rival venture yet: A has learned nothing about B's home beyond L0.
+test('an UNCONTROLLED frontier system\'s planet ids appear NOWHERE in the view until the guild surveys them', () => {
   const { founded: s } = godsEyeScript();
   const text = bytes(buildSnapshot(s, A));
-  for (const planet of getSystemLayout(B_HOME).planets) {
-    assert.equal(text.includes(`"${planet.id}`), false, `B's planet ${planet.id} leaks into A's view (an id is L1 here)`);
+  for (const planet of getSystemLayout(FRONTIER).planets) {
+    assert.equal(text.includes(`"${planet.id}`), false, `frontier planet ${planet.id} leaks into A's view (an id is L1 here)`);
   }
-  assert.ok(bytes(buildSnapshot(s)).includes(`"${B_PLANET}"`), 'the god\'s-eye lens does carry it — so this test can fail');
+  // Survey one, and that one — only that one — appears; so this test can fail.
+  const surveyed = structuredClone(s);
+  reveal(guildOf(surveyed, A), { planetId: FRONTIER_PLANET }, surveyed.tick);
+  const after = bytes(buildSnapshot(surveyed, A));
+  assert.ok(after.includes(`"${FRONTIER_PLANET}"`));
+  for (const planet of getSystemLayout(FRONTIER).planets.slice(1)) assert.equal(after.includes(`"${planet.id}`), false);
+  // A RIVAL-controlled system is the other way round (ruling 11): its planets are public ground.
+  assert.ok(text.includes(`"${B_PLANET}"`), 'B\'s home planets are in A\'s view the moment B holds the system');
 });
 
 test('geography: L0 for EVERY system (position, planet count, controller) — never fogged', () => {
@@ -512,24 +581,36 @@ test('geography: L0 for EVERY system (position, planet count, controller) — ne
   assert.equal(bytes(systems).includes('archetype'), false);
 });
 
-test('geography: `known` is exactly the record, resolved through the seed — and nothing more', () => {
+test('geography: `known` is exactly the record ∪ every controlled system, resolved through the seed — nothing more', () => {
+  // A has also surveyed one frontier planet in full (its archetype and every node), so all three kinds of
+  // entry are present: own home (record AND control — one entry, merged), rival home (control only), and a
+  // frontier planet (record only).
   const s = rivalGalaxy();
+  reveal(guildOf(s, A), { planetId: FRONTIER_PLANET }, s.tick);
+  for (const n of getSystemLayout(FRONTIER).planets[0].resourceNodes) reveal(guildOf(s, A), { nodeId: n.id }, s.tick);
   const { known } = buildSnapshot(s, A).geography;
-  const rec = guildOf(s, A).exploration;
-  const flat = {};
+
+  // Every entry is a seed fact, filed under its own system.
   for (const [systemId, planets] of Object.entries(known)) {
     for (const [planetId, entry] of Object.entries(planets)) {
       assert.equal(getPlanet(planetId).systemId, systemId);
       assert.equal(entry.archetype, getPlanet(planetId).archetype);
       for (const [nodeId, type] of Object.entries(entry.nodes)) assert.equal(type, getSite(nodeId).resourceType);
-      flat[planetId] = Object.keys(entry.nodes).sort();
     }
   }
-  assert.deepEqual(Object.keys(flat).sort(), Object.keys(rec).sort(), 'the same planets as the record');
-  for (const planetId of Object.keys(rec)) assert.deepEqual(flat[planetId], Object.keys(rec[planetId].nodes).sort());
-  // A knows its home fully, one rival planet partially (one node), and no other rival planet.
-  assert.deepEqual(Object.keys(known).sort(), [A_HOME, B_HOME].sort());
-  assert.deepEqual(Object.keys(known[B_HOME]), [B_PLANET]);
+  // Exactly the union, and nothing more.
+  assert.deepEqual(Object.keys(known), [A_HOME, B_HOME, FRONTIER].sort(), 'the two controlled systems + the one surveyed');
+  assert.deepEqual(known[A_HOME], fullSurface(A_HOME), 'own home: record and control agree, merged into one');
+  assert.deepEqual(known[B_HOME], fullSurface(B_HOME), 'rival home: control only, the whole surface');
+  assert.deepEqual(known[FRONTIER], { [FRONTIER_PLANET]: fullSurface(FRONTIER)[FRONTIER_PLANET] }, 'frontier: only the surveyed planet');
+
+  // Sorted at every level, whatever order the two sources met the keys in (invariant 9).
+  const sorted = (keys) => [...keys].sort();
+  assert.deepEqual(Object.keys(known), sorted(Object.keys(known)));
+  for (const planets of Object.values(known)) {
+    assert.deepEqual(Object.keys(planets), sorted(Object.keys(planets)));
+    for (const entry of Object.values(planets)) assert.deepEqual(Object.keys(entry.nodes), sorted(Object.keys(entry.nodes)));
+  }
 });
 
 // --- 7. the three rulings of 06-10-26 ------------------------------------------------------------------
@@ -618,8 +699,8 @@ test('RULING 2: a rival LICENSED venture shows its reputation; its terms and rec
   assert.equal(refinery.planetArchetype, getPlanet(B_PLANET).archetype);
 });
 
-// Three lockouts: B's OBSERVED licensed mine (A knows the node), B's licensed mine torn down between
-// two ticks (never observed — A does not know it), and A's own torn-down mine (A controls the ground).
+// Three lockouts: two on B's ground — B_MINE (licensed, ticked, then torn down) and B_MINE_2 (licensed and torn
+// down with no tick between) — and A's own torn-down mine on A's ground.
 function lockoutGalaxy() {
   const aMine = `${getTerranHomeworld(A_HOME)}_n01`;
   let s = ok(createZeroState(), [
@@ -630,14 +711,12 @@ function lockoutGalaxy() {
     A_.createEstablishVentureAction({ guildId: B, ventureId: 'b_seen', siteId: B_MINE, assetId: `asset_${B}_miner_01`, resourceType: 'titanium', productionRate: 5 }),
     A_.createApplyForLicenceAction({ guildId: B, ventureId: 'b_seen', committedOutputPct: 1, windowDays: 7 }),
   ]);
-  s = tick(s); // A observes B_MINE on the register
+  s = tick(s); // on the register at a tick's end (before ruling 11, this is when A banked the node)
   s = ok(s, [
     A_.createDecommissionVentureAction({ guildId: B, ventureId: 'b_seen' }),
-    // Licensed and torn down with no tick between: never on the register at a tick.
     A_.createEstablishVentureAction({ guildId: B, ventureId: 'b_unseen', siteId: B_MINE_2, assetId: `asset_${B}_miner_02`, resourceType: 'titanium', productionRate: 5 }),
     A_.createApplyForLicenceAction({ guildId: B, ventureId: 'b_unseen', committedOutputPct: 1, windowDays: 7 }),
     A_.createDecommissionVentureAction({ guildId: B, ventureId: 'b_unseen' }),
-    // A's own, the same way — so B never learns A's node either.
     A_.createEstablishVentureAction({ guildId: A, ventureId: 'a_mine', siteId: aMine, assetId: `asset_${A}_miner_01`, resourceType: 'titanium', productionRate: 5 }),
     A_.createApplyForLicenceAction({ guildId: A, ventureId: 'a_mine', committedOutputPct: 1, windowDays: 7 }),
     A_.createDecommissionVentureAction({ guildId: A, ventureId: 'a_mine' }),
@@ -645,19 +724,28 @@ function lockoutGalaxy() {
   return { s, aMine };
 }
 
-test('RULING 3: a lockout on an UN-KNOWN rival node is not in the view; known or own-ground lockouts are', () => {
+test('RULING 3: a lockout shows on a node the viewer\'s RECORD knows or on ground it controls — nowhere else', () => {
   const { s, aMine } = lockoutGalaxy();
   const lockedSites = (snap) => snap.nodeLockouts.map((l) => l.siteId).sort();
   assert.deepEqual(lockedSites(buildSnapshot(s)), [aMine, B_MINE, B_MINE_2].sort(), 'the operator sees all three');
   assert.deepEqual(checkInvariants(s, s.tick), []);
 
+  // A: only its own ground. B's two lockouts are hidden although `geography.known` shows both NODES (ruling 11)
+  // — "knows" in ruling 3 is the record, and since ruling 11 the record never learns a rival's node. Whether
+  // it should follow the live projection instead is OPEN on the roadmap's decision checklist; hidden until ruled.
   const aView = buildSnapshot(s, A);
-  assert.deepEqual(lockedSites(aView), [aMine, B_MINE].sort(), 'A: its own ground + the rival node it learned');
-  assert.equal(bytes(aView).includes(B_MINE_2), false, 'the never-observed rival node appears NOWHERE in A\'s view');
+  assert.deepEqual(lockedSites(aView), [aMine]);
+  assert.ok(B_MINE in aView.geography.known[B_HOME][B_PLANET].nodes, 'the node itself IS shown as ground');
 
   const bView = buildSnapshot(s, B);
-  assert.deepEqual(lockedSites(bView), [B_MINE, B_MINE_2].sort(), 'B: both on its own ground, and not A\'s unseen node');
-  assert.equal(bytes(bView).includes(aMine), false);
+  assert.deepEqual(lockedSites(bView), [B_MINE, B_MINE_2].sort(), 'B: both, on its own ground — and not A\'s');
+
+  // The RECORD half of the rule still works: a node A's own record knows shows its lockout. (A stand-in for a
+  // survey A made before B held the ground — B_MINE written straight into A's record through `reveal`.)
+  const surveyed = structuredClone(s);
+  reveal(guildOf(surveyed, A), { nodeId: B_MINE }, 0);
+  assert.deepEqual(lockedSites(buildSnapshot(surveyed, A)), [aMine, B_MINE].sort());
+
   // Each visible row is the god's-eye row, unchanged.
   for (const l of aView.nodeLockouts) assert.ok(buildSnapshot(s).nodeLockouts.some((fl) => bytes(fl) === bytes(l)));
 });
