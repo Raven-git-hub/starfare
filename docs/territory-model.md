@@ -110,10 +110,12 @@ machinery, and unclaimed mining with no jeopardy would just be free mining. Unti
 
 **You can't claim an unexplored system *(the exploration coupling, 05-10-26)*.** The claim gate
 now reads the guild's **exploration record** (`docs/exploration-model.md` §8): a Prefecture may be
-planted only on a **planet the guild knows at ≥ 1 resource node** in its record — however that
-fact was learned (its own Deep Scan Array survey, or the public record of a rival's lapsed
-licensed venture). Knowing a node on planet P opens the gate for P, not for a different planet in
-the same system; planting then reveals the rest of P's nodes. This is **recorded here by the
+planted only on a **planet the guild knows at ≥ 1 settlement slot** in its record (*REVISED
+07-10-26 from "≥ 1 resource node"* — the flag plants **on** a settlement slot, so the gate reads a
+known slot; `exploration-model.md` §4 rulings 7 & 10) — however that fact was learned (its own
+surface survey, or the public record of a rival's lapsed licensed **factory** on that slot). Knowing
+a settlement slot on planet P opens the gate for P, not for a different planet in the same system;
+planting then reveals the rest of P's surface. This is **recorded here by the
 exploration slice (roadmap 2.5) and ENFORCED by the Prefecture / claims slice that follows it** —
 the gate's data source (the record) exists from birth so the claim action is never retrofitted
 onto a fully-visible galaxy. It does not change the claim *row* (still `landmarkKind: 'system'`,

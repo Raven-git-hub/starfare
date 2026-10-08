@@ -44,7 +44,10 @@ depends on the guild's situation.
 - **L1 — a system's planet archetypes.** Cut by **either**: a transport sitting idle in the
   system (instant, but costs the trip — fuel + travel time), **or** a Deep Scan Array L1 scan
   of the system (no trip, but takes time). The player picks whichever is cheaper for the case.
-- **L2 — a system's resource nodes (count + type), per planet.** Cut **only** by a Deep Scan
+- **L2 — a planet's whole *surface* — its resource nodes (count + type) *and* its settlement
+  slots (count), per planet.** One L2 survey reveals the whole surface at once — ores and
+  buildable ground together (*RULED 07-10-26, §4 ruling 10*: settlements are learnable surface,
+  not a free archetype fact). Cut **only** by a Deep Scan
   Array, scanning one planet at a time (time-based). A transport cannot do it — it has no
   survey equipment, only orbital observation. *(Later also by a Prefecture's own in-system
   scan, §4, and by L3 espionage — both deferred.)*
@@ -119,6 +122,11 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
 > licensed by an action is observed at the next tick's end, so one licensed and closed between two
 > ticks was never on the register at a tick and teaches nothing. A guild never learns from its own
 > ventures. An unlicensed rival venture writes nothing. Closing a licensed venture undoes nothing.
+> *(⤳ SUPERSEDED-IN-PART 07-10-26, §4 ruling 10: a settlement slot **is** learnable surface now, so a
+> rival's licensed **factory** on a slot will teach **that slot** into the record — not only the
+> archetype — the direct parallel to a licensed miner teaching its node. **Design-ahead, NOT built
+> here**; the settlement-surface slice adds it to `observePublicRegister`. Until then the built
+> behaviour is as described: a slot-venture teaches only the planet's archetype.)*
 
 ## 4. The rulings
 
@@ -140,11 +148,15 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
    at L2** until surveyed — owning a system does not auto-survey it. (This refines, and is the
    precise form of, §2's "own systems: everything": own systems show everything you have
    *learned*, plus L0/L1 of the whole system on claim; L2 of the far planets is earned.)
-7. **The claim gate is per-planet.** A guild may plant a Prefecture on a planet **iff it knows at
-   least one of that planet's nodes** in its record — however that one node was learned (a scan,
-   or a rival's lapsed licensed venture). Planting then reveals the **rest of that planet's**
-   nodes. Knowing a node on planet P lets you settle P, not a different planet Q in the same
-   system. (See §8 for the coupling the Prefecture slice enforces.)
+7. **The claim gate is per-planet, and reads a *settlement slot*.** A guild may plant a Prefecture
+   on a planet **iff it knows at least one of that planet's settlement slots** in its record
+   (*REVISED 07-10-26 from "≥ 1 resource node"* — the Prefecture plants **on** a settlement slot, so
+   the gate reads the same kind of surface it lands on; §4 ruling 10). However that one slot was
+   learned (its own surface survey, or the public record of a rival's lapsed licensed **factory** on
+   that slot). Planting then reveals the **rest of that planet's surface** — its nodes and its other
+   slots. Knowing a slot on planet P lets you settle P, not a different planet Q in the same system;
+   knowing only a resource **node** of P (e.g. a rival's leaked miner) does **not** open the gate.
+   (See §8 for the coupling the Prefecture slice enforces.)
 8. **A transport reveals L1 only.** A craft sitting **idle in an unclaimed system** reveals that
    system's archetypes (all planets) instantly, for the price of the trip. It never reveals nodes
    (no survey equipment). **Passing through** a system's hexes reveals nothing — only coming to
@@ -157,6 +169,32 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
    the numbers are `[FIRST-CUT]`, deferred to `phase-1-tuning.md`. **The exploration slice builds
    none of this** — it only keeps the record's write path source-agnostic (§7) so the Prefecture
    slice can add itself as a source.
+
+**Settled 07-10-26:**
+
+10. **Settlements are learnable *surface* — the L2 survey maps the whole surface at once.
+    *(RULED 07-10-26.)*** A planet's **settlement slots** are not a free archetype fact; they are
+    discovered the same way its resource nodes are — by surveying the surface. Narratively, an L2
+    survey walks the ground for both the ore (resource nodes) **and** the buildable sites for
+    factories (settlement slots). Consequences — each **design-ahead, NONE built in roadmap 2.5
+    (a)/(b); built by the *settlement-surface* slice and the *Prefecture / claims* slice**:
+    - **One reveal covers the whole surface.** A per-planet L2 scan reveals every resource node
+      **and** every settlement slot of that planet together (§1). L1 (archetype) still shows no
+      surface. Founding's `revealSystem` likewise seeds the home system's slots, not only its nodes.
+    - **The record gains a `slots` track** beside `nodes` (§7), so a known settlement slot becomes
+      representable — the datum the claim gate reads.
+    - **The public-register leak extends to slots.** A rival's licensed **factory** sits on a slot;
+      observing it banks **that slot** permanently (learn-once), the exact parallel to a licensed
+      miner banking its node. This **supersedes** the §3 AS-BUILT line "a slot is not a node →
+      teaches only the archetype." An **unlicensed** factory still teaches nothing.
+    - **The claim gate reads a *settlement slot*, not a resource node** (rulings 7 & §8; mirrored in
+      `territory-model.md` §4): the Prefecture lands on a settlement slot, so you may claim planet P
+      **iff you know ≥ 1 settlement slot of P** — however learned (your own survey, or a rival's
+      lapsed licensed factory). Knowing only a resource node (a rival's leaked miner) does not open
+      the gate. This dissolves the latent oddity that the old gate read a *node* while the flag plants
+      on a *slot*.
+    None of this is built by the exploration slice; it is recorded so the settlement-surface and
+    Prefecture slices read the real ruling, not a paraphrase (the seam rule).
 
 ## 5. The Deep Scan Array
 
@@ -372,6 +410,12 @@ stands on.
   `checkExplorationRecord` (`sim/invariants.js`: real planets, real resource nodes on their own
   planet, ticks in `[0, now]` with a node never before its planet, no empty record). Learn-once is a
   two-tick property, so it is pinned across scripted runs in `tests/exploration.test.js`.
+  **⤳ DESIGN-AHEAD 07-10-26 (§4 ruling 10, NOT built):** the shape grows a per-planet **`slots`**
+  track beside `nodes` — `{ [planetId]: { tick, nodes: {…}, slots: { [slotId]: tick } } }` — so a
+  known settlement slot is representable (the claim gate reads it; §8). Revealed with its node
+  siblings by a surface survey, or one slot at a time by a rival's licensed factory (the
+  public-register leak, §3). `checkExplorationRecord` extends to guard real slots on their own
+  planet. The settlement-surface slice builds it; until then the record is nodes-only, as above.
 - **`buildSnapshot` becomes per-guild.** Today `buildSnapshot(state)` (`sim/snapshot.js`) is PURE
   and sees every guild's data, producing one shared view. It becomes **`buildSnapshot(state,
   guildId)`**, producing that guild's filtered view = L0 ∪ record ∪ live rules (§3). The
@@ -451,9 +495,11 @@ stands on.
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
 The one new ruling this slice **records** for the next slice to **enforce**: a guild may plant a
-Prefecture on a system **only on a planet that is in its exploration record at ≥ 1 node** (§4
-ruling 7) — however the fact entered the record (its own scan, or the public record of a rival's
-lapsed venture). This coupling is **not** in the repo's Prefecture model today (`design.md` §2,
+Prefecture on a system **only on a planet that is in its exploration record at ≥ 1 *settlement
+slot*** (§4 rulings 7 & 10; *REVISED 07-10-26 from "≥ 1 node"* — the flag plants on a settlement
+slot, so the gate reads a known slot, not a known resource node) — however the fact entered the
+record (its own surface survey, or the public record of a rival's lapsed licensed factory on that
+slot). This coupling is **not** in the repo's Prefecture model today (`design.md` §2,
 `territory-model.md` §4). **This slice does not build the Prefecture** — it records the gate so
 the Prefecture / claims slice (next) reads the real ruling, and so the exploration record is
 already the gate's data source from birth.
@@ -462,7 +508,10 @@ already the gate's data source from birth.
 > now exists from founding, keyed per planet exactly as ruling 7 needs it, and `knowsNode(guild,
 > nodeId)` / `exploration[planetId].nodes` (`sim/exploration.js`) is the read the Prefecture slice
 > will gate on ("knows ≥ 1 node of planet P"). Nothing calls it as a gate yet: the claim and
-> establish validations are untouched.
+> establish validations are untouched. *(⤳ SUPERSEDED-IN-PART 07-10-26, §4 ruling 10: the gate moves
+> to a **settlement slot**, so the enforced read becomes `knowsSlot(guild, slotId)` over a new `slots`
+> track beside `nodes` — both **design-ahead, NOT built here**; the settlement-surface slice adds the
+> track and the public-register factory leak, the Prefecture slice gates on it.)*
 
 ## 9. Scope & the vertical split
 
@@ -484,3 +533,37 @@ reveal-to-record + completion revalidation; then (c) **client** — the fog UI (
 L0, scanned/known systems reveal L1/L2, rival systems show the public record). Keep the tick
 central: the client renders its guild's snapshot and computes no game number. Never invent a
 number.
+
+## 10. How the levels render — the manifests, per level *(design for slice (c), 07-10-26)*
+
+The redesigned planet manifest has two zones, and the fog levels map straight onto them: a **left
+panel that is the archetype** (artwork + a fixed per-archetype blurb — this is the L1 fact) and a
+**main area split into two equal columns** — the left column the **surface lists** (the Resources
+and Settlements sub-tabs with their resource-node / settlement-slot rows — the L2 facts), the right
+column a venture stat panel (blank this pass). So a guild's current level on a planet *is* what
+renders:
+
+- **L0 — unexplored.** The **planet** manifest cannot be opened at all. The **system** manifest
+  opens in a stripped form — planet count, controller, position (the only L0 facts), every planet
+  marked unsurveyed — with no drill-in.
+- **L1 — archetype known.** The planet manifest opens; the **left panel renders in full** (the art
+  + archetype blurb — L1 is exactly this). The main's **Resources and Settlements lists are
+  withheld** (surface is L2); in their place, an **assign-survey** affordance that queues an **L2
+  job on one of the guild's Deep Scan Arrays** against this planet (the L1→L2 chain, §5) —
+  **absent/disabled if the guild owns no array**. The scan is the array's job, not a planet-local
+  action; the page is only its entry point. The right (venture) panel stays blank.
+- **L2 — surface known.** Both the **Resources** (nodes) and **Settlements** (slots) lists render
+  in full. The surface rows keep their **existing behaviour**, merely relocated into the main — a
+  vacant row opens Establish, the guild's own venture opens Manage, a rival's opens the node
+  overlay. A row's **Establish** is live **only if the guild holds the system** (Gate 3,
+  `territory-model.md` §4 — establishment needs control, not merely knowledge); in a surveyed but
+  unheld system the rows show but Establish is inert, the real affordance being to **claim the
+  system** (the §8 gate permits it once ≥ 1 settlement slot of a planet is known). The right venture
+  panel is a later design pass.
+- **L3 — espionage. Deferred.** Rival interiors — un-licensed nodes/slots, stockpiles — stay fogged.
+
+**On the galaxy map (unchanged by fog — RULED 05-10-26).** The map geometry never changes with a
+system's L1/L2 state. The only map change is **ownership colour** — the player's systems in the
+current cyan, **any** rival's in a single bright pink (no per-rival distinction), unclaimed neutral
+— plus a **slowly-rotating radar indicator** on a hex that carries an **active scan**. All L1/L2
+detail lives in the system and planet manifests, never on the map.
