@@ -1583,6 +1583,44 @@ select.field{appearance:none; cursor:pointer;}
 #detail-screen .list-row.tab .tri-group{ right:52px!important; }  /* settlement triangles inset ~4 columns to their left */
 #detail-screen .pip.tri{ width:0!important; height:0!important; background:transparent!important; border-radius:0!important; box-shadow:none!important; border-left:3.5px solid transparent; border-right:3.5px solid transparent; border-bottom:7px solid rgba(232,223,200,0.82); }
 
+/* ===== planet manifest layout (exploration 2.5 (c1); docs/mockups/planet-manifest.html) =====
+   In planet view the index IS the archetype (art + a fixed blurb), and the surface lists move
+   into the main, beside a venture panel — two equal columns (docs/exploration-model.md §10).
+   render() puts .planet-layout on #detail-screen for the planet view only, so the system and
+   waystation views keep their index list exactly as before. */
+#detail-screen .arch-blurb, #detail-screen .pm-split, #detail-screen #mainStamp{ display:none; }
+#detail-screen.planet-layout .arch-blurb{ display:block; }
+#detail-screen.planet-layout .pm-split{ display:grid; }
+#detail-screen.planet-layout #mainStamp{ display:inline; }
+#detail-screen.planet-layout .stack-wrap, #detail-screen.planet-layout .empty-state{ display:none; }
+/* the blurb: tinted by its archetype's palette tokens (above). color-mix gives the token at a
+   given strength over transparent, so one rule serves all nine archetypes. */
+#detail-screen .arch-blurb{ position:relative; z-index:3; margin:18px 20px 0; padding:15px 17px; border:1px solid var(--line); border-left:3px solid var(--arch); border-radius:10px;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--arch) 12%, transparent), color-mix(in srgb, var(--arch) 2%, transparent)); }
+#detail-screen .arch-blurb .eyebrow{ display:flex; align-items:center; gap:8px; font-size:10px; color:var(--arch-l); margin:0 0 9px; }
+#detail-screen .arch-blurb .pdot{ width:10px; height:10px; border-radius:50%; background:radial-gradient(circle at 35% 30%, var(--arch-l), var(--arch-d)); box-shadow:0 0 10px color-mix(in srgb, var(--arch-l) 50%, transparent); }
+#detail-screen .arch-blurb p{ margin:0; font-size:12.5px; line-height:1.6; color:#D9D2BD; }
+#detail-screen .arch-blurb.arch-rocky{ --arch:var(--c-rocky); --arch-l:var(--c-rocky-l); --arch-d:var(--c-rocky-d); }
+#detail-screen .arch-blurb.arch-terran{ --arch:var(--c-terran); --arch-l:var(--c-terran-l); --arch-d:var(--c-terran-d); }
+#detail-screen .arch-blurb.arch-oceanic{ --arch:var(--c-oceanic); --arch-l:var(--c-oceanic-l); --arch-d:var(--c-oceanic-d); }
+#detail-screen .arch-blurb.arch-ice{ --arch:var(--c-ice); --arch-l:var(--c-ice-l); --arch-d:var(--c-ice-d); }
+#detail-screen .arch-blurb.arch-gasGiant{ --arch:var(--c-gasGiant); --arch-l:var(--c-gasGiant-l); --arch-d:var(--c-gasGiant-d); }
+#detail-screen .arch-blurb.arch-molten{ --arch:var(--c-molten); --arch-l:var(--c-molten-l); --arch-d:var(--c-molten-d); }
+#detail-screen .arch-blurb.arch-desert{ --arch:var(--c-desert); --arch-l:var(--c-desert-l); --arch-d:var(--c-desert-d); }
+#detail-screen .arch-blurb.arch-irradiated{ --arch:var(--c-irradiated); --arch-l:var(--c-irradiated-l); --arch-d:var(--c-irradiated-d); }
+#detail-screen .arch-blurb.arch-crystalline{ --arch:var(--c-crystalline); --arch-l:var(--c-crystalline-l); --arch-d:var(--c-crystalline-d); }
+/* the split: surface lists | venture panel. The tabs and rows keep their own classes; only
+   the index gutter they carried there is dropped, since the column supplies its own. */
+#detail-screen .pm-split{ grid-template-columns:1fr 1fr; flex:1; }
+#detail-screen .pm-col.sites{ border-right:1px solid var(--line); padding-right:28px; }
+#detail-screen .pm-col.sites .pv-tabs{ padding:18px 0 10px; }
+#detail-screen .pm-col.sites .stack{ padding:0; }
+#detail-screen .pm-col.blank{ padding-left:30px; display:flex; align-items:center; justify-content:center; }
+#detail-screen .blank-ph{ text-align:center; color:var(--ink-faint); }
+#detail-screen .blank-ph .g{ width:44px; height:44px; margin:0 auto 10px; border:1px solid var(--line); border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:17px; color:var(--brass-dim); }
+#detail-screen .blank-ph .t{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; }
+#detail-screen .blank-ph .s{ font-size:11px; margin-top:8px; max-width:30ch; line-height:1.6; }
+
 /* volume slider in the top bar */
 #volSlider{ -webkit-appearance:none; appearance:none; width:82px; height:3px; background:var(--line-bright); border-radius:2px; outline:none; cursor:pointer; }
 #volSlider::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:11px; height:11px; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 0 6px rgba(67,217,200,.5); }
@@ -3123,7 +3161,11 @@ select.field{appearance:none; cursor:pointer;}
         <div class="title-sub" id="titleSub"></div>
       </div>
     </div>
-    <div class="pv-tabs" id="pvTabs" style="display:none"></div>
+    <!-- Planet view only: the archetype's fixed blurb, over the hero art. -->
+    <div class="arch-blurb" id="archBlurb">
+      <div class="eyebrow"><span class="pdot"></span><span id="archEyebrow"></span></div>
+      <p id="archText"></p>
+    </div>
 
     <div class="stack-wrap">
       <div class="stack" id="stack"></div>
@@ -3137,11 +3179,27 @@ select.field{appearance:none; cursor:pointer;}
   <div class="main">
     <div class="main-header">
       <h2 id="mainHeading">System Manifest</h2>
+      <span class="stamp" id="mainStamp"></span>
     </div>
     <div class="empty-state">
       <div class="empty-glyph">§</div>
       <div class="empty-title">No further survey data</div>
       <p id="emptyCopy">Territory, tolls, and venture data for this system have not yet been charted. Select a body from the index to continue.</p>
+    </div>
+    <!-- Planet view only (docs/exploration-model.md §10): two equal columns — the
+         surface lists on the left, the venture-detail panel on the right (blank this pass). -->
+    <div class="pm-split">
+      <div class="pm-col sites">
+        <div class="pv-tabs" id="pvTabs" style="display:none"></div>
+        <div class="stack" id="siteStack"></div>
+      </div>
+      <div class="pm-col blank">
+        <div class="blank-ph">
+          <div class="g">§</div>
+          <div class="t">Venture detail</div>
+          <div class="s">A later pass. Selecting a site opens its Establish / Manage popup exactly as it does today.</div>
+        </div>
+      </div>
     </div>
   </div>
   </div>
@@ -5857,6 +5915,19 @@ select.field{appearance:none; cursor:pointer;}
 /* ===== System / Planet detail screen (reworked) — window.openSystemDetail(seedSystem) ===== */
 (function () {
 const ARCHETYPE_LABEL = { rocky:'Rocky', terran:'Terran', oceanic:'Oceanic', ice:'Ice', gasGiant:'Gas Giant', molten:'Molten', desert:'Desert', irradiated:'Irradiated', crystalline:'Crystalline' };
+// The fixed blurb the planet manifest's left panel shows for each archetype
+// (docs/exploration-model.md §10) — flavour text only, keyed exactly as ARCHETYPE_LABEL.
+const ARCHETYPE_BLURB = {
+  rocky: "A dense, geologically stable world of exposed bedrock and shallow crust, with a thin or absent atmosphere offering little protection at the surface. Its uniform mineral composition yields dependable, if unremarkable, deposits of titanium, copper, lead, and silica. Stability rather than abundance is this planet's defining trait, making it a good surface to settle as well as to mine.",
+  terran: "A rich, biodiverse world with a breathable atmosphere and a stable climate suited to permanent settlement. Crustal surveys show an unusually complete spread of common and precious ores alike, from titanium and copper through to veins of gold, silver, and tungsten. Few worlds offer this range of accessible resources alongside genuine habitability.",
+  oceanic: "A water-dominant world whose global ocean regulates a temperate, life-sustaining atmosphere. Deep-sea vents and dissolved compounds can be drawn from its organic-rich waters, though settlement is confined to a few scattered holdings. There are sufficient concentrations of deuterium in its seawater to make the venture worth our while.",
+  ice: "A frozen world locked beneath kilometres of nitrogen and ammonia ice, with only faint traces of subsurface warmth. Its atmosphere, where one exists at all, is a thin haze of frozen volatiles rather than anything breathable. Sublimation processes slowly release helium and nitrogen at the surface, making extraction viable despite the extreme cold.",
+  gasGiant: "A massive envelope of hydrogen and helium with no solid surface to speak of, its interior pressures rising to extremes no vessel could survive. Extraction relies entirely on atmospheric skimming, drawing off pockets of usable gas suspended in its turbulent bands. Its scale is matched only by its inhospitality.",
+  molten: "A young, volcanically active world whose surface remains partially liquid, wracked by constant eruption and reshaping. The extreme heat forges concentrated seams of precious metals near the surface — deposits that would take eons to form under gentler conditions elsewhere. No Guild could hope to settle here, but there is great reward if we try and succeed.",
+  desert: "An arid world stripped of surface water, its atmosphere thin and its climate given to extreme temperature swings. What it offers the miner is slim: shallow, scattered seams of titanium and silica, and little else worth the dig. But its wind-scoured plains run flat and open to the horizon — ground enough to raise settlement after settlement, and rare among worlds for how much can be built on it.",
+  irradiated: "A world scoured by radiation levels far beyond safe tolerance, its atmosphere thin, poisoned, or entirely stripped away by whatever catastrophe left it this way. The same conditions that render it uninhabitable have concentrated rare earth elements — neodymium, palladium — in exposed surface deposits. Extraction demands shielded equipment and a willingness to gamble exposure for reward.",
+  crystalline: "A world built on an unusual silica-based crystalline lattice rather than conventional rock, its surface refracting light in ways that suggest a fundamentally different geological history. This rare structure occasionally traps veins of neodymium alongside its native silica, though yields remain low and unpredictable. Scarcer than any other archetype, it is as much a scientific curiosity as an economic one.",
+};
 const RESOURCE_LABEL = { titanium:'Titanium', copper:'Copper', lead:'Lead', silica:'Silica', lithium:'Lithium', polymers:'Polymers', carbon_products:'Carbon Products', nitrogen:'Nitrogen', gold:'Gold', silver:'Silver', tungsten:'Tungsten', deuterium:'Deuterium', ammonia:'Ammonia', helium:'Helium', xenon:'Xenon', neodymium:'Neodymium', palladium:'Palladium' };
 const ROMAN = ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV'];
 function toRoman(n){ return ROMAN[n] || String(n); }
@@ -5870,10 +5941,15 @@ const el = {
   controller: document.getElementById('controllerName'),
   dropdown: document.getElementById('sysDropdown'),
   pvTabs: document.getElementById('pvTabs'),
-  stack: document.getElementById('stack'),
+  stack: document.getElementById('stack'),           // the index list (system / waystation views)
+  siteStack: document.getElementById('siteStack'),   // the planet's surface rows, in the main
+  archBlurb: document.getElementById('archBlurb'),
+  archEyebrow: document.getElementById('archEyebrow'),
+  archText: document.getElementById('archText'),
   hero: document.getElementById('hero'),
   backBtn: document.getElementById('backBtn'),
   mainHeading: document.getElementById('mainHeading'),
+  mainStamp: document.getElementById('mainStamp'),
   emptyCopy: document.getElementById('emptyCopy'),
   overlay: document.getElementById('overlay'),
   overlayTitle: document.getElementById('overlayTitle'),
@@ -6035,6 +6111,12 @@ function renderPlanetView(){
   el.titleSub.textContent = ARCHETYPE_LABEL[p.archetype] + ' \u00b7 ' + p.id;
   if (el.dropdown) el.dropdown.style.display='none';
 
+  // The index is the archetype: its fixed blurb over the hero art (the hero is set below).
+  // The arch-<archetype> class picks the blurb's tint from the palette tokens.
+  el.archBlurb.className = 'arch-blurb arch-' + p.archetype;
+  el.archEyebrow.textContent = ARCHETYPE_LABEL[p.archetype] + ' archetype';
+  el.archText.textContent = ARCHETYPE_BLURB[p.archetype];
+
   el.pvTabs.style.display='';
   el.pvTabs.innerHTML =
     '<button class="pv-tab'+(view.planetTab==='resources'?' active':'')+'" data-t="resources">Resources</button>' +
@@ -6046,7 +6128,7 @@ function renderPlanetView(){
   // Every row is seed GEOMETRY joined to LIVE occupancy by the site's id. There is
   // no establish control here — establishing is the next slice; a vacant site is
   // reported honestly, not made actionable.
-  el.stack.innerHTML='';
+  el.siteStack.innerHTML='';
   if (view.planetTab==='resources'){
     p.nodes.forEach(function(node,i){
       const state = siteState(node.id);
@@ -6061,7 +6143,7 @@ function renderPlanetView(){
           resource:node.resourceType, resLabel:RESOURCE_LABEL[node.resourceType],
           summary:'Node '+(i+1)+' · '+RESOURCE_LABEL[node.resourceType] }, p);
       });
-      el.stack.appendChild(row);
+      el.siteStack.appendChild(row);
     });
   } else {
     p.slots.forEach(function(slot,i){
@@ -6076,19 +6158,22 @@ function renderPlanetView(){
         openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),
           summary:'Slot '+(i+1)+' · Factory' }, p);
       });
-      el.stack.appendChild(row);
+      el.siteStack.appendChild(row);
     });
     if (p.slots.length===0){
       const none=document.createElement('div'); none.className='list-row tab tex-node'; none.style.opacity='0.5';
       none.innerHTML='<span class="node-meta"><span class="node-name">No settlement slots on this body</span></span>';
-      el.stack.appendChild(none);
+      el.siteStack.appendChild(none);
     }
   }
 
   el.backBtn.classList.add('visible');
   el.hero.className='hero planet-'+p.archetype;
   el.mainHeading.textContent='Planet Manifest';
-  el.emptyCopy.textContent='The index lists every surveyed site on '+planetDesignation(p)+' and what is seated on it right now. Select a site for its detail.';
+  // The stamp counts the rows the two tabs list — seed geometry, not a game number.
+  // (The empty-state copy is hidden in this layout, so it is no longer set here.)
+  el.mainStamp.textContent = p.nodes.length + (p.nodes.length===1?' node':' nodes') +
+    ' \u00b7 ' + p.slots.length + (p.slots.length===1?' slot':' slots');
 }
 
 // A vacant row hands the establishment popup everything it needs about the site.
@@ -6170,7 +6255,12 @@ function mountConsole(show){
   // the same system doesn't restart the console mid-edit.
   if (fr.getAttribute('data-src') !== src){ fr.setAttribute('data-src', src); fr.src = src; }
 }
-function render(){ if(view.screen==='system') renderSystemView(); else renderPlanetView(); }
+// The planet view has its own layout (the "planet manifest layout" CSS); every other
+// view keeps the index list, so the class is set from the screen being drawn.
+function render(){
+  document.getElementById('detail-screen').classList.toggle('planet-layout', view.screen==='planet');
+  if(view.screen==='system') renderSystemView(); else renderPlanetView();
+}
 function closeDetail(){ el.overlay.classList.remove('open'); document.getElementById('detail-screen').classList.remove('open'); }
 document.getElementById('detail-exit').addEventListener('click', closeDetail);
 
@@ -6195,6 +6285,9 @@ window.__refreshDetail = function(){
 
 // Waystation detail — reuses the detail screen, hero = waystation.jpg
 window.openWaystationDetail = function(outpost){
+  // Not drawn through render(), so it drops the planet layout itself — the waystation
+  // uses the index list.
+  document.getElementById('detail-screen').classList.remove('planet-layout');
   el.titleMain.textContent = outpost.name;
   el.controller.textContent = 'Syndicate'; el.controller.style.display = '';
   el.titleSub.textContent = 'Syndicate Waystation' + (outpost.coords ? ' \u00b7 q'+outpost.coords.q+' r'+outpost.coords.r : '');

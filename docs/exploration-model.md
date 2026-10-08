@@ -607,6 +607,14 @@ archetype** — artwork + a fixed per-archetype blurb — and a **main split int
 the Resources/Settlements surface lists on the left, a venture stat panel (blank this pass) on the
 right. A guild's level on each planet *is* what renders.
 
+> **⤳ AS-BUILT 08-10-26 — the planet-manifest LAYOUT only (roadmap 2.5 (c1); client only).** The two
+> zones above are built in `client/game.html` to `docs/mockups/planet-manifest.html`: the left panel
+> is the title, the archetype blurb (`ARCHETYPE_BLURB`, one fixed text per archetype) and the hero
+> art; the main is the two equal columns, with the venture panel blank. The rows behave exactly as
+> before. Nothing per-level is built yet: every planet still renders its full surface from the
+> current snapshot. The L0/L1/L2 states, "No Survey Data", the survey flow and the system manifest's
+> tag below are still to come.
+
 **System manifest — the tag and the index tabs.**
 - The `UNCLAIMED` tag by the system id has **three states**: a **`SURVEY SYSTEM`** button when the
   system is unclaimed and you do not yet know its archetypes (L0); a plain **`UNCLAIMED`** label once
