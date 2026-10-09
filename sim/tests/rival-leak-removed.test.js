@@ -24,6 +24,15 @@
 // therefore asserted with the slots STRIPPED (tests/slot-strip.js): strip them and main's 41fe84c bytes, and
 // the 08-10-26 views, come back exactly. The full new bytes are pinned in WITH_SLOTS. The god's-eye pins did
 // not move (the lens carries no record and builds no geography).
+//
+// ⤳ 09-10-26 (roadmap 2.5, the L0-board engine slice — ruling 12 slice 2): every per-guild VIEW lost its
+// `geography.systems` block (L0 moved to the board + `claims`), so every view moved again, by exactly that
+// block. Each view pin above is therefore asserted on the view with the block PUT BACK (tests/systems-block.js
+// — rebuilt from the board and the view's own claims alone): put it back and the 09-10-26 settlement-surface
+// bytes, and through them every older pin, come back exactly. The new views are pinned in SLIM, recorded on
+// main at 348e0fc by deleting `geography.systems` from each WITH_SLOTS view — so the slim view IS slice 1's
+// view minus the block. No state pin and no god's-eye pin moved (the slice changes no state and the lens
+// builds no geography).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -38,6 +47,7 @@ const {
   rivalLeakScript, soloScript, withoutRivalFacts, withoutRivalGround, A, B, B_PLANET, B_MINE,
 } = require('./rival-leak-script.js');
 const { stripRecordSlots, stripKnownSlots, withoutRecordSlots, withoutKnownSlots } = require('./slot-strip.js');
+const { withSystemsBlock } = require('./systems-block.js');
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 const godsEye = (s) => sha(JSON.stringify(buildSnapshot(s)));
@@ -122,6 +132,25 @@ const SOLO_WITH_SLOTS = {
   view: '11b09de4885497a9807eddbfbf39058dded47b724682adf09dbe423b87670ddb',
 };
 
+// After the L0-board slice: the per-guild views of the same steps, with no `geography.systems`. Recorded on
+// main at 348e0fc — BEFORE the slice — by deleting `geography.systems` from each view above (WITH_SLOTS,
+// SOLO_WITH_SLOTS) and hashing the rest; the slim view must hash to exactly that. The states did not move.
+const SLIM = {
+  founded: {
+    [A]: '3acbe24be47abb6d1eac7ad2995b2712842513db18dd32fb3af13eaf9d136289',
+    [B]: '2ae3c8a6c06a586ebd610195bda8ad0ba274ecace4eef551648c52a56615abae',
+  },
+  licensed: {
+    [A]: '55b70a9f6f13dea88dfe09a6527ea4d0e26cfe28ebe4dd96e1e88bdec56cc72d',
+    [B]: 'e3e4e7b725818a9004868f28a1adba5763dfbf9f02189fc85e52def1cd253198',
+  },
+  closed: {
+    [A]: '5737020ed6aa6b0748b2874a6ff97d84155cde104478dfa77623af5b3662eeaf',
+    [B]: 'eb3eb054421baa1b8d68f38a0f168c5d8383c8699b648058bffbef939cb562fd',
+  },
+};
+const SOLO_SLIM = { view: '34d7c06ab2735a1a1c2d92418d5c63b3f69a8e317b88adba4ca2094f7b22172e' };
+
 // legacyObservePublicRegister(state) — the REMOVED end-of-tick step, copied from main at 41fe84c
 // (sim/exploration.js `publicRegisterFacts` + `observePublicRegister`) for ONE purpose: rebuilding main's bytes
 // inside this test, so the proof needs no second checkout. It is not engine code; nothing in sim/ calls it.
@@ -157,14 +186,18 @@ test('GOD\'S-EYE: byte-identical to main at every step — it never carried the 
 
 test('ONE GUILD: state, god\'s-eye and the guild\'s own view are byte-identical to main', () => {
   const { solo } = soloScript();
+  const view = viewOf(solo, A);
+  const legacy = withSystemsBlock(view); // slice 1's view: the L0-board slice's one delta, put back
   assert.equal(hashState(stripRecordSlots(solo)), SOLO_ON_MAIN.state, 'no rival, so the removed step never wrote anything');
   assert.equal(godsEye(solo), SOLO_ON_MAIN.godsEye);
-  assert.equal(sha(JSON.stringify(stripKnownSlots(viewOf(solo, A)))), SOLO_ON_MAIN.view,
+  assert.equal(sha(JSON.stringify(stripKnownSlots(legacy))), SOLO_ON_MAIN.view,
     'the only controlled system is the home, which the founding record already holds in full');
   // The full bytes after the settlement-surface slice, and the slots really there (so the strips prove something).
   assert.equal(hashState(solo), SOLO_WITH_SLOTS.state);
-  assert.equal(sha(JSON.stringify(viewOf(solo, A))), SOLO_WITH_SLOTS.view);
-  assert.ok(withoutRecordSlots(solo).count > 0 && withoutKnownSlots(viewOf(solo, A)).count > 0);
+  assert.equal(sha(JSON.stringify(legacy)), SOLO_WITH_SLOTS.view);
+  assert.ok(withoutRecordSlots(solo).count > 0 && withoutKnownSlots(view).count > 0);
+  // The full bytes after the L0-board slice: slice 1's view with `geography.systems` deleted.
+  assert.equal(sha(JSON.stringify(view)), SOLO_SLIM.view);
 });
 
 // --- 3. the state moved by exactly the leaked facts ------------------------------------------------------------
@@ -203,11 +236,13 @@ test('VIEWS: strip the rival-held ground and every view is main\'s; the full vie
   for (const [name, pins] of Object.entries(ON_MAIN)) {
     for (const guildId of [A, B]) {
       const view = viewOf(steps[name], guildId);
-      const noSlots = stripKnownSlots(view); // the settlement-surface slice's only delta, stripped
+      const legacy = withSystemsBlock(view); // the L0-board slice's only delta, put back
+      const noSlots = stripKnownSlots(legacy); // the settlement-surface slice's only delta, stripped
       assert.equal(sha(JSON.stringify(withoutRivalGround(noSlots))), pins.strippedView[guildId],
         `${guildId}'s view moved OUTSIDE rival-held ground at "${name}"`);
       assert.equal(sha(JSON.stringify(noSlots)), VIEWS_AFTER[name][guildId], `${guildId}'s view moved outside its slots at "${name}"`);
-      assert.equal(sha(JSON.stringify(view)), WITH_SLOTS[name][guildId], `${guildId}'s full view moved at "${name}"`);
+      assert.equal(sha(JSON.stringify(legacy)), WITH_SLOTS[name][guildId], `${guildId}'s view moved outside geography.systems at "${name}"`);
+      assert.equal(sha(JSON.stringify(view)), SLIM[name][guildId], `${guildId}'s full view moved at "${name}"`);
     }
   }
 });

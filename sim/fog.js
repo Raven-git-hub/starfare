@@ -27,16 +27,19 @@
 //     hidden; players see only the value and its history"): no Σ-of-every-guild total survives that a
 //     guild could subtract its own share from to read a rival's holdings.
 //   - NODE LOCKOUTS are shown only on a node the viewer knows or on ground it controls.
-//   - `geography` is added: L0 for every system, plus every planet the guild may see — its own
-//     record, and every CONTROLLED system (own or rival) at full L2, live (§4 ruling 11): archetype,
-//     every resource node and every settlement slot.
+//   - `geography` is added: `{ known }` — every planet the guild may see past L0 — its own record, and
+//     every CONTROLLED system (own or rival) at full L2, live (§4 ruling 11): archetype, every resource
+//     node and every settlement slot.
+//   - L0 itself is NOT rebuilt here (§4 ruling 12): its static half — position and orbital layout — is
+//     the board (`getBoard`, served once at GET /board), and its one live fact — the controller — is
+//     already in `claims` (every claim row is kept: ownership is public; no system claim = unclaimed).
 //
 // ALLOW-LISTS, NOT DENY-LISTS, for every rival row: a field added to a guild / venture / outpost row
 // later is HIDDEN from rivals until someone decides it is public. And every top-level key of the
 // god's-eye snapshot must be classified in TOP_LEVEL below — tests/fog.test.js fails loudly on a new,
 // unclassified key, so no future field reaches the player view by default.
 
-const { getSite, getPlanet, getL0Systems, getSystemLayout } = require('./seed.js');
+const { getSite, getPlanet, getSystemLayout } = require('./seed.js');
 const { systemControllers, guildHolds } = require('./claims.js');
 const { isOnPublicRegister, knowsNode } = require('./exploration.js');
 
@@ -151,9 +154,7 @@ function rivalVentureRow(row) {
   return out;
 }
 
-// geographyFor(state, guild) -> { systems, known } — what the guild may draw as MAP:
-//   systems — L0, every system, id order: { id, name, coords, planetCount, controllerGuildId }.
-//             Never fogged (§1), so computed here for all, never stored per guild.
+// geographyFor(state, guild) -> { known } — the map detail the guild has EARNED past L0:
 //   known   — every planet the guild may see past L0, resolved through the seed and grouped by system:
 //             { [systemId]: { [planetId]: { archetype, nodes: { [nodeId]: resourceType },
 //                                           slots: { [slotId]: true } } } }.
@@ -169,15 +170,12 @@ function rivalVentureRow(row) {
 //             Keys in sorted order at every level so the bytes are stable (invariant 9).
 // A rival's licensed venture rows (`ventures`) are separate and unchanged: they say what is BUILT on a
 // node or slot (type + reputation); `known` says what the ground IS.
+// ⤳ 09-10-26 (§4 ruling 12, slice 2): the `systems` block (L0 for every system, rebuilt on every view) is
+// GONE. Its static facts are the board's (`getBoard`, GET /board — sent once, not every poll) and its one
+// live fact, the controller, is the `claims` row for that system. A planet's id in `known` is the join key
+// onto the board's `planets`.
 function geographyFor(state, guild) {
   const controllers = systemControllers(state);
-  const systems = getL0Systems().map((s) => ({
-    id: s.id,
-    name: s.name,
-    coords: { q: s.coords.q, r: s.coords.r },
-    planetCount: s.planetCount,
-    controllerGuildId: controllers.get(s.id) || null,
-  }));
 
   // Collected unsorted first, then copied out in sorted order at the end (`sortedKnown`).
   const known = {};
@@ -220,7 +218,7 @@ function geographyFor(state, guild) {
     }
   }
 
-  return { systems, known: sortedKnown(known) };
+  return { known: sortedKnown(known) };
 }
 
 // sortedKnown(known) -> the same map with its system, planet, node and slot keys in sorted order. The two

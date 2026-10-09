@@ -14,6 +14,9 @@
 //      exactly the hidden rival facts — every public key identical, the own rows identical.
 //   5. The brief's behaviours: rival stockpiles hidden / own full; an un-licensed rival venture fogged;
 //      transports, deliveries, builds, production and notices of a rival hidden; L0 for every system.
+//      ⤳ 09-10-26 (ruling 12, slice 2 — the L0 board): L0 is no longer rebuilt in the view. `geography` is
+//      `{ known }` only; the static half of L0 is the board (tests/l0-board.test.js), and the controller is
+//      read off `claims`, which keeps every row.
 //      ⤳ RE-WRITTEN 08-10-26 to §4 ruling 11 (control ⇒ full L2, live): a CONTROLLED system — own or rival —
 //      shows every planet's archetype and every node, computed live from the seed + the claims, never from
 //      the record; it stays while the system is held and drops out when control lapses, leaving only what
@@ -55,13 +58,14 @@ const { addStock } = require('../stock.js');
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { saveState, loadOrInit } = require('../persist.js');
 const { checkInvariants } = require('../invariants.js');
-const { guildHolds } = require('../claims.js');
+const { guildHolds, systemControllers } = require('../claims.js');
 const { hexDistance } = require('../transport.js');
 const {
   getStarterSystems, getTerranHomeworld, getSystem, getPlanet, getSite, getSystemLayout,
-  getL0Systems, isHexInBounds, seedLandmarkAtHex, getClaimRadius,
+  isHexInBounds, seedLandmarkAtHex, getClaimRadius,
 } = require('../seed.js');
 const { kitAboard, placeCraft } = require('./kit-fixtures.js');
+const { controllersFromClaims } = require('./systems-block.js');
 const { reveal, revealPlanetSurface } = require('../exploration.js');
 
 const A = 'player-guild';
@@ -196,7 +200,8 @@ test('one-guild galaxy: the per-guild view minus its two added keys is the god\'
   s = tick(tick(s));
   const { viewerGuildId, geography, ...rest } = buildSnapshot(s, A);
   assert.equal(viewerGuildId, A);
-  assert.ok(geography.systems.length > 0);
+  assert.deepEqual(Object.keys(geography), ['known']);
+  assert.ok(geography.known[A_HOME], 'the home is known');
   // No rival, nothing to fog — EXCEPT the galaxy-wide aggregates, which are coarsened for every viewer
   // (ruling 1, 06-10-26): the view's shape never depends on how many rivals there are. Put the two
   // coarsened blocks into the god's-eye object and every other byte must be the same.
@@ -568,24 +573,27 @@ test('an UNCONTROLLED frontier system\'s planet ids appear NOWHERE in the view u
   assert.ok(text.includes(`"${B_PLANET}"`), 'B\'s home planets are in A\'s view the moment B holds the system');
 });
 
-test('geography: L0 for EVERY system (position, planet count, controller) — never fogged', () => {
+test('geography is `{ known }` only — L0 is not rebuilt per view: the board holds its geometry, `claims` its controller', () => {
+  // ⤳ 09-10-26 (§4 ruling 12, slice 2): this test pinned the old `geography.systems` block — L0 for every
+  // system, rebuilt on every view. The block is gone; its static facts are the board's (tests/l0-board.test.js)
+  // and its one live fact, the controller, is the claim row. So: no block, and the controller still public.
   const s = rivalGalaxy();
-  const { systems } = buildSnapshot(s, A).geography;
-  assert.equal(systems.length, getL0Systems().length);
-  assert.deepEqual(systems.map((x) => x.id), [...systems.map((x) => x.id)].sort(), 'id order (stable bytes)');
-  for (const row of systems) {
-    assert.deepEqual(Object.keys(row), ['id', 'name', 'coords', 'planetCount', 'controllerGuildId']);
-    assert.equal(row.planetCount, getSystemLayout(row.id).planets.length);
-    assert.deepEqual(row.coords, getSystem(row.id).coords);
+  for (const viewer of [A, B]) {
+    const view = buildSnapshot(s, viewer);
+    assert.deepEqual(Object.keys(view.geography), ['known'], `${viewer}: no systems block`);
+    const text = bytes(view);
+    assert.equal(text.includes('"planetCount"'), false, `${viewer}: no planet count — that is the board's planets.length now`);
+    assert.equal(text.includes('"controllerGuildId"'), false, `${viewer}: no controller field — that is the claim row now`);
+    // The controller of EVERY held system — own and rival — is in the view's claims, exactly as the engine
+    // has it (every claim row is kept: ownership is public, §1).
+    const controllers = controllersFromClaims(view);
+    assert.deepEqual([...controllers], [...systemControllers(s)], `${viewer}: the claims name every controller`);
+    assert.equal(controllers.get(A_HOME), A);
+    assert.equal(controllers.get(B_HOME), B, 'the rival\'s ownership is public');
+    for (const [systemId, guildId] of controllers) assert.ok(guildHolds(s, guildId, systemId), 'controller agrees with guildHolds');
+    // A system with no claim row is UNCLAIMED, not unknown (ruling 12's failure mode (c)): the frontier.
+    assert.equal(controllers.has(FRONTIER), false);
   }
-  const byId = Object.fromEntries(systems.map((x) => [x.id, x]));
-  assert.equal(byId[A_HOME].controllerGuildId, A);
-  assert.equal(byId[B_HOME].controllerGuildId, B, 'the rival\'s ownership is public');
-  for (const row of systems) {
-    if (row.controllerGuildId) assert.ok(guildHolds(s, row.controllerGuildId, row.id), 'controller agrees with guildHolds');
-  }
-  // L0 rows carry no geography: no archetype, no ring, no starter flag (each would leak L1).
-  assert.equal(bytes(systems).includes('archetype'), false);
 });
 
 test('geography: `known` is exactly the record ∪ every controlled system, resolved through the seed — nothing more', () => {

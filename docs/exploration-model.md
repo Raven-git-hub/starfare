@@ -29,7 +29,11 @@ settlement-surface slice. AS-BUILT notes in §3 and §7.)* *(⤳ 09-10-26 — th
 BUILT (roadmap 2.5; §4 ruling 12, slice 1): the record carries a `slots` track beside `nodes`, founding and the
 L2 survey reveal a planet's whole surface — nodes **and** slots — together, and `geography.known` projects slots
 for every controlled system and every surveyed planet. AS-BUILT notes in §4 ruling 10 and §7. The claim gate
-(§8) is still recorded, not enforced.)*
+(§8) is still recorded, not enforced.)* *(⤳ 09-10-26 — the **L0-board** engine slice is BUILT (roadmap 2.5; §4
+ruling 12, slice 2): the galaxy's static L0 — every system's position and orbital layout — is served once at a
+**new** route, `GET /board`, and the per-guild view drops its per-tick `geography.systems` block (`geography` is
+`{ known }`; the controller is read from `claims`). **`GET /galaxy` is unchanged and still serves the whole
+seed**, so the `/galaxy` leak stays open until the client flip (slice 3). AS-BUILT notes in §4 ruling 12 and §7.)*
 
 ## 0. The through-line
 
@@ -56,6 +60,11 @@ depends on the guild's situation.
   specifically each planet's id + order — the datum the client's L0 board carries
   so a planet tab can render, and the join key L1/L2 detail slots onto.)* Plus
   **every Syndicate waystation is always visible.** Nothing cuts L0 because nothing hides it.
+  *(⤳ AS-BUILT 09-10-26, §4 ruling 12 slice 2: L0 reaches a viewer by **two transports**, split by whether
+  the fact can move. The **static** half — position + orbital layout — is the **board** (`GET /board`, sent
+  once). The **dynamic** half — the controlling guild — rides the snapshot's **`claims`** (every claim row is
+  public; no system claim = unclaimed). Together they are this bullet's L0, unchanged: a split of where each
+  fact travels, not a change to what L0 is.)*
 - **L1 — a system's planet archetypes.** Cut by **either**: a transport sitting idle in the
   system (instant, but costs the trip — fuel + travel time), **or** a Deep Scan Array L1 scan
   of the system (no trip, but takes time). The player picks whichever is cheaper for the case.
@@ -288,7 +297,59 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     **L0-board** engine slice (serve the board; slim the poll); (3) the **client flip** (drop the
     `/galaxy` download; render L0 from the board and L1/L2 from `known`, per §10). Slices 1 and 2
     are independent; the client flip is last. *(⤳ 09-10-26: slice (1), the settlement-surface engine
-    slice, is BUILT — §7's AS-BUILT notes. Slices (2) and (3) remain.)*
+    slice, is BUILT — §7's AS-BUILT notes. Slices (2) and (3) remain.)* *(⤳ 09-10-26: slice (2) is
+    BUILT — the AS-BUILT note below. Only slice (3), the client flip, remains.)*
+
+    > **⤳ SEQUENCING, RULED 09-10-26 (the design room) — refines the build impact above.** Read literally,
+    > slice (2) would make `GET /galaxy` stop serving the seed. That would break the running client, which
+    > still downloads the whole seed from `/galaxy` and renders planet detail from it until slice (3). So:
+    > **slice (2) serves the board at a NEW route, `GET /board`, and leaves `GET /galaxy` exactly as it
+    > was** (the whole seed). The **`/galaxy` cutover and the leak's closure move to slice (3)**, the client
+    > flip — the moment the client stops needing the seed. Until then the `/galaxy` leak stays open,
+    > knowingly. (§7's `/galaxy` note says the same.)
+    >
+    > **⤳ AS-BUILT 09-10-26 — slice (2), the L0-board engine slice (roadmap 2.5).** Engine + server; no
+    > client, and nothing live reads either half yet. **No new number.**
+    > - **The board** — `getBoard()` (`sim/seed.js`; it **replaces** `getL0Systems()`, whose
+    >   `{ id, name, coords, planetCount }` rows only the per-guild view read): one row per system, **sorted
+    >   by id**, exactly `{ id, name, coords: { q, r }, ring, planets: [ { id, order } ] }`. `ring` is the
+    >   seed's `sys.ring || null` (as `getSystemLayout` reads it). `planets` is the seed's own planet array, in
+    >   its own order, each cut to its stable `id` and `order` = array index + 1 — the **same ordinal** the
+    >   site names' Roman numeral already uses (`siteName`), so there is no new numbering. **Nothing else per
+    >   planet** — no archetype, nodes, slots or resource types. Built once in the cached seed index, like
+    >   the other indexes; `planetCount` is gone (it is `planets.length`).
+    > - **The route** — `GET /board` (`sim/server.js`) serves a **pre-serialised buffer** built beside the
+    >   `/galaxy` one, by `refreshBoard()`, every time the seed buffer changes (`setActiveSeed`, and the
+    >   no-volume boot) — so `POST /admin/galaxy/new` and `/admin/galaxy/delete` refresh it for free, and
+    >   `/reset` (same seed) keeps it. `404 NO_GALAXY` exactly when `/galaxy` is. **Cacheable** — failure mode
+    >   (b): it sends an **`ETag`** — `"board-<seed number>-<sha256 of the board bytes>"` — and a matching
+    >   `If-None-Match` gets a **304** with no body. The seed number makes the tag readable; the hash is what
+    >   makes it safe, since one seed number could name two layouts if the generator ever changed. It keeps
+    >   `Cache-Control: no-cache` (revalidate before every use, rather than a `max-age`), so a browser always
+    >   asks and a new galaxy is never served stale. Same CORS headers as `/galaxy`. On the committed seed the
+    >   board is **283,008 bytes against `/galaxy`'s 8,693,128 (3.3%)**.
+    > - **The slim** — `geographyFor` (`sim/fog.js`) returns **`{ known }`**: the `systems` block is removed,
+    >   and with it the view's last use of the L0 accessor. `known` is unchanged byte for byte. The
+    >   controller — the block's one live fact — was already in `claims`, which keeps every row. Observable
+    >   only on `GET /snapshot?guild=<id>`; the live client reads plain `GET /snapshot` (god's-eye), which
+    >   builds no `geography`, so nothing live moved. The block was ~155 KB of a ~195 KB two-guild view —
+    >   about 80% of every per-guild poll.
+    > - **The split, not a contradiction with §1:** the board carries L0's **static** half (layout), the
+    >   view's `claims` its **dynamic** half (controller); together they are §1's L0.
+    > - **Proved** (`tests/l0-board.test.js`, `tests/systems-block.js`): the board's shape for every system,
+    >   its planet ids and orders equal to `getSystemLayout`'s (order = seed index + 1) and to the site names'
+    >   numerals; the serialized board holds none of `archetype`, `resourceType`, `resourceNodes`,
+    >   `settlementSlots` (asserted on the JSON text) and no site id; the same seed gives the same board bytes,
+    >   a different seed different bytes; every planet in `known` is on the board in its own system (failure
+    >   mode (a)); the route's ETag/304, its 404 with no galaxy, and a new galaxy's new board and new ETag.
+    >   **The slim is a removal and nothing more:** every per-guild view golden still holds once
+    >   `geography.systems` is **put back**, rebuilt from the board and the view's own `claims` alone — so the
+    >   board plus the slim view lose nothing the old view carried; the new view pins were recorded on `main`
+    >   (348e0fc) by deleting `geography.systems` from each old view; `known` hashes to slice 1's.
+    >   **The god's-eye lens did not move** (no god's-eye pin was touched).
+    > **Not built (slice (3)):** the `/galaxy` cutover and the leak's closure, `GET /starters`' hardening
+    > (ruled into "the same slice" as `/galaxy`'s — so it follows `/galaxy` to slice (3); flagged on the
+    > roadmap's decision checklist), and every client change.
 
 ## 5. The Deep Scan Array
 
@@ -486,6 +547,9 @@ source-agnostic reveal path (§7) everything else uses.
 > each home planet (the whole surface, §4 ruling 10), stamped with the founding tick. The founding goldens
 > moved by exactly those slot facts plus each entry's `slots` map — each re-pin carries a strip-and-prove of
 > the previous hash, `tests/slot-strip.js`.)*
+> *(⤳ 09-10-26, the L0-board slice (§4 ruling 12): L0 is still not stored, but it is no longer computed in
+> the view either — its static half is the board (`GET /board`), the same for every guild, and the
+> controller is the view's `claims`. Founding is unchanged.)*
 
 ## 7. The per-guild snapshot architecture
 
@@ -580,7 +644,9 @@ stands on.
     rival's venture row, so the two sources stay distinct. *(⤳ 08-10-26, ruling 11: `known` is now the
     record **∪ every controlled system at full L2** — see the AS-BUILT note below.)* *(⤳ 09-10-26, the
     settlement-surface slice: each entry is now `{ archetype, nodes: { [nodeId]: resourceType }, slots:
-    { [slotId]: true } }` — see the slots note below.)*
+    { [slotId]: true } }` — see the slots note below.)* *(⤳ 09-10-26, the L0-board slice (§4 ruling 12,
+    slice 2): **`systems` is REMOVED** — `geography` is now `{ known }`. Its static facts are the board's
+    (`GET /board`) and its controller is the `claims` row; see the board note below.)*
   Every rival row is an **allow-list**, and every top-level god's-eye key must be classified public
   or filtered in `fog.js` `TOP_LEVEL` — an unclassified key throws, and a test fails on a new one —
   so nothing new reaches a player by default. The view is pure (it reads the record, writes
@@ -625,7 +691,21 @@ stands on.
   `tests/deep-scan-job.test.js`); every god's-eye hash held. The client does not read `known` yet (ruling
   12's slice 3). One rule left as ruled: a settlement slot's **lockout** still shows only on ground the
   viewer controls (§2) — `isLockoutVisible` reads nodes, not the new slot track; flagged on the roadmap's
-  decision checklist.- **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
+  decision checklist.
+  **⤳ AS-BUILT 09-10-26 — the L0 board and the slim poll (the L0-board engine slice; roadmap 2.5, §4 ruling
+  12 slice 2; `sim/seed.js` `getBoard`, `sim/server.js` `GET /board`, `sim/fog.js` `geographyFor`).** The
+  per-guild view's `geography` is now **`{ known }`**: the `systems` block — L0 for all 1,500 systems,
+  rebuilt on every view — is removed. Its static facts (identity, position and now the orbital layout) are
+  the **board**, `getBoard()` → `[ { id, name, coords, ring, planets: [ { id, order } ] } ]` sorted by id,
+  served once at **`GET /board`** with an ETag (§4 ruling 12's AS-BUILT note has the details); its one live
+  fact, the controller, is the system's row in `claims`, which the view already keeps whole. `known` is
+  untouched, and a planet id in `known` is the join key onto the board's `planets`. The god's-eye lens is
+  untouched: it builds no `geography`. **What moved:** every per-guild view, by exactly the `systems` block
+  — put it back (rebuilt from the board and the view's own claims, `tests/systems-block.js`) and each view is
+  its settlement-surface bytes, re-pinned in `tests/rival-leak-removed.test.js` and
+  `tests/deep-scan-job.test.js`. Nothing live reads either half yet: the client still loads `GET /galaxy`
+  and plain `GET /snapshot` until the client flip (slice 3).
+- **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
   write the record), so it is not speculative generality.
@@ -665,6 +745,13 @@ stands on.
   closed by construction, not by trust. `GET /starters` is the same class of leak and is
   hardened in the same slice (its exact shape left to that slice). Design-ahead; built by the
   L0-board engine slice, ruling 12 slice 2.)*
+  *(⤳ CORRECTED 09-10-26 — the design room's sequencing of ruling 12 (§4): the note above is the end
+  state, not slice 2. **The board is served at a NEW route, `GET /board` (slice 2, AS-BUILT — §4 ruling
+  12's note). `GET /galaxy` is UNCHANGED and still serves the whole seed; its cutover and the leak's
+  closure are the client flip, slice 3**, because the running client still reads the seed from `/galaxy`
+  until then. **The `/galaxy` leak is therefore still OPEN.** `GET /starters` is untouched too; its
+  hardening was ruled into "the same slice" as `/galaxy`'s, so it follows `/galaxy` to slice 3 —
+  flagged on the roadmap's decision checklist to confirm.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
@@ -775,3 +862,7 @@ manifests, never on the map.
 > from `claims`, the map geometry from the board. Nothing in the render's *appearance* (§10
 > above) changes — only where the data comes from, and that the browser no longer holds any
 > planet's detail until the guild has earned it.
+> *(⤳ 09-10-26: both inputs now exist server-side — the board at **`GET /board`** (ETag'd; slice 2) and
+> the slim per-guild view at `GET /snapshot?guild=<id>` (`geography = { known }`, controllers in `claims`).
+> Per the design room's sequencing (§4 ruling 12), the client flip is also where **`GET /galaxy` stops
+> serving the seed** — the step that closes the `/galaxy` leak.)*
