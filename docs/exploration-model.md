@@ -45,7 +45,12 @@ public and what is private:
 The levels are a depth scale; what matters in play is the *method* that cuts each layer, which
 depends on the guild's situation.
 
-- **L0 — never fogged, for every system:** position + planet count + controlling guild. Plus
+- **L0 — never fogged, for every system:** position + the system's **orbital layout** (each planet's stable id and
+  orbital order, I/II/III…) + controlling guild. The layout is a geometric fact
+  — how many bodies orbit and in what order — and carries no archetype, no nodes
+  and no slots; those are L1/L2. *(⤳ 09-10-26, §4 ruling 12: “planet count” is
+  specifically each planet's id + order — the datum the client's L0 board carries
+  so a planet tab can render, and the join key L1/L2 detail slots onto.)* Plus
   **every Syndicate waystation is always visible.** Nothing cuts L0 because nothing hides it.
 - **L1 — a system's planet archetypes.** Cut by **either**: a transport sitting idle in the
   system (instant, but costs the trip — fuel + travel time), **or** a Deep Scan Array L1 scan
@@ -230,6 +235,45 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     **controlled** system (own or rival) at full L2 from the seed, beside the existing licensed-venture
     rows; re-pin the fog / god's-eye hashes. The exploration **record** structure is unchanged (archetypes
     + nodes/slots keyed per planet) — it is simply no longer written from rivals.
+
+**Settled 09-10-26 — the client fog boundary (Option B):**
+
+12. **The client holds only what it can see; orbital layout is L0.** *(RULED 09-10-26.)* The
+    browser stops downloading the whole galaxy. Its geography comes from **two leak-free inputs**,
+    and it can render nothing it was not sent — which is what finally closes the `/galaxy` leak
+    (§7) for real, rather than trusting a raw client not to peek:
+    - **A one-time L0 board.** One static document — served once, cacheable, identical for every
+      viewer, carrying **no guild ids and no fogged detail** — gives the whole galaxy at **L0
+      only**: per system `{ id, name, coords, ring, planets: [ { id, order } ] }`. That is the
+      orbital layout and nothing more — **no archetype, no resource nodes, no settlement slots,
+      no resource types.** Static for the galaxy's life (a new galaxy ⇒ a new board), so it
+      caches; it is the map's geometry source and the L0 planet-tab source.
+    - **The polled per-guild snapshot**, which already carries the earned detail in `geography.known`
+      (the record ∪ every controlled system at full L2, §7) and controllers in `claims`. This is
+      the only per-guild, per-tick payload, and it grows with **what the guild has explored**, not
+      with the galaxy's size — which is the scaling point of the split.
+    - **Orbital layout is L0 (the sub-ruling §1 now states).** A planet's **stable id and order**
+      are known for every system from the start; its **archetype is L1**, its **nodes + slots are
+      L2**. The id is the join key the board and `known` share; order gives the Roman designation.
+      The board derives both from the seed's own planet array exactly as the record keys by id
+      (order = array index + 1) — **no new numbering** — so the board and `known` can never
+      disagree about a planet.
+    - **The poll slims.** `geography.systems` (the per-tick L0-for-every-system block, §7's
+      AS-BUILT note) is **removed**: its static facts move to the board, and its one dynamic fact
+      — the controller — is already in `claims` (ownership is public; a system with no claim row
+      is unclaimed). The poll carries `geography.known` and the viewer id; the client reads
+      controllers from `claims` and layout from the board.
+    **Failure modes hunted on paper (design.md §18, practice 7):** (a) a `known` planet absent from
+    the board is impossible when both derive from one seed, and is a build tripwire; (b) the board
+    must cache-bust on a new galaxy (carry a galaxy id / etag) so a `POST /admin/galaxy/new` or
+    `/reset` never serves a stale layout; (c) the client must treat an absent `claims` row as
+    *unclaimed*, not *unknown*, and must no longer read a `planetCount` field from the poll (gone —
+    the count is the board's `planets.length`). **Build impact — three slices, doc + code each
+    (see §7, §10):** (1) the **settlement-surface** engine slice (the `slots` track in the record
+    and in the controlled-system projection — already design-ahead in §7 / §4 ruling 10); (2) the
+    **L0-board** engine slice (serve the board; slim the poll); (3) the **client flip** (drop the
+    `/galaxy` download; render L0 from the board and L1/L2 from `known`, per §10). Slices 1 and 2
+    are independent; the client flip is last.
 
 ## 5. The Deep Scan Array
 
@@ -556,6 +600,15 @@ stands on.
   *(⤳ 05-10-26, found while building (a): `GET /starters` — the home-system picker's seed route — is
   the same kind of leak in miniature: it lists every starter system with its `terranHomeworldId`.
   Same deferral, same later slice; the per-guild view itself does not carry it.)*
+  *(⤳ 09-10-26, §4 ruling 12 — the client fog boundary (the design room's “Option B”):
+  this **is** the “later backend slice.” `GET /galaxy` stops serving the seed and serves
+  the **L0 board** instead — per system `{ id, name, coords, ring, planets: [ { id, order } ] }`,
+  L0 only, no guild ids, no archetype/node/slot, static and cacheable (a new galaxy ⇒ a new
+  board; carry a galaxy id / etag). The browser then holds L0 for the whole galaxy and L1/L2
+  only from `geography.known`, so it **cannot** display what it was never sent — the leak is
+  closed by construction, not by trust. `GET /starters` is the same class of leak and is
+  hardened in the same slice (its exact shape left to that slice). Design-ahead; built by the
+  L0-board engine slice, ruling 12 slice 2.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
@@ -651,3 +704,14 @@ system's level. The only map change is **ownership colour** — the player's sys
 cyan, **any** rival's in a single bright pink (no per-rival distinction), unclaimed neutral — plus a
 **slowly-rotating radar indicator** on a hex carrying an active scan. All level detail lives in the
 manifests, never on the map.
+
+> **⤳ DESIGN-AHEAD 09-10-26 (§4 ruling 12 — the client flip, slice 3; NOT built).** The
+> per-level render above no longer reads a full-seed download (`window.__galaxy`). Its inputs
+> become the **L0 board** (the orbital layout — which planet tabs exist, in what order, for
+> every system) and the **polled `geography.known`** (the archetype that lifts a tab to L1,
+> the nodes + slots that lift it to L2). `adaptSeedSystem` is reworked to merge board-layout +
+> known-detail: a planet with no `known` entry is the L0 tab (“Unknown Archetype” / “No
+> Survey Data”); its archetype present is L1; its nodes/slots present is L2. Controllers come
+> from `claims`, the map geometry from the board. Nothing in the render's *appearance* (§10
+> above) changes — only where the data comes from, and that the browser no longer holds any
+> planet's detail until the guild has earned it.
