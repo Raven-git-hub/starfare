@@ -25,7 +25,11 @@ removed, the rival-licensed-venture source (`observePublicRegister`) retired, an
 ruling-11 cleanup): `observePublicRegister` is **removed**, so the record is written only by founding and the
 guild's own Deep Scan Array scans; and the per-guild view projects **every controlled system** (own or rival)
 at full L2, live — every planet's archetype and every resource node; settlement slots follow with the
-settlement-surface slice. AS-BUILT notes in §3 and §7.)*
+settlement-surface slice. AS-BUILT notes in §3 and §7.)* *(⤳ 09-10-26 — the **settlement-surface** engine slice is
+BUILT (roadmap 2.5; §4 ruling 12, slice 1): the record carries a `slots` track beside `nodes`, founding and the
+L2 survey reveal a planet's whole surface — nodes **and** slots — together, and `geography.known` projects slots
+for every controlled system and every surveyed planet. AS-BUILT notes in §4 ruling 10 and §7. The claim gate
+(§8) is still recorded, not enforced.)*
 
 ## 0. The through-line
 
@@ -101,7 +105,10 @@ depends on the guild's situation.
   torn-down licensed venture's site) is shown only on a node the guild **knows** (its record) or on
   ground it **controls** (where the lockout gates its own establish). Otherwise it would name a node
   in a rival system the guild never learned — e.g. one licensed and torn down between two ticks. A
-  settlement slot is not a node, so a slot's lockout shows only on ground the guild controls.
+  settlement slot is not a node, so a slot's lockout shows only on ground the guild controls. *(⤳ 09-10-26:
+  the record now carries a `slots` track (the settlement-surface slice, §7), but this ruling reads nodes and
+  is built unchanged — whether a slot the record knows should show its lockout is on the roadmap's decision
+  checklist.)*
 
 ## 3. The two sources — the architecture
 
@@ -212,6 +219,13 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
       planet you mean to settle — there is no rival-leak shortcut (ruling 11).
     None of this is built by the exploration slice; it is recorded so the settlement-surface and
     Prefecture slices read the real ruling, not a paraphrase (the seam rule).
+    *(⤳ AS-BUILT 09-10-26 — the settlement-surface slice (roadmap 2.5; ruling 12 slice 1) builds the first
+    two consequences: **one reveal covers the whole surface** — the L2 scan's per-planet reveal (renamed
+    `revealPlanetSurface`) and founding's `revealSystem` both reveal every node **and** every settlement
+    slot, through one shared loop, while L1 (`revealSystemArchetypes`) still reveals no surface; and **the
+    record's `slots` track** exists (§7's AS-BUILT note). The third (the retired leak) stays retired. The
+    fourth — **the claim gate** — is still **recorded, not enforced**: no gate reads a slot yet, and there
+    is no slot read (`knowsSlot`) until the Prefecture / claims slice adds what its gate needs (§8).)*
 
 **Settled 08-10-26 — the simplification:**
 
@@ -273,7 +287,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     and in the controlled-system projection — already design-ahead in §7 / §4 ruling 10); (2) the
     **L0-board** engine slice (serve the board; slim the poll); (3) the **client flip** (drop the
     `/galaxy` download; render L0 from the board and L1/L2 from `known`, per §10). Slices 1 and 2
-    are independent; the client flip is last.
+    are independent; the client flip is last. *(⤳ 09-10-26: slice (1), the settlement-surface engine
+    slice, is BUILT — §7's AS-BUILT notes. Slices (2) and (3) remain.)*
 
 ## 5. The Deep Scan Array
 
@@ -407,7 +422,10 @@ queue depth**:
 >   the scanning guild itself, both reveal. **L1** → `revealSystemArchetypes` (every planet's archetype, **no
 >   node** — unlike founding's `revealSystem`); **L2** → `revealPlanetNodes` (every resource node of the one
 >   planet). Both are loops over `reveal` (`sim/exploration.js`), so learn-once holds: a known fact is a
->   no-op and keeps its first tick. The job clears either way.
+>   no-op and keeps its first tick. The job clears either way. *(⤳ 09-10-26, the settlement-surface slice:
+>   the L2 reveal is renamed **`revealPlanetSurface`** and reveals the planet's whole surface — every
+>   resource node **and** every settlement slot (§4 ruling 10). L1 still reveals no surface: no node, no
+>   slot.)*
 > - **Array lost mid-job.** The operator lever **`removeDeepScanArray`** (`{ guildId, arrayId }`) mirrors
 >   `removeOutpost`: an owner-checked delete of the row, the per-guild serial untouched (ids never repeat),
 >   the list dropped when it empties. The job lives on the row, so it goes with it and its reveal never
@@ -464,6 +482,10 @@ source-agnostic reveal path (§7) everything else uses.
 > otherwise untouched: no credits, fuel or goods move for it (invariants 1/2/3), and the founding
 > goldens moved by exactly the added `exploration` key (each re-pin carries a strip-and-prove of the
 > pre-slice hash).
+> *(⤳ 09-10-26, the settlement-surface slice: `revealSystem` now also reveals every **settlement slot** of
+> each home planet (the whole surface, §4 ruling 10), stamped with the founding tick. The founding goldens
+> moved by exactly those slot facts plus each entry's `slots` map — each re-pin carries a strip-and-prove of
+> the previous hash, `tests/slot-strip.js`.)*
 
 ## 7. The per-guild snapshot architecture
 
@@ -498,6 +520,18 @@ stands on.
   08-10-26 — a slot enters the record only by your own survey or founding)*. `checkExplorationRecord`
   extends to guard real slots on their own planet. The settlement-surface slice builds it; until then
   the record is nodes-only, as above.
+  **⤳ AS-BUILT 09-10-26 (the settlement-surface slice; roadmap 2.5, §4 ruling 12 slice 1) — the shape
+  is now `guild.exploration = { [planetId]: { tick, nodes: { [nodeId]: tick }, slots: { [slotId]: tick }
+  } }`.** A slot key = the guild knows that settlement slot is there (L2); its value is the tick it was
+  learned. A slot has no type, so the key is the whole fact — ids only, as before. **`slots` is always
+  present**, exactly as `nodes` is: `{}` for an L1-only planet, and `{}` on a surveyed planet of a
+  zero-slot archetype (gas giant, molten, irradiated). `reveal` takes a third fact, **`{ slotId }`** (it
+  must be a `settlement` site, and it also reveals its planet), learn-once like the others. A slot enters
+  the record only through `reveal`, from founding or the guild's own L2 survey — both of which reveal the
+  whole surface (§4 ruling 10's AS-BUILT note). `cloneExploration` copies `slots` two levels deep beside
+  `nodes`. `checkExplorationRecord` guards it as it guards `nodes`: an object, every key a real
+  **settlement** slot on **this** planet, every tick in `[planet tick, now]`. No slot **read** exists yet —
+  the claim gate's read is the Prefecture slice's (§8).
 - **`buildSnapshot` becomes per-guild.** Today `buildSnapshot(state)` (`sim/snapshot.js`) is PURE
   and sees every guild's data, producing one shared view. It becomes **`buildSnapshot(state,
   guildId)`**, producing that guild's filtered view = L0 ∪ record ∪ live rules (§3). The
@@ -544,7 +578,9 @@ stands on.
     through the seed, grouped `{ [systemId]: { [planetId]: { archetype, nodes: { [nodeId]:
     resourceType } } } }`. The live half (a rival's licensed node + archetype) rides on that
     rival's venture row, so the two sources stay distinct. *(⤳ 08-10-26, ruling 11: `known` is now the
-    record **∪ every controlled system at full L2** — see the AS-BUILT note below.)*
+    record **∪ every controlled system at full L2** — see the AS-BUILT note below.)* *(⤳ 09-10-26, the
+    settlement-surface slice: each entry is now `{ archetype, nodes: { [nodeId]: resourceType }, slots:
+    { [slotId]: true } }` — see the slots note below.)*
   Every rival row is an **allow-list**, and every top-level god's-eye key must be classified public
   or filtered in `fog.js` `TOP_LEVEL` — an unclassified key throws, and a test fails on a new one —
   so nothing new reaches a player by default. The view is pure (it reads the record, writes
@@ -562,7 +598,8 @@ stands on.
   are sorted at all three levels (system, planet, node) so the bytes never depend on which source met a
   key first (invariant 9). The entry shape is unchanged, `{ archetype, nodes }`. **Not yet: settlement
   slots** — ruling 11's end state is "every node **and every slot**"; the slots arrive with the
-  settlement-surface slice, which adds a `slots` track to the record and to this projection together. A
+  settlement-surface slice, which adds a `slots` track to the record and to this projection together.
+  *(⤳ AS-BUILT 09-10-26 — the settlement-surface slice, below: the slots are projected now.)* A
   rival's licensed-venture rows are unchanged (type + reputation, "plus every licensed venture"). The view
   stays pure — it computes no game number and writes nothing. **What moved:** a multi-guild view gains
   each rival's held system(s) in `known` (and, for an own system, nothing new — the home is already in the
@@ -573,7 +610,22 @@ stands on.
   06-10-26), so with the leak gone a lockout on a rival's ground shows only to that rival — although `known`
   now shows the node itself. Whether "knows" should follow the live projection is on the roadmap's decision
   checklist (ruling-11 cleanup items).
-- **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
+  **⤳ AS-BUILT 09-10-26 — settlement slots in `known` (the settlement-surface slice; roadmap 2.5, §4
+  ruling 12 slice 1; `sim/fog.js` `geographyFor`).** Each `known` entry is now **`{ archetype, nodes: {
+  [nodeId]: resourceType }, slots: { [slotId]: true } }`**. A slot has no type, so its value is `true` —
+  presence: the id list a client's Settlements tab renders. Entries are **uniform**: every one carries
+  `slots`, `{}` when none is known, whichever source named the planet. Both sources fill it: (1) the
+  **record**'s `slots` (what the guild surveyed or was founded on), and (2) **every controlled system**,
+  live — every planet's `settlementSlots` from the seed's own layout — so a controlled system (own or
+  rival) is now at ruling 11's full L2, "every node **and every slot**". Merged, not clobbered, exactly as
+  nodes are, and `sortedKnown` sorts the slot keys too, so the bytes never depend on which source met a key
+  first (invariant 9). The god's-eye lens is untouched: it carries no record and builds no `geography`.
+  **What moved:** every per-guild view, by exactly the `slots` maps (strip them and each view is its
+  08-10-26 bytes — `tests/slot-strip.js`, re-pinned in `tests/rival-leak-removed.test.js` and
+  `tests/deep-scan-job.test.js`); every god's-eye hash held. The client does not read `known` yet (ruling
+  12's slice 3). One rule left as ruled: a settlement slot's **lockout** still shows only on ground the
+  viewer controls (§2) — `isLockoutVisible` reads nodes, not the new slot track; flagged on the roadmap's
+  decision checklist.- **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
   write the record), so it is not speculative generality.
@@ -587,6 +639,10 @@ stands on.
   *(⤳ REMOVED 08-10-26 — AS-BUILT, §4 ruling 11: `observePublicRegister` is deleted, so the `reveal`
   callers are `revealSystem` (founding) and the Deep Scan Array's two loops only — a rival's surface is
   shown live in the view (the projection note above), never revealed into the record.)*
+  *(⤳ 09-10-26, the settlement-surface slice: `fact` may also be **`{ slotId }`** (L2 — a settlement slot,
+  which also reveals its planet), and the L2 loop is renamed **`revealPlanetSurface`**. Founding and the
+  L2 loop share one inner loop, `revealSurface`, the one place "a planet's whole surface — every node and
+  every slot" is spelled out.)*
 - **Determinism & goldens.** A per-guild snapshot is deterministic given `(state, guildId)`. The
   snapshot shape changing to per-guild is a **large but intended goldens change** that must be
   proven **deliberate, not accidental**: where a guild sees everything (a single-guild galaxy, or
@@ -629,7 +685,11 @@ already the gate's data source from birth.
 > establish validations are untouched. *(⤳ REVISED 08-10-26, §4 rulings 7 & 11: the gate becomes
 > "planet surveyed to full L2" — under all-or-nothing, knowing a settlement slot of P and having
 > surveyed P are the same thing. No rival-leak factory source (ruling 11 removes it); the Prefecture
-> slice gates on the surveyed record.)*
+> slice gates on the surveyed record.)* *(⤳ 09-10-26, the settlement-surface slice: the record now carries
+> each surveyed planet's **settlement slots** (§7), so the datum the gate reads — "knows a settlement slot of
+> P" — is representable and populated, by founding and by the guild's own L2 survey. Still **recorded, not
+> enforced**: no claim or establish validation reads it, and no slot read (`knowsSlot`) is added until the
+> Prefecture / claims slice needs one.)*
 
 ## 9. Scope & the vertical split
 

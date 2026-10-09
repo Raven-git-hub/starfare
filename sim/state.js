@@ -421,8 +421,9 @@ function createGuild({
     // (invariant 9). A restored save that HANDS ONE IN keeps it (copied, so it never aliases the caller's).
     ...(Object.keys(removedAssetHighWater).length ? { removedAssetHighWater: { ...removedAssetHighWater } } : {}),
     // exploration: the guild's EXPLORATION RECORD (docs/exploration-model.md §3/§7, roadmap 2.5) —
-    // `{ [planetId]: { tick, nodes: { [nodeId]: tick } } }`, the static geography it has LEARNED,
-    // learn-once / known-forever. Ids only: the archetype and node types stay in the seed (§15.3).
+    // `{ [planetId]: { tick, nodes: { [nodeId]: tick }, slots: { [slotId]: tick } } }`, the static
+    // geography it has LEARNED, learn-once / known-forever. Ids only: the archetype and node types stay
+    // in the seed (§15.3).
     // WRITTEN ONLY through `reveal` (sim/exploration.js) — by the `foundGuild` apply (the home system)
     // and the guild's own Deep Scan Array scans (never from a rival — ruling 11) — never set here.
     // CARRIED here so a scenario or a restored save that HANDS ONE IN keeps it, deep-copied through

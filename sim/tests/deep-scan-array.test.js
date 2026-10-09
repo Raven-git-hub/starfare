@@ -51,6 +51,7 @@ const { HEAVY_TRANSPORT } = require('../vehicles.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const { kitAboard, placeCraft, assertKitsMoved } = require('./kit-fixtures.js');
 const { outpostDeployScript } = require('./outpost-deploy-script.js');
+const { withoutRecordSlots } = require('./slot-strip.js');
 const {
   validateAction, applyAction,
   createSpawnVehicleAction, createGrantKitAction, createLoadKitAction, createUnloadKitAction,
@@ -510,11 +511,24 @@ const OUTPOST_PATH_ON_MAIN = {
   arrivalRetreat: { state: 'c8896430255af5bc6ffb6b477a06b9d44918a488e477992cd40657dc582518f5', godsEye: '8e5a2dca89e214555deadc25e7ad3f0afa4e4e6ff5c3126c1771968e079ea563' },
   reasons: '73debece18be90a63c6876e2b67908ee3de8c72b86fce6f20b4a744cc4dd2df8',
 };
+// ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): founding now records the home system's
+// settlement slots too, and every record entry carries a `slots` map, so the three STATE hashes moved. The
+// a60d98e state pins above are KEPT and asserted with the slots stripped (tests/slot-strip.js) — the proof
+// that the slots are the only thing that moved; the full states are re-pinned here. The god's-eye pins and
+// the refusals did not move (the lens carries no record).
+const OUTPOST_PATH_STATE_WITH_SLOTS = {
+  manualDeploy: 'ec4d7bb5f0907c0723096b299005157f5458933d5eff7b6d33dfe5bf05250838',
+  arrivalDeploy: '780bd5b0b6bd36de7d53e6ff54cbbd3bdaf7d828069cd2eff99a0f76cad33514',
+  arrivalRetreat: '14abae29093c152036bd39da69be8a3cbcd53dc7ca4a4b41ff566922b5b09ef3',
+};
 
 test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placements, anchors, retreat and refusals', () => {
   const { steps, reasons } = outpostDeployScript();
   for (const name of ['manualDeploy', 'arrivalDeploy', 'arrivalRetreat']) {
-    assert.equal(hashState(steps[name]), OUTPOST_PATH_ON_MAIN[name].state, `the state moved at "${name}"`);
+    assert.equal(hashState(steps[name]), OUTPOST_PATH_STATE_WITH_SLOTS[name], `the state moved at "${name}"`);
+    const { state: noSlots, count } = withoutRecordSlots(steps[name]);
+    assert.ok(count > 0, 'the founding really recorded settlement slots, so the strip proves something');
+    assert.equal(hashState(noSlots), OUTPOST_PATH_ON_MAIN[name].state, `"${name}" moved outside the record's slots`);
     assert.equal(sha(JSON.stringify(buildSnapshot(steps[name]))), OUTPOST_PATH_ON_MAIN[name].godsEye, `the god's-eye lens moved at "${name}"`);
   }
   assert.equal(sha(JSON.stringify(reasons)), OUTPOST_PATH_ON_MAIN.reasons, 'an outpost refusal moved');

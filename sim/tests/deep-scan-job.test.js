@@ -6,8 +6,9 @@
 // guild's exploration record through the ONE `reveal`. The tripwires:
 //
 //   1. THE NUMBERS: the two durations are the ruled [FIRST-CUT] ones, live once, and match the tuning doc.
-//   2. L1 reveals every archetype of the target system and NO node, exactly 720 ticks after it was queued;
-//      L2 reveals every node of the one target planet, exactly 480 ticks after. The job then clears.
+//   2. L1 reveals every archetype of the target system and NO surface, exactly 720 ticks after it was queued;
+//      L2 reveals the one target planet's whole surface — every node AND every settlement slot (⤳ the
+//      settlement-surface slice, 09-10-26) — exactly 480 ticks after. The job then clears.
 //   3. THE CHAIN, per planet: an L2 needs ITS planet's archetype known — not any other planet's.
 //   4. ONE ACTIVE JOB per array, no backlog.
 //   5. TARGETS: unclaimed only — a rival's system is refused (L3), your own is refused; no reach limit.
@@ -19,7 +20,10 @@
 //   9. OMIT-WHEN-IDLE: a galaxy whose arrays are idle is byte-identical to main before the scan (hashes
 //      recorded on 52e5e3f), and an array whose job finished is the idle row again. (⤳ 08-10-26, ruling 11:
 //      the two per-guild VIEWS re-pinned — each now shows the rival's home at full L2 — with a strip-and-prove
-//      back to the 52e5e3f bytes; the state and the god's-eye lens did not move.)
+//      back to the 52e5e3f bytes; the state and the god's-eye lens did not move.) (⤳ 09-10-26, the
+//      settlement-surface slice: the state and both views re-pinned again — founding now records the home's
+//      settlement slots and every `known` entry carries `slots` — each with a strip-and-prove back to the
+//      previous bytes (tests/slot-strip.js); the god's-eye lens did not move.)
 //  10. INVARIANTS: a malformed job fails loudly; the completion step halts, naming the tick.
 // The per-guild view (a rival never sees the job) is tested with the rest of the fog, in fog.test.js.
 
@@ -45,6 +49,7 @@ const { getStarterSystems, getSystem, getSystemLayout, getL0Systems } = require(
 const { placeCraft } = require('./kit-fixtures.js');
 const { idleArrayScript } = require('./idle-array-script.js');
 const { withoutRivalGround } = require('./rival-leak-script.js');
+const { withoutRecordSlots, withoutKnownSlots, stripKnownSlots } = require('./slot-strip.js');
 const {
   validateAction, applyAction, createQueueScanAction, createRemoveDeepScanArrayAction, createFoundGuildAction,
 } = require('../actions.js');
@@ -125,7 +130,7 @@ test('queueScan stamps ONE job on the idle array — level, target, startedTick 
   assert.equal(hashState(without), hashState(BASE));
 });
 
-test('L1 SCAN: at the end of tick start + 720 the guild knows every planet\'s ARCHETYPE in the target system, and NO node', () => {
+test('L1 SCAN: at the end of tick start + 720 the guild knows every planet\'s ARCHETYPE in the target system, and NO surface', () => {
   const queued = accept(BASE, L1(TARGET));
   const before = recordOf(queued);
   const almost = tickN(queued, SCAN_L1_TICKS - 1);
@@ -136,7 +141,7 @@ test('L1 SCAN: at the end of tick start + 720 the guild knows every planet\'s AR
   assert.equal(done.tick, BASE.tick + 720);
   const record = recordOf(done);
   for (const planet of planetsOf(TARGET)) {
-    assert.deepEqual(record[planet.id], { tick: done.tick, nodes: {} }, `${planet.id}: archetype known, no node`);
+    assert.deepEqual(record[planet.id], { tick: done.tick, nodes: {}, slots: {} }, `${planet.id}: archetype known, no node, no slot`);
   }
   // Exactly those planets were added; everything the guild knew before is untouched.
   const added = Object.keys(record).filter((p) => !(p in before)).sort();
@@ -146,24 +151,34 @@ test('L1 SCAN: at the end of tick start + 720 the guild knows every planet\'s AR
   assert.deepEqual(done, afterL1(), 'the shared fixture is this same run');
 });
 
-test('L2 SCAN, after the L1: at start + 480 the guild knows every resource node of THAT planet — and of no other', () => {
+// SURFACED: a TARGET planet with both kinds of surface — resource nodes AND settlement slots — derived from the
+// seed, so the L2 test below proves "the whole surface" rather than passing on a zero-slot archetype (a gas
+// giant, molten or irradiated world carries none, design.md §2).
+const SURFACED = planetsOf(TARGET).find((p) => p.resourceNodes.length > 0 && p.settlementSlots.length > 0).id;
+
+test('L2 SCAN, after the L1: at start + 480 the guild knows THAT planet\'s whole surface — every node and every slot — and no other\'s', () => {
   const l1 = afterL1();
-  const queued = accept(l1, L2(P2));
-  assert.deepEqual(arrayOf(queued).scan, { level: 'L2', targetPlanetId: P2, startedTick: l1.tick, completeTick: l1.tick + 480 });
+  const queued = accept(l1, L2(SURFACED));
+  assert.deepEqual(arrayOf(queued).scan, { level: 'L2', targetPlanetId: SURFACED, startedTick: l1.tick, completeTick: l1.tick + 480 });
   const almost = tickN(queued, SCAN_L2_TICKS - 1);
   assert.deepEqual(recordOf(almost), recordOf(l1), 'nothing is revealed early');
 
   const done = tickN(almost, 1);
   assert.equal(done.tick, l1.tick + 480);
   const record = recordOf(done);
-  const nodes = planetsOf(TARGET).find((p) => p.id === P2).resourceNodes.map((n) => n.id);
-  assert.ok(nodes.length > 0);
-  assert.deepEqual(record[P2], { tick: l1.tick, nodes: Object.fromEntries(nodes.map((n) => [n, done.tick])) },
-    'every node of P2, stamped now; P2 keeps the tick it was learned at L1 (learn-once)');
+  const row = planetsOf(TARGET).find((p) => p.id === SURFACED);
+  const nodes = row.resourceNodes.map((n) => n.id);
+  const slots = row.settlementSlots.map((x) => x.id);
+  assert.deepEqual(record[SURFACED], {
+    tick: l1.tick,
+    nodes: Object.fromEntries(nodes.map((n) => [n, done.tick])),
+    slots: Object.fromEntries(slots.map((x) => [x, done.tick])),
+  }, 'every node AND every settlement slot of the planet, stamped now; the planet keeps the tick it was learned at L1 (learn-once)');
   for (const planet of planetsOf(TARGET)) {
-    if (planet.id !== P2) assert.deepEqual(record[planet.id], recordOf(l1)[planet.id], `${planet.id} untouched`);
+    if (planet.id !== SURFACED) assert.deepEqual(record[planet.id], recordOf(l1)[planet.id], `${planet.id} untouched`);
   }
   assert.equal('scan' in arrayOf(done), false);
+  assert.deepEqual(checkInvariants(done, done.tick), [], 'the slot guard passes on a real survey');
 });
 
 // --- 3. the chain --------------------------------------------------------------------------------------
@@ -242,7 +257,7 @@ test('RE-VALIDATED, L2: the target PLANET\'s system is the one re-checked', () =
   const queued = accept(knowing(BASE, p), L2(p));
   const mid = ok(tickN(queued, 10), [foundOn(CONTESTED)]);
   const done = tickN(mid, SCAN_L2_TICKS - 10);
-  assert.deepEqual(recordOf(done)[p], { tick: BASE.tick, nodes: {} }, 'the archetype it already knew, and no node');
+  assert.deepEqual(recordOf(done)[p], { tick: BASE.tick, nodes: {}, slots: {} }, 'the archetype it already knew, and no node or slot');
   assert.equal('scan' in arrayOf(done), false);
 });
 
@@ -252,7 +267,7 @@ test('RE-VALIDATED, own ground: if the SCANNING guild comes to hold the target m
   const claimed = structuredClone(mid);
   claimed.claims.push({ claimId: `claim_${A}_${TARGET}`, ownerGuildId: A, landmarkId: TARGET, landmarkKind: 'system', claimedAtTick: mid.tick, contested: false });
   const done = tickN(claimed, SCAN_L1_TICKS - 300);
-  for (const planet of planetsOf(TARGET)) assert.deepEqual(recordOf(done)[planet.id], { tick: done.tick, nodes: {} });
+  for (const planet of planetsOf(TARGET)) assert.deepEqual(recordOf(done)[planet.id], { tick: done.tick, nodes: {}, slots: {} });
 });
 
 // --- 7. array lost mid-job ------------------------------------------------------------------------------
@@ -346,6 +361,8 @@ const IDLE_ARRAY_ON_MAIN = {
 };
 
 // The full per-guild views of the same two steps, recorded 08-10-26 after ruling 11's cleanup.
+// ⤳ 09-10-26 (the settlement-surface slice): no longer the full views either — each `known` entry now
+// carries `slots` — but kept as the strip-and-prove: strip the slots and the view still hashes to these.
 const IDLE_ARRAY_VIEWS_RULING_11 = {
   deployed: {
     [A]: '391732fa01bc185ae808a453a27d976a84cede75b50a7ebb998b7bf8e91226a4',
@@ -357,17 +374,40 @@ const IDLE_ARRAY_VIEWS_RULING_11 = {
   },
 };
 
+// The full state and per-guild views of the same two steps, recorded 09-10-26 after the settlement-surface
+// slice: founding records the home system's settlement slots, and every `known` entry carries `slots`.
+const IDLE_ARRAY_WITH_SLOTS = {
+  deployed: {
+    state: 'fa7e6eb02b7e34d9786e8aa0a7891eee33f66d1662e3f34817e30a9ec76a8b6f',
+    [A]: '795d804e43f4dbc9322bb4f13012dbec459c5bbd194659e51e04a4aea724a2af',
+    [B]: '3c8bf5bdf5a94d4769af1040cf25fd272a9403030fdefae6c07be2da2fd7bced',
+  },
+  ticked: {
+    state: 'f64134c05b54949c13caab500179819e3093fc6c81375175e1bb73dbe6245c9e',
+    [A]: 'c471faf51b510dc186a2439aaabf0a642458dd700042f5d108dd6832a88fb3d7',
+    [B]: 'adf28fa9e0a378e58be27f738dd8ce60187d8dc8f364f7db80c97b47d03cb18e',
+  },
+};
+
 test('OMIT-WHEN-IDLE: a galaxy whose array is idle is byte-identical to main before the scan — state, god\'s-eye, both views', () => {
   const { steps } = idleArrayScript();
   for (const [name, pins] of Object.entries(IDLE_ARRAY_ON_MAIN)) {
     const s = steps[name];
-    assert.equal(hashState(s), pins.state, `the state moved at "${name}"`);
+    assert.equal(hashState(s), IDLE_ARRAY_WITH_SLOTS[name].state, `the state moved at "${name}"`);
+    // Strip the record's slots (the settlement-surface slice) and it is the 52e5e3f state, byte for byte.
+    const { state: noSlots, count } = withoutRecordSlots(s);
+    assert.ok(count > 0, 'the foundings really recorded settlement slots');
+    assert.equal(hashState(noSlots), pins.state, `the state moved OUTSIDE the record's slots at "${name}"`);
     assert.equal(sha(JSON.stringify(buildSnapshot(s))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
     for (const guildId of [A, B]) {
       const view = buildSnapshot(s, guildId);
-      assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_VIEWS_RULING_11[name][guildId], `${guildId}'s view moved at "${name}"`);
-      // Strip the rival's ground (ruling 11's projection) and it is the 52e5e3f view, byte for byte.
-      assert.equal(sha(JSON.stringify(withoutRivalGround(view))), pins[guildId], `${guildId}'s view moved OUTSIDE the rival's ground at "${name}"`);
+      assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_WITH_SLOTS[name][guildId], `${guildId}'s view moved at "${name}"`);
+      // Strip the slots from `known` and it is the 08-10-26 (ruling 11) view…
+      const { view: noKnownSlots, count: shown } = withoutKnownSlots(view);
+      assert.ok(shown > 0, `${guildId}'s view really shows settlement slots`);
+      assert.equal(sha(JSON.stringify(noKnownSlots)), IDLE_ARRAY_VIEWS_RULING_11[name][guildId], `${guildId}'s view moved OUTSIDE the slots at "${name}"`);
+      // …and strip the rival's ground too (ruling 11's projection) and it is the 52e5e3f view, byte for byte.
+      assert.equal(sha(JSON.stringify(withoutRivalGround(stripKnownSlots(view)))), pins[guildId], `${guildId}'s view moved OUTSIDE the rival's ground at "${name}"`);
     }
   }
 });

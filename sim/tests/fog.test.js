@@ -31,6 +31,9 @@
 //      not one byte of the viewer's view.
 //   9. SCAN JOBS (2.5 (b2)): the job rides the owner's array row — the owner and the god's-eye see it, a
 //      rival sees neither array nor job; a rival's scan, queued or completed, moves not one byte of the view.
+//  10. SETTLEMENT SLOTS (the settlement-surface slice, 09-10-26; §4 ruling 10): every `known` entry carries a
+//      `slots` map beside `nodes` — every slot of a CONTROLLED system (own or rival), exactly the surveyed
+//      slots of a frontier planet, `{}` where none is known — and the god's-eye lens still carries none.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -59,7 +62,7 @@ const {
   getL0Systems, isHexInBounds, seedLandmarkAtHex, getClaimRadius,
 } = require('../seed.js');
 const { kitAboard, placeCraft } = require('./kit-fixtures.js');
-const { reveal } = require('../exploration.js');
+const { reveal, revealPlanetSurface } = require('../exploration.js');
 
 const A = 'player-guild';
 const B = 'bot-guild';
@@ -76,12 +79,16 @@ const rowOf = (snap, id) => snap.guilds.find((g) => g.id === id);
 const tick = (s) => advance(s, []).state;
 
 // fullSurface(systemId) -> what §4 ruling 11 says a CONTROLLED system shows in `geography.known`: every planet's
-// archetype and every resource node's type, straight from the seed's own layout (settlement slots: not yet —
-// the settlement-surface slice adds them).
+// archetype, every resource node's type and every settlement slot (present = `true`; a slot has no type),
+// straight from the seed's own layout.
 function fullSurface(systemId) {
   const out = {};
   for (const p of getSystemLayout(systemId).planets) {
-    out[p.id] = { archetype: p.archetype, nodes: Object.fromEntries(p.resourceNodes.map((n) => [n.id, n.resourceType])) };
+    out[p.id] = {
+      archetype: p.archetype,
+      nodes: Object.fromEntries(p.resourceNodes.map((n) => [n.id, n.resourceType])),
+      slots: Object.fromEntries(p.settlementSlots.map((x) => [x.id, true])),
+    };
   }
   return out;
 }
@@ -413,7 +420,7 @@ test('ruling 11: the surface is LIVE — shown while ANY guild controls the syst
   const s = rivalGalaxy();
   reveal(guildOf(s, A), { planetId: FRONTIER_PLANET }, s.tick);
   const recordBefore = canonicalStringify(guildOf(s, A).exploration);
-  const surveyed = { [FRONTIER_PLANET]: { archetype: getPlanet(FRONTIER_PLANET).archetype, nodes: {} } };
+  const surveyed = { [FRONTIER_PLANET]: { archetype: getPlanet(FRONTIER_PLANET).archetype, nodes: {}, slots: {} } };
 
   // (b) Uncontrolled: only what A surveyed — one planet, archetype only.
   assert.deepEqual(buildSnapshot(s, A).geography.known[FRONTIER], surveyed);
@@ -582,20 +589,26 @@ test('geography: L0 for EVERY system (position, planet count, controller) — ne
 });
 
 test('geography: `known` is exactly the record ∪ every controlled system, resolved through the seed — nothing more', () => {
-  // A has also surveyed one frontier planet in full (its archetype and every node), so all three kinds of
-  // entry are present: own home (record AND control — one entry, merged), rival home (control only), and a
-  // frontier planet (record only).
+  // A has also surveyed one frontier planet in full (its archetype, every node and every slot), so all three
+  // kinds of entry are present: own home (record AND control — one entry, merged), rival home (control only),
+  // and a frontier planet (record only).
   const s = rivalGalaxy();
-  reveal(guildOf(s, A), { planetId: FRONTIER_PLANET }, s.tick);
-  for (const n of getSystemLayout(FRONTIER).planets[0].resourceNodes) reveal(guildOf(s, A), { nodeId: n.id }, s.tick);
+  revealPlanetSurface(guildOf(s, A), FRONTIER_PLANET, s.tick);
   const { known } = buildSnapshot(s, A).geography;
 
-  // Every entry is a seed fact, filed under its own system.
+  // Every entry is a seed fact, filed under its own system — every node a resource node of that planet with
+  // its seed type, every slot a settlement slot of that planet.
   for (const [systemId, planets] of Object.entries(known)) {
     for (const [planetId, entry] of Object.entries(planets)) {
       assert.equal(getPlanet(planetId).systemId, systemId);
+      assert.deepEqual(Object.keys(entry), ['archetype', 'nodes', 'slots'], 'one uniform entry shape');
       assert.equal(entry.archetype, getPlanet(planetId).archetype);
       for (const [nodeId, type] of Object.entries(entry.nodes)) assert.equal(type, getSite(nodeId).resourceType);
+      for (const [slotId, present] of Object.entries(entry.slots)) {
+        assert.equal(present, true);
+        assert.equal(getSite(slotId).kind, 'settlement');
+        assert.equal(getSite(slotId).planetId, planetId);
+      }
     }
   }
   // Exactly the union, and nothing more.
@@ -609,8 +622,61 @@ test('geography: `known` is exactly the record ∪ every controlled system, reso
   assert.deepEqual(Object.keys(known), sorted(Object.keys(known)));
   for (const planets of Object.values(known)) {
     assert.deepEqual(Object.keys(planets), sorted(Object.keys(planets)));
-    for (const entry of Object.values(planets)) assert.deepEqual(Object.keys(entry.nodes), sorted(Object.keys(entry.nodes)));
+    for (const entry of Object.values(planets)) {
+      assert.deepEqual(Object.keys(entry.nodes), sorted(Object.keys(entry.nodes)));
+      assert.deepEqual(Object.keys(entry.slots), sorted(Object.keys(entry.slots)));
+    }
   }
+});
+
+// --- 10. settlement slots (the settlement-surface slice, 09-10-26) ------------------------------------------
+
+// slotIdsOf(planetId) -> that planet's settlement-slot ids, from the seed's own layout, sorted.
+const slotIdsOf = (planetId) => getSystemLayout(getPlanet(planetId).systemId).planets
+  .find((p) => p.id === planetId).settlementSlots.map((x) => x.id).sort();
+
+test('SLOTS: a CONTROLLED system shows EVERY planet\'s settlement slots — own and rival alike — and they are real', () => {
+  const s = rivalGalaxy();
+  for (const viewer of [A, B]) {
+    const { known } = buildSnapshot(s, viewer).geography;
+    for (const home of [A_HOME, B_HOME]) {
+      let total = 0;
+      for (const planet of getSystemLayout(home).planets) {
+        assert.deepEqual(Object.keys(known[home][planet.id].slots), slotIdsOf(planet.id), `${viewer} sees every slot of ${planet.id}`);
+        total += planet.settlementSlots.length;
+      }
+      assert.ok(total > 0, `${home} has settlement slots, so "every slot" is tested`);
+    }
+  }
+  // The rival's home is shown LIVE, not from A's record: A's record holds slots only on its own home planets.
+  for (const [planetId, entry] of Object.entries(guildOf(s, A).exploration)) {
+    assert.equal(getPlanet(planetId).systemId, A_HOME);
+    assert.deepEqual(Object.keys(entry.slots).sort(), slotIdsOf(planetId), 'founding recorded every home slot');
+  }
+});
+
+test('SLOTS: a self-surveyed FRONTIER planet shows exactly its surveyed slots; an L1-only planet shows none', () => {
+  // Pick the frontier's first planet that HAS slots (a gas giant, molten or irradiated world carries none).
+  const planets = getSystemLayout(FRONTIER).planets;
+  const surfaced = planets.find((p) => p.settlementSlots.length > 0).id;
+  const archetypeOnly = planets.find((p) => p.id !== surfaced).id;
+  const s = rivalGalaxy();
+  revealPlanetSurface(guildOf(s, A), surfaced, s.tick);       // an L2 survey of one planet
+  reveal(guildOf(s, A), { planetId: archetypeOnly }, s.tick);  // an L1 fact about another
+  const { known } = buildSnapshot(s, A).geography;
+  assert.deepEqual(Object.keys(known[FRONTIER]).sort(), [surfaced, archetypeOnly].sort(), 'only the two planets A learned');
+  assert.deepEqual(known[FRONTIER][surfaced], fullSurface(FRONTIER)[surfaced], 'the surveyed planet: every node AND every slot');
+  assert.deepEqual(known[FRONTIER][archetypeOnly], { archetype: getPlanet(archetypeOnly).archetype, nodes: {}, slots: {} },
+    'the L1 planet: archetype only — the slots map is present and empty, the same shape');
+  assert.equal(FRONTIER in buildSnapshot(s, B).geography.known, false, 'B surveyed nothing there');
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('SLOTS: the god\'s-eye lens carries no slot track — it builds no geography and no guild row shows the record', () => {
+  const s = rivalGalaxy();
+  const full = buildSnapshot(s);
+  assert.equal('geography' in full, false);
+  for (const g of full.guilds) assert.equal('exploration' in g, false, `${g.id}: the record is never on the operator row`);
 });
 
 // --- 7. the three rulings of 06-10-26 ------------------------------------------------------------------

@@ -4,16 +4,19 @@
 // roadmap 2.5 engine slice 1; sim/exploration.js). The tripwires:
 //
 //   1. REVEAL — the one write path: learn-once (a known fact is a no-op that keeps its first tick),
-//      a node reveals its planet, and a place the seed does not hold is refused loudly.
-//   2. FOUNDING seeds the home record: every home planet (L1) and every home node (L2), stamped at
-//      the founding tick — and nothing about any other system (L0 is computed, never recorded).
+//      a node or a settlement slot reveals its planet, and a place the seed does not hold is refused loudly.
+//   2. FOUNDING seeds the home record: every home planet (L1) and its whole surface — every node and every
+//      settlement slot (L2) — stamped at the founding tick, and nothing about any other system (L0 is
+//      computed, never recorded).
+//   2b. THE SURFACE (the settlement-surface slice, 09-10-26; §4 ruling 10): one L2 reveal learns a planet's
+//      nodes AND slots together, and replaying it on a later tick learns nothing and re-stamps nothing.
 //   3. A RIVAL TEACHES THE RECORD NOTHING (§4 ruling 11, 08-10-26): a rival's venture — licensed or not,
 //      open or closed — never writes any guild's record. The record holds only the guild's own surveys
 //      (founding + its Deep Scan Array); a controlled system's surface is shown LIVE in the view instead
 //      (tests/fog.test.js). The byte proof of the removal is tests/rival-leak-removed.test.js.
 //   4. KNOWN-FOREVER: what the guild did learn is never taken back — the record never shrinks.
 //   5. DETERMINISM (invariant 9): the record survives save/restore byte-identically, and two runs agree.
-//   6. THE INVARIANT HALTS on a corrupt record (checkExplorationRecord).
+//   6. THE INVARIANT HALTS on a corrupt record (checkExplorationRecord) — the slot track included.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -36,7 +39,8 @@ const {
   getSystemLayout, getStarterSystems, getTerranHomeworld, getPlanet, getSite,
 } = require('../seed.js');
 const {
-  reveal, revealSystem, knowsPlanet, knowsNode, cloneExploration, isOnPublicRegister,
+  reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsNode, cloneExploration,
+  isOnPublicRegister,
 } = require('../exploration.js');
 const exploration = require('../exploration.js');
 
@@ -49,6 +53,8 @@ const B_HOME = getStarterSystems()[1].id;
 const B_PLANET = getTerranHomeworld(B_HOME);
 const B_MINE = `${B_PLANET}_n01`;    // a Terran homeworld always opens titanium, titanium (§2)
 const B_MINE_2 = `${B_PLANET}_n02`;
+const B_SLOT = `${B_PLANET}_s01`;    // a Terran homeworld carries settlement slots (15)
+const B_SLOT_2 = `${B_PLANET}_s02`;
 const B_MINER_1 = `asset_${B}_miner_01`;
 const B_MINER_2 = `asset_${B}_miner_02`;
 
@@ -62,6 +68,18 @@ function nodeIdsOf(planetId) {
   const sys = getPlanet(planetId).systemId;
   return getSystemLayout(sys).planets.find((p) => p.id === planetId).resourceNodes.map((n) => n.id).sort();
 }
+function slotIdsOf(planetId) {
+  const sys = getPlanet(planetId).systemId;
+  return getSystemLayout(sys).planets.find((p) => p.id === planetId).settlementSlots.map((x) => x.id).sort();
+}
+
+// A frontier system — a starter neither guild founded on — for the guild's OWN survey, standing in here for a
+// Deep Scan Array completion (tests/deep-scan-job.test.js runs the real scan; both write through `reveal`).
+// FRONTIER_SURFACED is its first planet with BOTH kinds of surface (a gas giant, molten or irradiated world
+// carries no settlement slot), so a surface test proves nodes and slots together.
+const FRONTIER = getStarterSystems()[2].id;
+const FRONTIER_PLANET = planetIdsOf(FRONTIER)[0];
+const FRONTIER_SURFACED = planetIdsOf(FRONTIER).find((id) => nodeIdsOf(id).length > 0 && slotIdsOf(id).length > 0);
 
 // Found A and B through `intake` (the POST /action drain), one tick apart from nothing.
 function twoGuilds() {
@@ -96,11 +114,11 @@ test('reveal: a guild that knows nothing carries no record key at all (omit-when
 test('reveal: a planet fact records L1 only; a node fact records the node AND its planet', () => {
   const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
   assert.equal(reveal(g, { planetId: B_PLANET }, 3), 1, 'one new fact: the archetype');
-  assert.deepEqual(g.exploration, { [B_PLANET]: { tick: 3, nodes: {} } });
+  assert.deepEqual(g.exploration, { [B_PLANET]: { tick: 3, nodes: {}, slots: {} } }, 'both surface maps present, both empty');
 
   const g2 = createGuild({ id: 'g2', credits: 0, fuelHoard: 0 });
   assert.equal(reveal(g2, { nodeId: B_MINE }, 5), 2, 'two new facts: the planet, then the node');
-  assert.deepEqual(g2.exploration, { [B_PLANET]: { tick: 5, nodes: { [B_MINE]: 5 } } });
+  assert.deepEqual(g2.exploration, { [B_PLANET]: { tick: 5, nodes: { [B_MINE]: 5 }, slots: {} } });
   assert.equal(knowsPlanet(g2, B_PLANET), true);
   assert.equal(knowsNode(g2, B_MINE), true);
   assert.equal(knowsNode(g2, B_MINE_2), false, 'knowing one node of a planet is not knowing the others');
@@ -119,11 +137,24 @@ test('reveal: LEARN-ONCE — revealing a known fact is a no-op that keeps the OR
   assert.equal(g.exploration[B_PLANET].nodes[B_MINE_2], 7);
 });
 
+test('reveal: a SLOT fact records the slot AND its planet, learn-once, and never touches the node track', () => {
+  const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
+  assert.equal(reveal(g, { slotId: B_SLOT }, 4), 2, 'two new facts: the planet, then the slot');
+  assert.deepEqual(g.exploration, { [B_PLANET]: { tick: 4, nodes: {}, slots: { [B_SLOT]: 4 } } });
+  assert.equal(knowsNode(g, B_SLOT), false, 'a known slot is not a known node');
+  assert.equal(reveal(g, { slotId: B_SLOT }, 9), 0, 'known again is not learned again');
+  assert.equal(g.exploration[B_PLANET].slots[B_SLOT], 4, 'the first tick stands');
+  assert.equal(reveal(g, { slotId: B_SLOT_2 }, 6), 1, 'a second slot on the known planet is one new fact');
+  assert.equal(g.exploration[B_PLANET].tick, 4, 'and the planet keeps its tick');
+});
+
 test('reveal: a place the seed does not hold, a settlement slot as a node, or a bad tick is refused loudly', () => {
   const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
   assert.throws(() => reveal(g, { planetId: 'pl_nope' }, 1), /not a planet in the seed/);
   assert.throws(() => reveal(g, { nodeId: 'pl_nope_n01' }, 1), /not a resource node in the seed/);
   assert.throws(() => reveal(g, { nodeId: `${B_PLANET}_s01` }, 1), /not a resource node/, 'a slot is not a node');
+  assert.throws(() => reveal(g, { slotId: B_MINE }, 1), /not a settlement slot in the seed/, 'a node is not a slot');
+  assert.throws(() => reveal(g, { slotId: 'pl_nope_s01' }, 1), /not a settlement slot in the seed/);
   assert.throws(() => reveal(g, { planetId: B_PLANET }, -1), /whole tick/);
   assert.throws(() => reveal(g, { planetId: B_PLANET }, 1.5), /whole tick/);
   assert.equal('exploration' in g, false, 'a refused reveal leaves no empty record behind');
@@ -132,15 +163,17 @@ test('reveal: a place the seed does not hold, a settlement slot as a node, or a 
 test('cloneExploration: a deep copy, null for an empty record', () => {
   assert.equal(cloneExploration(undefined), null);
   assert.equal(cloneExploration({}), null);
-  const rec = { [B_PLANET]: { tick: 1, nodes: { [B_MINE]: 1 } } };
+  const rec = { [B_PLANET]: { tick: 1, nodes: { [B_MINE]: 1 }, slots: { [B_SLOT]: 1 } } };
   const copy = cloneExploration(rec);
   assert.deepEqual(copy, rec);
   copy[B_PLANET].nodes[B_MINE_2] = 2;
+  copy[B_PLANET].slots[B_SLOT_2] = 2;
   assert.equal(rec[B_PLANET].nodes[B_MINE_2], undefined, 'the copy never aliases the original');
+  assert.equal(rec[B_PLANET].slots[B_SLOT_2], undefined, 'nor its slot track');
 });
 
 test('createGuild carries a handed-in record (a restored save keeps it) and never aliases it', () => {
-  const rec = { [B_PLANET]: { tick: 1, nodes: { [B_MINE]: 1 } } };
+  const rec = { [B_PLANET]: { tick: 1, nodes: { [B_MINE]: 1 }, slots: { [B_SLOT]: 1 } } };
   const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0, exploration: rec });
   assert.deepEqual(g.exploration, rec);
   rec[B_PLANET].tick = 42;
@@ -151,18 +184,75 @@ test('createGuild carries a handed-in record (a restored save keeps it) and neve
 
 // --- 2. founding seeds the home record --------------------------------------------------------------
 
-test('founding: the home system is known FULLY — every planet (L1) and every resource node (L2)', () => {
+test('founding: the home system is known FULLY — every planet (L1), every resource node and every settlement slot (L2)', () => {
   const s = twoGuilds();
   for (const [id, home] of [[A, A_HOME], [B, B_HOME]]) {
     const rec = guildOf(s, id).exploration;
     assert.deepEqual(Object.keys(rec).sort(), planetIdsOf(home), `${id} knows exactly its home planets`);
+    let slotsSeen = 0;
     for (const planetId of planetIdsOf(home)) {
       assert.equal(rec[planetId].tick, s.tick, 'stamped with the founding tick (§15.2)');
       assert.deepEqual(Object.keys(rec[planetId].nodes).sort(), nodeIdsOf(planetId), `${id} knows every node of ${planetId}`);
       for (const nodeId of Object.keys(rec[planetId].nodes)) assert.equal(rec[planetId].nodes[nodeId], s.tick);
+      assert.deepEqual(Object.keys(rec[planetId].slots).sort(), slotIdsOf(planetId), `${id} knows every settlement slot of ${planetId}`);
+      for (const slotId of Object.keys(rec[planetId].slots)) assert.equal(rec[planetId].slots[slotId], s.tick);
+      slotsSeen += Object.keys(rec[planetId].slots).length;
     }
+    assert.ok(slotsSeen > 0, `${id}'s home has settlement slots, so "every slot" is really tested`);
   }
   assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('founding through revealSystem directly: the count it returns is planets + nodes + slots, and a replay learns nothing', () => {
+  const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
+  const layout = getSystemLayout(A_HOME);
+  const facts = layout.planets.reduce((n, p) => n + 1 + p.resourceNodes.length + p.settlementSlots.length, 0);
+  assert.equal(revealSystem(g, A_HOME, 0), facts);
+  assert.equal(revealSystem(g, A_HOME, 9), 0, 'learn-once');
+});
+
+// --- 2b. the surface: one L2 reveal learns nodes AND slots together ---------------------------------
+
+test('SURFACE: one L2 reveal records every node AND every slot of the planet together, and is a no-op on replay a tick later', () => {
+  const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
+  const nodes = nodeIdsOf(FRONTIER_SURFACED);
+  const slots = slotIdsOf(FRONTIER_SURFACED);
+  assert.ok(nodes.length > 0 && slots.length > 0, 'the planet has both kinds of surface');
+  reveal(g, { planetId: FRONTIER_SURFACED }, 2); // known at L1 first — the scan's chain
+  assert.equal(revealPlanetSurface(g, FRONTIER_SURFACED, 7), nodes.length + slots.length, 'every node and slot is new');
+  assert.deepEqual(g.exploration[FRONTIER_SURFACED], {
+    tick: 2,
+    nodes: Object.fromEntries(nodes.map((n) => [n, 7])),
+    slots: Object.fromEntries(slots.map((x) => [x, 7])),
+  }, 'nodes and slots learned at one tick, the planet keeping its L1 tick');
+  const before = structuredClone(g.exploration);
+  assert.equal(revealPlanetSurface(g, FRONTIER_SURFACED, 8), 0, 'the replay a tick later learns nothing');
+  assert.deepEqual(g.exploration, before, 'and re-stamps nothing (learn-once)');
+  // Only that planet: its neighbours stay unknown.
+  assert.deepEqual(Object.keys(g.exploration), [FRONTIER_SURFACED]);
+});
+
+test('SURFACE: a zero-slot archetype surveys to an EMPTY slot map — present, not absent', () => {
+  // The first starter-system planet with nodes but no settlement slot (a gas giant, molten or irradiated
+  // world), found in the seed rather than named.
+  const bare = getStarterSystems().flatMap((x) => getSystemLayout(x.id).planets)
+    .find((p) => p.settlementSlots.length === 0 && p.resourceNodes.length > 0);
+  assert.ok(bare, 'the seed has a zero-slot planet');
+  const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
+  revealPlanetSurface(g, bare.id, 3);
+  assert.deepEqual(g.exploration[bare.id].slots, {});
+  assert.equal(Object.keys(g.exploration[bare.id].nodes).length, bare.resourceNodes.length);
+});
+
+test('SURFACE: an L1 archetype scan reveals NO surface — no node, and no slot', () => {
+  const g = createGuild({ id: 'g', credits: 0, fuelHoard: 0 });
+  revealSystemArchetypes(g, FRONTIER, 1);
+  for (const planetId of planetIdsOf(FRONTIER)) assert.deepEqual(g.exploration[planetId], { tick: 1, nodes: {}, slots: {} });
+});
+
+test('the L2 reveal is RENAMED revealPlanetSurface — the old name is gone, so nothing calls a half-true name by mistake', () => {
+  assert.equal(typeof exploration.revealPlanetSurface, 'function');
+  assert.equal('revealPlanetNodes' in exploration, false);
 });
 
 test('founding: NOTHING beyond the home system — no other system, and no L0 row is stored', () => {
@@ -238,11 +328,6 @@ test('and the rival CLOSING its licensed venture moves nothing either — there 
 
 // --- 4. known-forever: what the guild learned stays --------------------------------------------------
 
-// A frontier system — a starter neither guild founded on — for the guild's OWN survey, standing in here for a
-// Deep Scan Array completion (tests/deep-scan-job.test.js runs the real scan; both write through `reveal`).
-const FRONTIER = getStarterSystems()[2].id;
-const FRONTIER_PLANET = planetIdsOf(FRONTIER)[0];
-
 test('LEARN-ONCE across a run: every tick\'s record contains the last, fact for fact, tick for tick', () => {
   // A scripted run in which the rival licenses, runs an unlicensed mine and closes — every way the register
   // moves — while A surveys a frontier planet of its own in the middle. What A learned stays, first tick kept.
@@ -267,6 +352,9 @@ test('LEARN-ONCE across a run: every tick\'s record contains the last, fact for 
         for (const nodeId of Object.keys(old[planetId].nodes)) {
           assert.equal(now[planetId].nodes[nodeId], old[planetId].nodes[nodeId], `tick ${s.tick}: ${id} lost or re-stamped node ${nodeId}`);
         }
+        for (const slotId of Object.keys(old[planetId].slots)) {
+          assert.equal(now[planetId].slots[slotId], old[planetId].slots[slotId], `tick ${s.tick}: ${id} lost or re-stamped slot ${slotId}`);
+        }
       }
     }
   }
@@ -275,11 +363,12 @@ test('LEARN-ONCE across a run: every tick\'s record contains the last, fact for 
 });
 
 // revealSurvey(state, guildId, planetId) — the guild surveys one planet's whole surface at the state's tick,
-// in place, through the one write path: its archetype and every node (what an L2 scan completion writes).
+// in place, through the one write path: its archetype, then every node and every slot — exactly what an L1
+// then an L2 scan completion write.
 function revealSurvey(state, guildId, planetId) {
   const guild = guildOf(state, guildId);
   reveal(guild, { planetId }, state.tick);
-  for (const nodeId of nodeIdsOf(planetId)) reveal(guild, { nodeId }, state.tick);
+  revealPlanetSurface(guild, planetId, state.tick);
 }
 
 // --- 5. determinism (invariant 9) -------------------------------------------------------------------
@@ -341,6 +430,25 @@ test('invariant: a node filed under the WRONG planet, or a settlement slot filed
   assert.ok(corrupted((g) => { g.exploration[homePlanet].nodes[`${homePlanet}_s01`] = 0; }).includes(rule), 'a slot as a node');
 });
 
+test('invariant: the SLOT track is guarded — a node filed as a slot, a slot on the WRONG planet, a slot learned before its planet', () => {
+  const rule = 'exploration-slot-is-a-settlement-slot-on-its-planet (seed.js)';
+  const homePlanet = getTerranHomeworld(A_HOME);
+  const homeSlot = slotIdsOf(homePlanet)[0];
+  assert.ok(corrupted((g) => { g.exploration[homePlanet].slots[`${homePlanet}_n01`] = 0; }).includes(rule), 'a resource node as a slot');
+  assert.ok(corrupted((g) => { g.exploration[homePlanet].slots[B_SLOT] = 0; }).includes(rule), 'a rival planet\'s slot under my planet');
+  assert.ok(corrupted((g) => { g.exploration[homePlanet].slots.pl_nope_s01 = 0; }).includes(rule), 'a slot the seed does not hold');
+  assert.ok(corrupted((g, s) => {
+    g.exploration[homePlanet].tick = s.tick;          // planet at tick 0 …
+    g.exploration[homePlanet].slots[homeSlot] = -1;   // … slot "before" it
+  }).includes('exploration-slot-tick-between-planet-tick-and-now'));
+  assert.ok(corrupted((g, s) => { g.exploration[homePlanet].slots[homeSlot] = s.tick + 1; })
+    .includes('exploration-slot-tick-between-planet-tick-and-now'), 'a slot learned in the future');
+  for (const bad of [null, [], undefined, 7]) {
+    assert.ok(corrupted((g) => { g.exploration[homePlanet].slots = bad; }).includes('exploration-slots-is-an-object'),
+      `slots = ${JSON.stringify(bad)} — the track is ALWAYS present, an object`);
+  }
+});
+
 test('invariant: a fact learned in the FUTURE, or a node learned before its planet, is a violation', () => {
   const homePlanet = getTerranHomeworld(A_HOME);
   assert.ok(corrupted((g, s) => { g.exploration[homePlanet].tick = s.tick + 1; })
@@ -357,4 +465,8 @@ test('the fixtures are what they claim: two distinct starter homes, and B\'s min
   assert.equal(getSite(B_MINE).resourceType, 'titanium');
   assert.equal(getSite(B_MINE_2).resourceType, 'titanium');
   assert.equal(getSite(B_MINE).planetId, B_PLANET);
+  for (const slot of [B_SLOT, B_SLOT_2]) {
+    assert.equal(getSite(slot).kind, 'settlement');
+    assert.equal(getSite(slot).planetId, B_PLANET);
+  }
 });
