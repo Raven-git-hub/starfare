@@ -23,8 +23,9 @@
 //                         assets? ([{ id, kind, systemId, maintenanceCondition }] —
 //                           the guild's ground-asset inventory, §4; absent when empty),
 //                         homeSystemId?, homePlanetId?,
-//                         exploration? ({ [planetId]: { tick, nodes: { [nodeId]: tick } } } —
-//                           the learned-geography record, exploration-model.md §7; absent when empty) }]
+//                         exploration? ({ [planetId]: { tick, nodes: { [nodeId]: tick },
+//                           slots: { [slotId]: tick } } } — the learned-geography record,
+//                           exploration-model.md §7; absent when empty) }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
 //                          // SHARED territory rows; reference real seed landmarks
 //   state.reserve    : { reserveLevel, fuelPrice, avgDraw } // SHARED fuel reserve;
@@ -2478,9 +2479,9 @@ function checkNodeLockouts(state) {
 
 // Exploration-record integrity (docs/exploration-model.md §3/§7, roadmap 2.5 engine slice 1) — the
 // structural guard for each guild's `exploration` record, `{ [planetId]: { tick, nodes: { [nodeId]:
-// tick } } }`. The record is learned FACTS about real seed landmarks, so a fact that names nothing
-// real, or that claims to have been learned in the future, is corruption to halt on, not to render.
-// A pure read; runs every tick. For each guild that carries the key:
+// tick }, slots: { [slotId]: tick } } }`. The record is learned FACTS about real seed landmarks, so a
+// fact that names nothing real, or that claims to have been learned in the future, is corruption to
+// halt on, not to render. A pure read; runs every tick. For each guild that carries the key:
 //   - the record is a non-empty object (OMIT-WHEN-EMPTY — an `exploration: {}` would move the bytes
 //     of a guild that knows nothing, which is exactly what the omission exists to prevent);
 //   - every planet key is a real seed planet (getPlanet);
@@ -2489,7 +2490,11 @@ function checkNodeLockouts(state) {
 //   - `nodes` is an object whose every key is a real RESOURCE node ON THAT PLANET (getSite) — a node
 //     filed under the wrong planet would let the per-planet claim gate (§8) pass on the wrong planet;
 //   - every node's tick is a whole tick in [planet tick, state.tick] — a node is never known before
-//     its planet (revealing a node reveals its planet first, sim/exploration.js `reveal`).
+//     its planet (revealing a node reveals its planet first, sim/exploration.js `reveal`);
+//   - `slots` (the settlement-surface slice, §4 ruling 10) is guarded exactly as `nodes` is: an object
+//     whose every key is a real SETTLEMENT slot ON THAT PLANET — the claim gate (§8) will read it, so a
+//     resource node filed as a slot, or a slot filed under the wrong planet, would let it pass on the
+//     wrong ground — and each slot's tick is in [planet tick, state.tick].
 // What this CANNOT see is the record shrinking — that is a fact about two ticks, not one state — so
 // learn-once is pinned across runs in tests/exploration.test.js instead.
 function checkExplorationRecord(state) {
@@ -2527,6 +2532,20 @@ function checkExplorationRecord(state) {
         }
         if (!isTick(entry.nodes[nodeId], entry.tick)) {
           out.push({ rule: 'exploration-node-tick-between-planet-tick-and-now', where: `${at}.nodes.${nodeId}`, detail: { value: entry.nodes[nodeId], planetTick: entry.tick, stateTick: now } });
+        }
+      }
+      if (entry.slots === null || typeof entry.slots !== 'object' || Array.isArray(entry.slots)) {
+        out.push({ rule: 'exploration-slots-is-an-object', where: `${at}.slots`, detail: { value: entry.slots } });
+        continue;
+      }
+      for (const slotId of Object.keys(entry.slots)) {
+        const site = getSite(slotId);
+        if (!site || site.kind !== 'settlement' || site.planetId !== planetId) {
+          out.push({ rule: 'exploration-slot-is-a-settlement-slot-on-its-planet (seed.js)', where: `${at}.slots.${slotId}`, detail: { slotId, planetId, sitePlanetId: site ? site.planetId : null, siteKind: site ? site.kind : null } });
+          continue;
+        }
+        if (!isTick(entry.slots[slotId], entry.tick)) {
+          out.push({ rule: 'exploration-slot-tick-between-planet-tick-and-now', where: `${at}.slots.${slotId}`, detail: { value: entry.slots[slotId], planetTick: entry.tick, stateTick: now } });
         }
       }
     }

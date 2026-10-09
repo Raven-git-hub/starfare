@@ -17,6 +17,13 @@
 //      The full new views are pinned too, so any later drift is caught.
 //   5. THE TRIPWIRE: across the whole script, every tick, no guild's record gains a single fact from a
 //      rival's licensed venture — the leak cannot silently come back.
+//
+// ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): every record entry now carries a `slots` map
+// (founding fills the home's), and every `geography.known` entry carries `slots` too — so every STATE and VIEW
+// below moved again, by exactly those maps. Each pin above the line "after the settlement-surface slice" is
+// therefore asserted with the slots STRIPPED (tests/slot-strip.js): strip them and main's 41fe84c bytes, and
+// the 08-10-26 views, come back exactly. The full new bytes are pinned in WITH_SLOTS. The god's-eye pins did
+// not move (the lens carries no record and builds no geography).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -30,6 +37,7 @@ const { reveal, isOnPublicRegister } = require('../exploration.js');
 const {
   rivalLeakScript, soloScript, withoutRivalFacts, withoutRivalGround, A, B, B_PLANET, B_MINE,
 } = require('./rival-leak-script.js');
+const { stripRecordSlots, stripKnownSlots, withoutRecordSlots, withoutKnownSlots } = require('./slot-strip.js');
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 const godsEye = (s) => sha(JSON.stringify(buildSnapshot(s)));
@@ -75,6 +83,7 @@ const SOLO_ON_MAIN = {
 };
 
 // The full per-guild views after the cleanup, recorded 08-10-26. Each shows the rival's home at full L2.
+// ⤳ 09-10-26: now the views with `known`'s slots stripped (the full views are WITH_SLOTS, below).
 const VIEWS_AFTER = {
   founded: {
     [A]: 'e5a46a34c5ec407777319bb61c8b4199f325703d755784c4bbf99966b49ef357',
@@ -88,6 +97,29 @@ const VIEWS_AFTER = {
     [A]: 'e251b2dc3d1934de631ddfe79244b2dc9f55273d54bcc6bf7638a88dcd4f8f5b',
     [B]: 'c746bc737d9bf188a6ecbe878d1950e00cfbfb0651f78d068b54dec120486e6e',
   },
+};
+
+// After the settlement-surface slice, recorded 09-10-26: the full states and per-guild views of the same steps.
+const WITH_SLOTS = {
+  founded: {
+    state: '3ae89a673a486d3aee5c03a5db1c69fd9bf3bd2b3d405a2d412ee3db0f09723f',
+    [A]: '6b8db105242b9c21d9342e771ef9ece611b2ef4654d7cdf6505ea461c4f05977',
+    [B]: 'af6b8da9a84e5bc56ee66ffc018af60e76cc810d57f36e26bc2500f832cf37c3',
+  },
+  licensed: {
+    state: '938ea6d56d4d1399477a36e6f61928e0fc2b43d3c17c308ef3140f69a75ec9b4',
+    [A]: '25b8017c1ff537ded356a28c68da5eba1bfc624eb552f422191f801f01c437dc',
+    [B]: '6f77ee1d54199e98da3b366516fd67ec5ca7d29e9ffa4261935b3dcd5c1a0c52',
+  },
+  closed: {
+    state: '6b4544ba0e4f7bb748665f46f76ef28a1c4b23aef60feabdb0447cf39aba48e2',
+    [A]: '1ab98c78530f5e4dfb4bccac42c6d6d3e7af96f079bd36f17c200cc1adcbe6c3',
+    [B]: '9ad15005f6ac40b22189a77274a77d8c90733a215958dda7fae871bbde4ced58',
+  },
+};
+const SOLO_WITH_SLOTS = {
+  state: '7333c71d21df5978325f771363febd5d3c192571766d5399cc0ad215f751a8a4',
+  view: '11b09de4885497a9807eddbfbf39058dded47b724682adf09dbe423b87670ddb',
 };
 
 // legacyObservePublicRegister(state) — the REMOVED end-of-tick step, copied from main at 41fe84c
@@ -125,21 +157,30 @@ test('GOD\'S-EYE: byte-identical to main at every step — it never carried the 
 
 test('ONE GUILD: state, god\'s-eye and the guild\'s own view are byte-identical to main', () => {
   const { solo } = soloScript();
-  assert.equal(hashState(solo), SOLO_ON_MAIN.state, 'no rival, so the removed step never wrote anything');
+  assert.equal(hashState(stripRecordSlots(solo)), SOLO_ON_MAIN.state, 'no rival, so the removed step never wrote anything');
   assert.equal(godsEye(solo), SOLO_ON_MAIN.godsEye);
-  assert.equal(sha(JSON.stringify(viewOf(solo, A))), SOLO_ON_MAIN.view,
+  assert.equal(sha(JSON.stringify(stripKnownSlots(viewOf(solo, A)))), SOLO_ON_MAIN.view,
     'the only controlled system is the home, which the founding record already holds in full');
+  // The full bytes after the settlement-surface slice, and the slots really there (so the strips prove something).
+  assert.equal(hashState(solo), SOLO_WITH_SLOTS.state);
+  assert.equal(sha(JSON.stringify(viewOf(solo, A))), SOLO_WITH_SLOTS.view);
+  assert.ok(withoutRecordSlots(solo).count > 0 && withoutKnownSlots(viewOf(solo, A)).count > 0);
 });
 
 // --- 3. the state moved by exactly the leaked facts ------------------------------------------------------------
 
 test('STATE: identical to main until a rival licensed venture is observed; after it, main MINUS the leak', () => {
   const steps = rivalLeakScript();
-  assert.equal(hashState(steps.founded), ON_MAIN.founded.state, 'founded: nothing licensed yet, so nothing moved');
+  // (Each state with its record slots stripped — the settlement-surface slice's only delta.)
+  assert.equal(hashState(stripRecordSlots(steps.founded)), ON_MAIN.founded.state, 'founded: nothing licensed yet, so nothing moved');
   for (const name of ['licensed', 'closed']) {
-    assert.notEqual(hashState(steps[name]), ON_MAIN[name].state, `${name}: main's state held the leak, so this must differ`);
-    assert.equal(hashState(steps[name]), ON_MAIN[name].strippedState,
+    assert.notEqual(hashState(stripRecordSlots(steps[name])), ON_MAIN[name].state, `${name}: main's state held the leak, so this must differ`);
+    assert.equal(hashState(stripRecordSlots(steps[name])), ON_MAIN[name].strippedState,
       `${name}: main's state with its rival-held record facts stripped IS the new state`);
+  }
+  for (const name of Object.keys(WITH_SLOTS)) {
+    assert.equal(hashState(steps[name]), WITH_SLOTS[name].state, `${name}: the full state after the settlement-surface slice`);
+    assert.ok(withoutRecordSlots(steps[name]).count > 0, `${name}: the foundings really recorded settlement slots`);
   }
 });
 
@@ -147,11 +188,11 @@ test('STATE, in-tree: replaying the removed step rebuilds main exactly, and stri
   const now = rivalLeakScript();
   const legacy = rivalLeakScript({ afterTick: legacyObservePublicRegister });
   for (const name of Object.keys(ON_MAIN)) {
-    assert.equal(hashState(legacy[name]), ON_MAIN[name].state, `${name}: the replay is main, byte for byte`);
+    assert.equal(hashState(stripRecordSlots(legacy[name])), ON_MAIN[name].state, `${name}: the replay is main, byte for byte (slots stripped)`);
     assert.equal(hashState(withoutRivalFacts(legacy[name])), hashState(now[name]), `${name}: main minus the leak is now`);
   }
   // And the leak, named: the one rival planet and its licensed node, banked at the first tick's end.
-  assert.deepEqual(guildOf(legacy.closed, A).exploration[B_PLANET], { tick: 1, nodes: { [B_MINE]: 1 } });
+  assert.deepEqual(guildOf(legacy.closed, A).exploration[B_PLANET], { tick: 1, nodes: { [B_MINE]: 1 }, slots: {} });
   assert.equal(B_PLANET in guildOf(now.closed, A).exploration, false);
 });
 
@@ -162,9 +203,11 @@ test('VIEWS: strip the rival-held ground and every view is main\'s; the full vie
   for (const [name, pins] of Object.entries(ON_MAIN)) {
     for (const guildId of [A, B]) {
       const view = viewOf(steps[name], guildId);
-      assert.equal(sha(JSON.stringify(withoutRivalGround(view))), pins.strippedView[guildId],
+      const noSlots = stripKnownSlots(view); // the settlement-surface slice's only delta, stripped
+      assert.equal(sha(JSON.stringify(withoutRivalGround(noSlots))), pins.strippedView[guildId],
         `${guildId}'s view moved OUTSIDE rival-held ground at "${name}"`);
-      assert.equal(sha(JSON.stringify(view)), VIEWS_AFTER[name][guildId], `${guildId}'s full view moved at "${name}"`);
+      assert.equal(sha(JSON.stringify(noSlots)), VIEWS_AFTER[name][guildId], `${guildId}'s view moved outside its slots at "${name}"`);
+      assert.equal(sha(JSON.stringify(view)), WITH_SLOTS[name][guildId], `${guildId}'s full view moved at "${name}"`);
     }
   }
 });

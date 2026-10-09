@@ -1222,9 +1222,10 @@ function createRemoveOutpostAction({ guildId, outpostId: oId }) {
 // queueScan: give one of the guild's Deep Scan Arrays its ONE scan job (docs/exploration-model.md §5
 // "Discovery — the scan"; roadmap 2.5 (b2)). `level` is 'L1' — a SYSTEM scan, naming `targetSystemId`,
 // that reveals every planet's archetype — or 'L2' — a PLANET scan, naming `targetPlanetId`, that reveals
-// that planet's resource nodes. It completes SCAN_TICKS[level] ticks later (sim/deep-scan-arrays.js). The
-// constructor only enforces the always-required fields and passes on whichever target it was given;
-// validateAction judges legality (the array idle, the target real and unclaimed, the L1→L2 chain).
+// that planet's whole surface (its resource nodes and settlement slots). It completes SCAN_TICKS[level]
+// ticks later (sim/deep-scan-arrays.js). The constructor only enforces the always-required fields and
+// passes on whichever target it was given; validateAction judges legality (the array idle, the target real
+// and unclaimed, the L1→L2 chain).
 function createQueueScanAction({ guildId, arrayId, level, targetSystemId, targetPlanetId }) {
   if (guildId === undefined) throw new Error('createQueueScanAction: guildId is required');
   if (arrayId === undefined) throw new Error('createQueueScanAction: arrayId is required');
@@ -4559,10 +4560,11 @@ function applyAction(state, action) {
       contested: false,
     });
     // THE FOUNDING EXPLORATION RECORD (docs/exploration-model.md §6, roadmap 2.5 engine slice 1).
-    // A new guild knows its HOME SYSTEM FULLY — every planet's archetype (L1) and every resource
-    // node's type (L2) — because it has lived there; it knows nothing else beyond L0, which is never
-    // stored (it is computed for every system in the view). Written through the one source-agnostic
-    // `reveal` path every later source also uses, stamped with the founding tick like the claim above.
+    // A new guild knows its HOME SYSTEM FULLY — every planet's archetype (L1) and its whole surface,
+    // every resource node and every settlement slot (L2) — because it has lived there; it knows
+    // nothing else beyond L0, which is never stored (it is computed for every system in the view).
+    // Written through the one source-agnostic `reveal` path every later source also uses, stamped
+    // with the founding tick like the claim above.
     // Every founding, bot or human — knowing your own home is not part of the human starter package.
     // It moves no credits, fuel or goods (invariants 1/2/3 untouched); it only adds the record.
     revealSystem(guild, action.homeSystemId, next.tick);

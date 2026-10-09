@@ -3660,7 +3660,9 @@ boundary so the later hex-map swap doesn't touch it.
   espionage cost/risk; the scan durations remain `[FIRST-CUT]` for the tuner.*
   *(⤳ 08-10-26 — **the simplification, ruling 11** (`exploration-model.md` §4): control ⇒ full L2, live, for
   every guild; no partial surface knowledge; the record holds only your own surveys. Its cleanup slice is
-  BUILT — the last entry below.)*
+  BUILT — below.)* *(⤳ 09-10-26 — **ruling 12, the client fog boundary**, in three slices: (1) the
+  settlement-surface engine slice — BUILT, the last entry below; (2) the L0-board engine slice and (3) the
+  client flip — not yet.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -3818,6 +3820,45 @@ boundary so the later hex-map swap doesn't touch it.
     all nine archetypes' blurbs, every row route, the tab switch, back-to-system and waystation-after-planet,
     zero console errors; the **system manifest renders pixel-identical to `main`** (served the same state,
     incl. a planet→back round trip). Sim **2,140**, tools **78** (both unchanged). Checklist items below.
+  - **The settlement-surface engine slice (ruling 12, slice 1) — ⤳ AS-BUILT 09-10-26 (engine only; no client,
+    no L0 board, no claim gate).** `docs/exploration-model.md` §4 rulings 10 & 12, AS-BUILT notes in §7 (the
+    record and the projection). Turns ruling 10's and §7's design-ahead **slots** into as-built. **No new
+    number.** **(1) The record:** each entry is now `{ tick, nodes: { [nodeId]: tick }, slots: { [slotId]:
+    tick } }` — `slots` always present beside `nodes` (`{}` for an L1-only planet or a zero-slot archetype);
+    ids only. `reveal` takes a third fact, `{ slotId }` (a `settlement` site, else it throws; it also reveals its
+    planet; learn-once). One shared inner loop, `revealSurface`, reveals a planet's **whole surface** — every
+    node and every slot — and both writers use it: **founding** (`revealSystem`, so the home system's slots
+    are recorded at the founding tick) and the **L2 scan** (`revealPlanetNodes` **renamed
+    `revealPlanetSurface`** — the old name stopped being true; its one caller, `stepScanCompletions` in
+    `sim/deep-scan-arrays.js`, updated). The L1 scan (`revealSystemArchetypes`) is unchanged: no node, no slot.
+    `cloneExploration` copies `slots`. No slot read (`knowsSlot`) and no gate read — the Prefecture slice adds
+    what its gate needs. **(2) The tripwire:** `checkExplorationRecord` guards `slots` as it guards `nodes` —
+    an object; every key a real **settlement** slot on **this** planet; every tick in `[planet tick, now]`
+    (checked to fail with the guard disabled). **(3) The view:** each `geography.known` entry is now
+    `{ archetype, nodes, slots: { [slotId]: true } }` — uniform, `slots` always present; filled from the
+    record's slots and, live, from every **controlled** system's seed `settlementSlots` (own or rival — ruling
+    11's "every node **and every slot**"), merged not clobbered, slot keys sorted (invariant 9). **Proved —
+    every golden moved by exactly the slots, each with a strip-and-prove (new `tests/slot-strip.js`):**
+    *state* — the persist sequence (`GOLDEN_HASH_WITH_SETTLEMENT_SLOTS`, peeling back to
+    `GOLDEN_HASH_WITH_EXPLORATION`), the two bot foundings (`…_WITH_SLOTS`, peeling back to
+    `…_WITH_EXPLORATION`), the (b1) outpost-path states, the (b2) idle-array states and the ruling-11 script's
+    states (incl. the solo run and the in-test legacy replay) — each, with every record `slots` map removed,
+    hashes to its previous pin (a two-guild founding adds 53 slot facts: 38 on the first starter home, 15 on
+    the second); *per-guild view* — the idle-array and ruling-11 views (incl. solo), each, with `known`'s
+    `slots` removed, hashes to its 08-10-26 pin (and with the rival's ground removed as well, to its older
+    pin). **The god's-eye lens did not move at all** — not one of the five (a) hashes, the three (b1)
+    outpost-path, the two (b2) idle-array or the four ruling-11 god's-eye pins (it carries no record and
+    builds no `geography`). The full new bytes are pinned beside each old one. **Tests:**
+    `tests/exploration.test.js` (+7: the slot fact, founding's fact count, one L2 reveal = nodes + slots
+    and learn-once across two ticks, a zero-slot archetype's empty map, L1 reveals no slot, the rename, the
+    slot tripwire — a node filed as a slot, a slot on the wrong planet or not on the seed, a slot before its
+    planet or in the future, a non-object track), `tests/fog.test.js` (+3: a controlled system shows every
+    planet's slots to both guilds; a self-surveyed frontier planet shows exactly its surveyed slots and an
+    L1-only one an empty map; the god's-eye lens carries no slot track); `tests/deep-scan-job.test.js` (the L2
+    scan now proves nodes **and** slots, on a seed-derived planet that has both). Sim 2,140 → **2,150**,
+    tools **78** (unchanged). **Needs a fresh galaxy on deploy** (no migration written): a galaxy persisted
+    before this slice holds record entries with no `slots` key, so its first tick halts loudly on
+    `exploration-slots-is-an-object`, by design. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4865,11 +4906,15 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 - **The ruling-11 cleanup (2.5) — items for a ruling or a confirm** — *surfaced 08-10-26 by the build; each was built the way stated (the conservative way where it was a choice — hide what is not ruled public), and none is decided by the code beyond that.*
   1. **Node lockouts on rival-held ground.** Ruling 3 (06-10-26) shows a lockout "on a node the guild **knows** (its record) or on ground it **controls**". Built literally — unchanged code. With the leak removed the record never learns a rival's node, so a lockout on a rival's ground now shows **only to that rival**, though `geography.known` shows the node itself (ruling 11). Before this slice a viewer saw it once the node had been banked off the register. Confirm (hidden), or rule that "knows" includes the live controlled-system projection (a one-line change in `sim/fog.js` `isLockoutVisible`). Pinned both ways in `tests/rival-leak-removed.test.js` / `tests/fog.test.js`. **⤳ RULED 08-10-26 (design room): keep hidden — closed.** A lockout only bars a guild from *re-establishing* on that site; Gate 3 already bars establishing on rival-held ground, so a lockout there can never affect the viewer. Where it *could* matter — an unclaimed system the viewer may yet claim — it still shows, via `knowsNode` (its own survey) or `guildHolds`. The only case left hidden is the irrelevant one, so `isLockoutVisible` stays exactly as built.
   2. **Two rival cuts whose stated reason ruling 11 removed.** The rival guild row drops `homePlanetId`, and a rival system claim's landmark drops `terranHomeworldId` / `starterEligible` — each because it names or types "a planet inside a rival system, L1 not yet learned" (`sim/fog.js`; `ring` is dropped with them only to keep the row to L0). Under ruling 11 every planet's archetype of a controlled system IS shown, so the reason no longer holds. **Still hidden — no byte of either moved here.** Confirm, or lift them (lifting moves the per-guild view bytes, so it wants its own small slice). **⤳ RULED 08-10-26 (design room): keep hidden.** Allow-list discipline — a rival row widens only when a feature needs the field, and none does yet; both leak nothing either way, since a controlled system's archetypes are already shown. Minor follow-up: the `sim/fog.js` comment still justifying the hide via "L1 not yet learned" is now stale and can be tidied in a later slice.
-  3. **Seams — not decisions, recorded so the next slices find them:** (a) the projection carries **archetype + nodes only**; ruling 11's "every settlement slot" lands with the settlement-surface slice (record `slots` track + this projection); (b) `known` does not mark **which** source an entry came from (surveyed vs live-because-controlled) — the client slice (c) can tell from the L0 `controllerGuildId`, but may want an engine-side flag if it should warn "you lose this view if control lapses"; (c) a planet surveyed to L2 and one known only at L1 differ in `known` only by `nodes` being non-empty — sound today (every planet on the seed has ≥ 1 node), worth a real level marker once slots exist.
+  3. **Seams — not decisions, recorded so the next slices find them:** (a) the projection carries **archetype + nodes only**; ruling 11's "every settlement slot" lands with the settlement-surface slice (record `slots` track + this projection) *(⤳ 09-10-26: BUILT — the settlement-surface slice)*; (b) `known` does not mark **which** source an entry came from (surveyed vs live-because-controlled) — the client slice (c) can tell from the L0 `controllerGuildId`, but may want an engine-side flag if it should warn "you lose this view if control lapses"; (c) a planet surveyed to L2 and one known only at L1 differ in `known` only by `nodes` being non-empty — sound today (every planet on the seed has ≥ 1 node), worth a real level marker once slots exist. *(⤳ 09-10-26: slots now exist; still no level marker — an L2 planet has non-empty `nodes` (and non-empty `slots` unless its archetype carries none), an L1 planet has both empty. Open for the client flip.)*
 - **Planet-manifest layout slice (c1) (2.5, client) — items for a confirm** — *surfaced 08-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
   1. **The blank venture panel's copy.** Built verbatim from the mock: "Venture detail — A later pass. Selecting a site opens its Establish / Manage popup exactly as it does today." That sentence was written for the reviewer, and players now see it. Confirm, or supply player-facing copy (a text change only).
   2. **Where the live screen and the mock differ, the live screen was kept.** The back button stays top-right of the index (the mock shows it top-left, in flow); the hero stays the live full-height art (the mock draws the base quarter-disc, without the shell's overrides); the main keeps its live padding and the rows their live height. Confirm, or rule the mock's treatment.
   3. **The node / slot stamp sits close under "✕ Back to map".** It is the first right-aligned item in the main header, and the map-exit button floats above that corner (≈ 8 px clear at 1440 × 900; they do not overlap). Confirm, or rule a move.
+- **The settlement-surface engine slice (2.5, ruling 12 slice 1) — items for a ruling or a confirm** — *surfaced 09-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **A settlement slot's lockout and the record.** Ruling 3 (06-10-26) shows a lockout on a node the viewer's record **knows** or on ground it **controls**, and adds: "a settlement slot is not a node, so a slot's lockout shows only on ground the guild controls." That reason assumed the record held no slots; it now does. Built unchanged — `isLockoutVisible` asks `knowsNode`, which is false for a slot — so a slot the viewer **surveyed** in a system it does not control still does not show its lockout. The design room's reasoning on the ruling-11 item (a lockout matters on an unclaimed system the viewer may yet claim) would apply to a surveyed slot too. Confirm (hidden), or rule that a record-known slot shows its lockout (a small change in `sim/fog.js`, plus the slot read this slice did not add).
+  2. **A "never partial" tripwire (a proposal, not built).** Ruling 11 says a planet is at L1 or at full L2, never partially; with slots in the record that is now checkable mechanically — `checkExplorationRecord` could require that a planet with any node or slot recorded holds **every** node and **every** slot of that planet. Not built: the build prompt did not ask for it, and some tests stand in for a survey by revealing a single node (e.g. ruling 3's lockout test in `tests/fog.test.js`). Confirm "not needed", or rule it in (such stand-ins would move to `revealPlanetSurface`).
+  3. **Seams — not decisions, recorded so the next slices find them:** (a) there is no `knowsSlot` read — the Prefecture / claims slice adds the read its gate needs (§8); (b) `known` carries a slot's **id** only (value `true`), no display name — the god's-eye site row names a slot from the system name and the planet's order (`siteName`), both L0, so the client flip can name it from the board, or ask the engine to; (c) `cloneExploration` (the `createGuild` / `createState` path) fills an absent `slots` with `{}`, while a save loaded from disk is not passed through it — hence the fresh-galaxy deploy note on the as-built entry.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

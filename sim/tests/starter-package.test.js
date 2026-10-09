@@ -26,6 +26,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { HOME_SYSTEM, HOME_MINE } = require('./home-anchor.js');
+const { withoutRecordSlots, stripRecordSlots } = require('./slot-strip.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { advance } = require('../run.js');
 const {
@@ -230,13 +231,22 @@ const withoutExploration = (state) => ({
   ...state,
   guilds: state.guilds.map((g) => { const { exploration, ...rest } = g; return rest; }),
 });
+// ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): every record entry now carries a `slots`
+// map and founding fills the home system's slots, so both full hashes moved again. Re-pinned below; the two
+// `…_WITH_EXPLORATION` values above are KEPT and asserted with the slots stripped (tests/slot-strip.js) —
+// the proof that the slots are the only thing that moved.
+const BOT_FOUNDING_GOLDEN_WITH_SLOTS = '6632f1245c7ae21e3e9164e5b036fa8f604195dda59551cf1b1c62595af7a55f';
+const BOT_INLINE_FOUNDING_GOLDEN_WITH_SLOTS = 'fa3c4b3e6c5cd6304904dd8a1e24a40c4d1ef510ba63b511d3a9e2e43a0b3420';
 
 test('bot: founding is byte-identical to the pre-slice golden (bare, and with an inline venture)', () => {
   const z = createZeroState();
   const bare = createFoundGuildAction({ guildId: 'bot_a', name: 'Bot A', isBot: true, credits: 2000, influence: 100, homeSystemId: HOME_SYSTEM });
   assert.equal(validateAction(z, bare).valid, true);
   const bareState = applyAction(z, bare);
-  assert.equal(hashState(bareState), BOT_FOUNDING_GOLDEN_WITH_EXPLORATION, 'the full bot founding, record included, is pinned');
+  assert.equal(hashState(bareState), BOT_FOUNDING_GOLDEN_WITH_SLOTS, 'the full bot founding, record and its slots included, is pinned');
+  const bareSlots = withoutRecordSlots(bareState);
+  assert.ok(bareSlots.count > 0, 'the home slots really landed, so the slot strip is a real proof');
+  assert.equal(hashState(bareSlots.state), BOT_FOUNDING_GOLDEN_WITH_EXPLORATION, 'the slots are the settlement-surface slice\'s ONLY delta');
   assert.ok(bareState.guilds[0].exploration, 'the record really landed, so the strip below is a real proof');
   assert.equal(hashState(withoutExploration(bareState)), BOT_FOUNDING_GOLDEN, 'and the record is its ONLY delta');
 
@@ -246,7 +256,8 @@ test('bot: founding is byte-identical to the pre-slice golden (bare, and with an
   });
   assert.equal(validateAction(z, inline).valid, true);
   const inlineState = applyAction(z, inline);
-  assert.equal(hashState(inlineState), BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION, 'the full inline founding, record included, is pinned');
+  assert.equal(hashState(inlineState), BOT_INLINE_FOUNDING_GOLDEN_WITH_SLOTS, 'the full inline founding, record and its slots included, is pinned');
+  assert.equal(hashState(stripRecordSlots(inlineState)), BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION, 'the slots are its only delta from the record slice');
   assert.equal(hashState(withoutExploration(inlineState)), BOT_INLINE_FOUNDING_GOLDEN, 'and the record is its ONLY delta');
 });
 

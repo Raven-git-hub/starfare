@@ -21,7 +21,7 @@
 
 const { getPlanet } = require('./seed.js');
 const { systemControllers } = require('./claims.js');
-const { revealSystemArchetypes, revealPlanetNodes } = require('./exploration.js');
+const { revealSystemArchetypes, revealPlanetSurface } = require('./exploration.js');
 
 // The id scheme is `deepScanArray_<guildId>_NN`, 1-based and zero-padded to two digits — the exact mirror
 // of outposts.js's `outpost_<guildId>_NN`. STABLE and DETERMINISTIC (§15.2, invariant 9): two runs of the
@@ -51,8 +51,9 @@ function nextDeepScanArraySerial(guild) {
 
 // The two scan durations, in ticks (1 tick = 1 minute). `[FIRST-CUT]`, ruled by the human 05-10-26 and
 // recorded in docs/phase-1-tuning.md "Exploration & scanning": an L1 SYSTEM scan (every planet's archetype)
-// takes 720 ticks (12 h); an L2 PLANET scan (one planet's resource nodes) takes 480 ticks (8 h). They live
-// here ONCE; the queue apply reads them through SCAN_TICKS and the invariant checks a job against them.
+// takes 720 ticks (12 h); an L2 PLANET scan (one planet's whole surface — its resource nodes and, since the
+// settlement-surface slice, its settlement slots) takes 480 ticks (8 h). They live here ONCE; the queue apply
+// reads them through SCAN_TICKS and the invariant checks a job against them.
 const SCAN_L1_TICKS = 720;
 const SCAN_L2_TICKS = 480;
 const SCAN_TICKS = Object.freeze({ L1: SCAN_L1_TICKS, L2: SCAN_L2_TICKS });
@@ -102,9 +103,9 @@ function scanTargetSystemId(job) {
 // reveal: finishing a survey of your own ground is harmless.
 //
 // The reveal goes through the ONE write path (sim/exploration.js `reveal`, via its two loops): an L1 learns
-// every planet's ARCHETYPE in the target system and NO node; an L2 learns every resource node on the target
-// planet. Learn-once makes an already-known fact a no-op, so the record never shrinks and keeps each fact's
-// first tick.
+// every planet's ARCHETYPE in the target system and NO surface; an L2 learns the target planet's whole
+// SURFACE — every resource node and every settlement slot on it (§4 ruling 10). Learn-once makes an
+// already-known fact a no-op, so the record never shrinks and keeps each fact's first tick.
 //
 // The job is CLEARED either way — the key deleted (omit-when-idle) — and the array is free for its next job.
 // A removed array took its job with it (the job lives on the row), so it never reaches this step.
@@ -128,7 +129,7 @@ function stepScanCompletions(state, tick) {
     const controller = controllers.get(scanTargetSystemId(job));
     if (controller === undefined || controller === owner.id) {
       if (job.level === 'L1') revealSystemArchetypes(owner, job.targetSystemId, tick);
-      else revealPlanetNodes(owner, job.targetPlanetId, tick);
+      else revealPlanetSurface(owner, job.targetPlanetId, tick);
     }
     delete array.scan;
   }

@@ -17,6 +17,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { HOME_SYSTEM, HOME_PLANET, HOME_MINE, HOME_MINE_2 } = require('./home-anchor.js');
+const { withoutRecordSlots } = require('./slot-strip.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const { join } = require('node:path');
@@ -497,6 +498,13 @@ const GOLDEN_HASH_WITH_STARTER_PACKAGE = '3b6506503e5d17383f49520f261ebba20d2ee9
 // observation has no rival to read and writes nothing here.)
 const GOLDEN_HASH_WITH_EXPLORATION = 'dec279894ce250bf7f182ad3d5bec8b8ece3a3b858b6a38533f96a94df4566fe';
 
+// THE SETTLEMENT SURFACE (docs/exploration-model.md §4 ruling 10, §7 — roadmap 2.5, the settlement-surface
+// engine slice, 09-10-26): every record entry now carries a `slots` map beside `nodes`, and founding fills
+// the home system's slots. The delta from GOLDEN_HASH_WITH_EXPLORATION is exactly those maps — proven by
+// asserting `stripRecordSlots(s)` (tests/slot-strip.js) returns the value above. It is the newest,
+// OUTERMOST strip.
+const GOLDEN_HASH_WITH_SETTLEMENT_SLOTS = '7442e30c2438df1b91631fe6bcc7e4b2d511f38bee29aa5c8389fe42ce7bc58f';
+
 // withoutExploration(state) -> a COPY with every guild's `exploration` key removed — the plain
 // added-key strip. It is the newest, OUTERMOST strip: peel it and every earlier golden returns.
 const withoutExploration = (state) => ({
@@ -648,6 +656,13 @@ test('no-op proof: pure engine path (persistence OFF) matches the golden hash', 
   s = advance(s, []).state;
 
   assert.equal(s.tick, 2);
+  // THE SETTLEMENT SURFACE (09-10-26, roadmap 2.5): the record gained a `slots` track, filled for the home
+  // at founding, so this sequence's FULL hash moved. Pin it, check slots really landed (else the strip is
+  // vacuous), then peel them — the newest, OUTERMOST strip — and the exploration golden below must return.
+  assert.equal(hashState(s), GOLDEN_HASH_WITH_SETTLEMENT_SLOTS, 'the full state, with the settlement slots, is pinned');
+  const slotStrip = withoutRecordSlots(s);
+  assert.ok(slotStrip.count > 0, 'the founding really did record the home system\'s settlement slots');
+  s = slotStrip.state;
   // THE EXPLORATION RECORD (05-10-26, roadmap 2.5): founding now seeds the home system into the
   // guild's record, so this sequence's FULL hash moved again. Pin it, check the record really landed
   // (else the strip is vacuous), then peel it — the newest, OUTERMOST strip — and the starter-package
