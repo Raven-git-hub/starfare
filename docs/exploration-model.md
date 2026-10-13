@@ -864,6 +864,25 @@ stands on.
   until then. **The `/galaxy` leak is therefore still OPEN.** `GET /starters` is untouched too; its
   hardening was ruled into "the same slice" as `/galaxy`'s, so it follows `/galaxy` to slice 3 —
   flagged on the roadmap's decision checklist to confirm.)*
+  *(⤳ DESIGN-AHEAD 13-10-26 — §4 ruling 12 slice 3c, the leak closure (the design room's “Option
+  1”, 13-10-26): the client flip's last slice. The dev rig has **no auth**, so the leak splits in two.
+  **Closed by 3c — every path the PLAYER CLIENT uses:** **`GET /galaxy` is retired** (nothing reads it
+  since the client flip moved the map to `/board`, §10 — so the full-seed route is removed, the
+  Option-B leak gone rather than merely unused); **`GET /starters` drops `terranHomeworldId`** and
+  returns `{ id, name, ring }` (the client sends only `homeSystemId` at founding and the engine resolves
+  the Terran homeworld server-side, revealing it to that guild as its own home, §6 — so the field was
+  pure leak, “which planet is Terran” being L1, and no caller used it); **`POST /action` replies with the
+  fogged per-guild view** (`buildSnapshot(next, action.guildId)`), not the god's-eye lens; and **the
+  embedded Production Console polls per-guild** — `client/console.html` run embedded (`embed=1&guild=<id>`)
+  reads `GET /snapshot?guild=<id>`, which loses nothing since it only mounts for a system the player
+  controls (`__isMine`), while the standalone operator console keeps plain `/snapshot`. **Deferred to
+  Phase-2 auth** (a recorded decision, not an oversight): plain `GET /snapshot` (god's-eye) still serves
+  the operator/debug pages (`inspect.html`, `state_inspector.html`, the standalone console) and the CLI
+  tools, and `GET /snapshot?guild=<any>` lets a caller name any guild — both closable only once real
+  guild **authentication** binds a request to its guild (Phase-2: PostgreSQL + auth); the connect-time
+  discovery read also stays plain `/snapshot` (it reads only public fields — guild ids/names and
+  `claims`). That residual is the “no-auth, client-picks-its-own-guild dev rig” §7 has flagged from the
+  start — 3c closes every path the player client uses, and the rest waits for auth. Built by slice 3c.)*
   *(⤳ 13-10-26: the board at `GET /board` is now the widened object — §4 ruling 12's 13-10-26 note, AS-BUILT
   — so it carries the static, unfogged blocks the ruling found the client reading off `/galaxy` (`galaxyParams`,
   the waystations, the Citadel, each `claimRadius`, the seed number, `stats`). `GET /galaxy` and `GET /starters`
