@@ -268,8 +268,9 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     - **A one-time L0 board.** One static document — served once, cacheable, identical for every
       viewer, carrying **no guild ids and no fogged detail** — gives the whole galaxy at **L0
       only**: per system `{ id, name, coords, ring, planets: [ { id, order } ] }`. That is the
-      orbital layout and nothing more — **no archetype, no resource nodes, no settlement slots,
-      no resource types.** Static for the galaxy's life (a new galaxy ⇒ a new board), so it
+      orbital layout, plus — widened 13-10-26 (the note below) — the galaxy's static public map
+      facts, but still **no archetype, no resource nodes, no settlement slots, no resource
+      types.** Static for the galaxy's life (a new galaxy ⇒ a new board), so it
       caches; it is the map's geometry source and the L0 planet-tab source.
     - **The polled per-guild snapshot**, which already carries the earned detail in `geography.known`
       (the record ∪ every controlled system at full L2, §7) and controllers in `claims`. This is
@@ -298,7 +299,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     `/galaxy` download; render L0 from the board and L1/L2 from `known`, per §10). Slices 1 and 2
     are independent; the client flip is last. *(⤳ 09-10-26: slice (1), the settlement-surface engine
     slice, is BUILT — §7's AS-BUILT notes. Slices (2) and (3) remain.)* *(⤳ 09-10-26: slice (2) is
-    BUILT — the AS-BUILT note below. Only slice (3), the client flip, remains.)*
+    BUILT — the AS-BUILT note below. The board-widening engine slice (the 13-10-26 note below)
+    and then the client flip (slice 3) remain.)*
 
     > **⤳ SEQUENCING, RULED 09-10-26 (the design room) — refines the build impact above.** Read literally,
     > slice (2) would make `GET /galaxy` stop serving the seed. That would break the running client, which
@@ -347,6 +349,34 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     >   board plus the slim view lose nothing the old view carried; the new view pins were recorded on `main`
     >   (348e0fc) by deleting `geography.systems` from each old view; `known` hashes to slice 1's.
     >   **The god's-eye lens did not move** (no god's-eye pin was touched).
+    >
+    > **⤳ 13-10-26 — DESIGN-AHEAD: the board widens to the whole static public galaxy.** Slice 2
+    > built the board as a systems-only array (above). Grounding the client flip (slice 3) surfaced
+    > that the running client reads more than systems off `/galaxy`: `galaxyParams` (the hex grid, in
+    > every map calculation), the Syndicate **waystations** and the **Citadel** (both drawn on the
+    > map), each system's **`claimRadius`** (the claim-extent overlay), the **seed** number (the
+    > starfield RNG) and the seed's **`stats`** (the HUD). All are static and unfogged, so the board
+    > must carry them — otherwise the client could never stop reading `/galaxy`. The board's TARGET
+    > shape is therefore an OBJECT — the seed with its fogged per-planet surface taken out:
+    >
+    >     { seed, galaxyParams, citadel, outposts, stats,
+    >       systems: [ { id, name, coords, ring, claimRadius, planets: [ { id, order } ] } ] }
+    >
+    > **In** — every field above: static, public, and read by the client today (per-system L0 plus
+    > the galaxy's global public config; the latter is not a §1 fog level, just never-fogged galaxy
+    > config). **Out, and why:** a planet's `archetype` / `resourceNodes` / `settlementSlots` /
+    > resource types (FOGGED — L1/L2, reached through `geography.known`); `terranHomeworldId` (it
+    > names which planet is Terran — an L1 fact, a leak — so the home-picker reads it from the
+    > hardened `GET /starters`, not the board); `starterEligible` (only the picker needs it —
+    > `/starters`); and the seed's `validation` block (a gen-time self-check, unread). The leak-free
+    > guarantee is unchanged and widened: the served board holds none of the fogged fields AND no
+    > `terranHomeworldId`, asserted on the JSON text. This is the board's TARGET shape and supersedes
+    > the systems-only shape in the 09-10 ruling bullet and the slice-2 AS-BUILT note above. **A small
+    > board-widening engine slice builds it** — reshape `getBoard()` to the object, re-pin `/board`'s
+    > bytes + ETag and the board tests, and extend the leak-free assertion to `terranHomeworldId` —
+    > still engine-only and non-breaking, since nothing reads `/board` until the client flip. **Then**
+    > slice (3), the client flip, reads the board (already the shape the client's `loadGalaxy()`
+    > expects, minus planet detail) + `known` + `claims`, drops the `/galaxy` download, closing the leak.
     > **Not built (slice (3)):** the `/galaxy` cutover and the leak's closure, `GET /starters`' hardening
     > (ruled into "the same slice" as `/galaxy`'s — so it follows `/galaxy` to slice (3); flagged on the
     > roadmap's decision checklist), and every client change.
@@ -705,6 +735,8 @@ stands on.
   its settlement-surface bytes, re-pinned in `tests/rival-leak-removed.test.js` and
   `tests/deep-scan-job.test.js`. Nothing live reads either half yet: the client still loads `GET /galaxy`
   and plain `GET /snapshot` until the client flip (slice 3).
+  *(⤳ 13-10-26: the board's shape WIDENS to the whole static public galaxy — §4 ruling 12's
+  13-10-26 note; a small board-widening engine slice builds it before the client flip.)*
 - **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
