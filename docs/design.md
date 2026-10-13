@@ -275,6 +275,12 @@ guild knows its **home system fully + L0 everywhere**, nothing else.
 > it has not surveyed shows as "Unknown Archetype" / "No Survey Data", an archetype-only planet offers a Survey
 > button, and a surveyed or held one shows its whole surface. On the map, every rival is one pink. The survey
 > buttons do nothing yet (slice 3b), and `GET /galaxy` still serves the whole seed — the leak closes in slice 3c.)*
+> *(⤳ 13-10-26, roadmap 2.5 — the **client flip, slice 3b** (the survey flow; `docs/exploration-model.md` §10):
+> the survey buttons now work. SURVEY SYSTEM and a planet's Survey open a confirm with the guild's scout, where the
+> player picks which of the guild's deployed Deep Scan Arrays runs the job; while it runs the button reads
+> "Surveying · <time left>" and the map turns a radar on that system. The result appears when the job ends, with
+> no notice yet — the scan-complete / voided notice is deferred until the engine emits an event for it.
+> `GET /galaxy` still serves the whole seed — the leak closes in slice 3c.)*
 
 > **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
 > 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all

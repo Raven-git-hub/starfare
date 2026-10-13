@@ -45,6 +45,11 @@ BUILT** (roadmap 2.5): the client reads the **board** and the **per-guild poll**
 god's-eye `/snapshot`, and renders the map's ownership colour and both manifests **per level** (§10). The survey
 affordances are drawn but do nothing (3b). `GET /galaxy` and `GET /starters` are **unchanged — the leak is still
 OPEN** until 3c. AS-BUILT notes in §7 and §10.)*
+*(⤳ 13-10-26 — **3b, the survey flow, is BUILT** (roadmap 2.5; client only): `SURVEY SYSTEM` and an L1 tab's
+`Survey` open the confirm popup, the player picks a deployed Deep Scan Array and Confirm sends `queueScan`; a running
+job reads "Surveying · <eta>" on its tag / tab and turns the map's radar on its system. The **completion notice is
+DEFERRED** (ruled 13-10-26, the design room) — it needs an engine event the scan does not emit yet. 3c (the leak
+closure) remains: the `/galaxy` leak is **still OPEN**. AS-BUILT note in §10.)*
 
 ## 0. The through-line
 
@@ -318,7 +323,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     (3) is split **3a / 3b / 3c**; **3a**, the read-only fog flip, is BUILT — §10's AS-BUILT note. It meets
     failure mode (c): an absent `claims` row reads as *unclaimed* (UNCLAIMED or SURVEY SYSTEM, never
     "unknown"), and the client reads no `planetCount` — a body count is the board's `planets.length`. 3b (the
-    survey flow) and 3c (the `/galaxy` cutover, the leak's closure, `/starters`) remain.)*
+    survey flow) and 3c (the `/galaxy` cutover, the leak's closure, `/starters`) remain.)* *(⤳ 13-10-26: **3b**,
+    the survey flow, is BUILT — §10's AS-BUILT note (its completion notice deferred). 3c remains.)*
 
     > **⤳ SEQUENCING, RULED 09-10-26 (the design room) — refines the build impact above.** Read literally,
     > slice (2) would make `GET /galaxy` stop serving the seed. That would break the running client, which
@@ -596,7 +602,11 @@ queue depth**:
 > `deep_scan_array` (`sim/asset-recipes.js`) is a **deliberate seam**: the future slice that gives
 > installations a dockyard build path bridges it, for the array and the toll gate together.
 > **Not built:** monitoring, L3 espionage, a scan cancel, a player teardown / reclaim, a completion notice,
-> the client.
+> the client. *(⤳ 13-10-26: the client's survey flow is BUILT — the client flip's slice 3b, §10 — reading the
+> job off this row exactly as it is. The **completion notice** is still not built, and is **DEFERRED** (ruled
+> 13-10-26, the design room): every notice in the game is an engine event and a scan emits none yet, so it is its
+> own later slice — an engine `scan_complete` / `scan_voided` event (`sim/events.js`, `docs/event-log.md`) and
+> then the client's render of it.)*
 
 **Monitoring — the watch (DEFERRED; design-ahead, NOT built).** A continuous watch that surfaces
 dynamic activity (rival transports, anomalies) — the counter-play to "operations are private",
@@ -926,7 +936,8 @@ right. A guild's level on each planet *is* what renders.
 > tag below are still to come. *(⤳ 13-10-26: the L0/L1/L2 states, "No Survey Data", the tag's three
 > states and the map's ownership colour are BUILT by the client flip's slice 3a — the AS-BUILT note
 > closing this section. The survey flow is slice 3b. The blank venture panel's copy now reads "Select a
-> site to establish or manage a venture.")*
+> site to establish or manage a venture.")* *(⤳ 13-10-26: the survey flow is BUILT by slice 3b — the last
+> AS-BUILT note in this section; its completion notice is deferred.)*
 
 **System manifest — the tag and the index tabs.**
 - The `UNCLAIMED` tag by the system id has **three states**: a **`SURVEY SYSTEM`** button when the
@@ -949,6 +960,11 @@ unselectable — one job per array, §5). Confirm enqueues the job on the chosen
 the tag/button reads **"Surveying · <eta>"** with the map's rotating-radar indicator (eta
 engine-computed, §5); on completion the archetypes (system scan) or pips (planet scan) appear and a
 notice fires — scan-complete, or the **voided** notice if a rival claimed the target first.
+*(⤳ AS-BUILT 13-10-26 — slice 3b, the last note in this section — **except the notice**, which is
+**DEFERRED** (ruled 13-10-26, the design room): every notice in the game is an engine event, and a scan emits
+none yet. Until that later slice (an engine `scan_complete` / `scan_voided` event, then its client render), a
+scan reveals into `known` silently and the result appears when the manifest re-renders on the next poll; the
+"Surveying" label clears itself, so a voided scan simply returns its tag / tab to the state it now has.)*
 
 **Planet manifest — the surface rows (L2).** Both lists render in full. **Resource-node rows are
 inert until you control the system** (establishing a mine needs control — Gate 3, `territory-model.md`
@@ -963,10 +979,11 @@ have surveyed the planet). A **rival-controlled** system's planet manifest shows
 system's level. The only map change is **ownership colour** — the player's systems in the current
 cyan, **any** rival's in a single bright pink (no per-rival distinction), unclaimed neutral — plus a
 **slowly-rotating radar indicator** on a hex carrying an active scan. All level detail lives in the
-manifests, never on the map.
+manifests, never on the map. *(⤳ AS-BUILT 13-10-26: the ownership colour by slice 3a, the radar by slice 3b —
+the two notes below.)*
 
-> **⤳ DESIGN-AHEAD 09-10-26 (§4 ruling 12 — the client flip, slice 3) — AS-BUILT 13-10-26 for slice 3a
-> only (the note below this one); slices 3b and 3c are still to come.** The
+> **⤳ DESIGN-AHEAD 09-10-26 (§4 ruling 12 — the client flip, slice 3) — AS-BUILT 13-10-26 for slices 3a
+> and 3b (the two notes below this one); slice 3c is still to come.** The
 > per-level render above no longer reads a full-seed download (`window.__galaxy`). Its inputs
 > become the **L0 board** (the orbital layout — which planet tabs exist, in what order, for
 > every system) and the **polled `geography.known`** (the archetype that lifts a tab to L1,
@@ -1011,11 +1028,11 @@ manifests, never on the map.
 >     only), so a survey landing or a claim lifts the screen in place.
 > - **The survey affordances are inert** (3b wires them to `queueScan`): `SURVEY SYSTEM` is a disabled button; a
 >   tab's `Survey` is a span — a button may not nest inside the tab's own button — that swallows its own click.
->   No confirm popup, array picker, eta, radar or notice.
+>   No confirm popup, array picker, eta, radar or notice. *(⤳ 13-10-26: wired by slice 3b — the next note.)*
 > - **The map's ownership colour:** the player's systems and outposts in the current cyan, **every** rival's in
 >   one bright pink (`--rival` / `RIVAL_RGB`, `#ff5caa` — presentation, not a game number), unclaimed the
 >   neutral system blue. The per-rival hue (`guildColor`) is removed, and the map key gains a "Rival Guild" row.
->   No radar indicator (3b).
+>   No radar indicator (3b). *(⤳ 13-10-26: the radar is built by slice 3b — the next note.)*
 > - **The fogged poll is tolerated:** a rival's outpost panel reads "—" for the capacity and docks its fogged row
 >   does not carry (it would have thrown on the fogged row), and OPEN DETAILS opens the Outpost Manager for the player's own outposts
 >   only; Venture Management's art resolves a planet's archetype from `known` (it read the seed); a 404 on the
@@ -1024,6 +1041,7 @@ manifests, never on the map.
 > - **Not built:** slice **3b** (the survey flow, the radar, the scan notices) and slice **3c** (`GET /galaxy`'s
 >   cutover and the leak's closure, `GET /starters`' hardening, the connect-time god's-eye read, the embedded
 >   console's plain `/snapshot` poll, `POST /action`'s god's-eye reply). **The `/galaxy` leak is still OPEN.**
+>   *(⤳ 13-10-26: 3b is BUILT — the next note — bar the scan notices, which are deferred.)*
 > - **Proved** headless (Playwright) against a live `node sim/server.js`, the player founded through the connect
 >   screen and a rival, a bot and real Deep Scan Array surveys seated through `tools/admin.js` and `POST /action`
 >   — 56 checks: every level state (L0, L1, an L1/L2 mix lifted live on the open screen, own / rival / bot held
@@ -1034,3 +1052,56 @@ manifests, never on the map.
 >   three — **zero console errors**; and a `/reset` under the running client lands it back on the connect screen,
 >   no longer polling. The same script against `main`'s client fails the level checks, and against
 >   this client with the old sources restored fails all four network checks.
+>
+> **⤳ AS-BUILT 13-10-26 — the client flip, slice 3b: the survey flow (roadmap 2.5; client only —
+> `client/game.html`; no engine, server, view, board or golden change; no `/galaxy` or `/starters` change).**
+> "The survey flow" and the map's radar above, built on the engine's existing `queueScan` (§5, (b2)) and the
+> own-guild `deepScanArrays` rows the per-guild view already carries. **No new number:** the client states no
+> scan duration (the `[FIRST-CUT]` `SCAN_TICKS` are engine config the snapshot does not carry), so a job's eta
+> appears only once it runs — `completeTick − tick`, both published.
+> - **The arrays.** `applySnapshot` keeps the view's own `deepScanArrays` verbatim as `LIVE.myArrays` (idle = no
+>   `scan` key; busy = a `scan` with its target and `completeTick`), read through `window.__myArrays` and
+>   `window.__scanFor(level, target)` (the array whose job targets that system / planet, the earliest-finishing
+>   if two do). An L2 job's system is the planet's on the **board** (`systemOfPlanet`) — the client never parses
+>   an id for it.
+> - **The confirm popup** — `#survey-overlay`, `window.openSurvey({ level, systemId, systemName, planetId?,
+>   planetName? })`: the standard reel card (`docs/popup-standard.md`) as its own element, eyebrow "Guild
+>   Scout", the scout's portrait (`assets/characters/spy.jpg`) on the right, a brief in the scout's voice naming
+>   the target (the system for L1 — "what kind of world each one is"; the planet for L2 — "its whole surface"),
+>   and the **array picker**: one row per deployed array, labelled "Deep Scan Array NN" (the id's serial). An
+>   **idle** array is selectable ("idle · anchored to <system>") and the first idle one is picked on open; a
+>   **busy** one is shown but not selectable ("· surveying <target>"); with **none** the picker reads "No Deep
+>   Scan Array deployed". Confirm is off whenever no idle array is picked, and the foot line says why. No
+>   range check — an array reaches the whole galaxy (§5). **Confirm** POSTs exactly `{ type:'queueScan',
+>   guildId, arrayId, level, targetSystemId }` (L1) or `{ …, targetPlanetId }` (L2) through `__sendAction`, then
+>   `__refreshNow`, then closes. A **refusal** (the engine re-validates: the array idle, the target unclaimed,
+>   the L1→L2 chain) shows its reason in red in the popup's foot, the popup left open and its picker re-read.
+>   The popup re-reads the arrays on every poll while open; Escape closes it alone, not the manifest beneath.
+> - **The affordances, live.** The tag's `SURVEY SYSTEM` (L0) → `openSurvey` L1; an L1 tab's `Survey` →
+>   `openSurvey` L2 (it still stops its own click, so the planet behind does not open). The chain needs no client
+>   check: `Survey` is drawn only on an L1 tab, and the engine re-checks anyway. While an array of ours runs that
+>   job the affordance reads **"Surveying · <eta>"** in the player's accent instead (a plain label; on a tab a
+>   click opens the planet). The eta is formatted by the map's `fmtETA` (`__fmtETA`, 1 tick = 1 minute). The
+>   detail screen's re-render signature now includes the arrays' jobs, so an array starting or finishing a job
+>   redraws the open screen; between those, each poll re-reads every label's eta **in place** off its
+>   `data-scan-complete`, so the scroll position is kept.
+> - **The radar.** The shell feeds the map a new door, `window.__setLiveScans(systemIds)` — the system of every
+>   running job of ours — and the map's render loop draws a ring in the player's accent with a sweep turning
+>   once every 4 s on each (`drawRadar`, in the map's tilted plane, at least 12 px across). `RADAR_PERIOD_MS`
+>   and the trail width are look, not game numbers. Own arrays only: a rival's array never reaches the view.
+> - **No completion notice** (deferred, the survey-flow note above): the reveal lands in `known` silently and the
+>   manifest re-renders on the next poll; the "Surveying" label and the radar clear themselves when the job does.
+> - **Proved** headless (Playwright) against a live `node sim/server.js`, the player founded through the connect
+>   screen and a Deep Scan Array deployed through the real kit pipeline (`tools/admin.js` grant-kit → load-kit →
+>   a `@deploy:deepScan` route) — 51 checks, **zero console errors**: the popup with no array (picker "No Deep
+>   Scan Array deployed", Confirm off), idle (preselected, Confirm on) and busy ("· surveying FEN-4949",
+>   unselectable, Confirm off); a **refusal** — a rival founded on the target while the popup was open, Confirm
+>   pressed, the engine's "held by guild …" reason shown in the popup, the array still idle; an **L1** survey
+>   end to end (the exact POST, accepted, the job on the array, the tag "Surveying · 12h 00m", the eta re-read
+>   in place 61 ticks later, the radar painting and turning on the target's hex by sampled canvas pixels and
+>   absent elsewhere, then ticked to `completeTick`: all six archetypes known, the tag UNCLAIMED, every tab L1
+>   with a live Survey, the radar gone); and an **L2** survey from a tab's `Survey` the same way (the planet not
+>   opened by the press, the exact POST, the tab "Surveying · 8h 00m", the radar on the planet's system, then
+>   the planet at L2 — 15 node and 15 slot pips, 15 resource rows). The same script against the pre-slice client
+>   fails at the first survey check (the disabled button). Sim **2,163** and tools unchanged. The harness lives
+>   outside the repo, as 3a's does (3a checklist item 8(c)).

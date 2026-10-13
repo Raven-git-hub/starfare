@@ -57,7 +57,9 @@ hero art right**.
 
 The `::before` left-edge fade bleeds the card colour into the portrait so the seam
 disappears. Portraits live in `assets/characters/` — currently `advisor.jpg`,
-`engineer.jpg`, `pilot.jpg`, `plantmanager.jpg`. A speaker with no portrait yet reuses
+`engineer.jpg`, `pilot.jpg`, `plantmanager.jpg`, and `spy.jpg` — the guild's scout, first
+worn by the survey confirm (`#survey-overlay`, exploration-model.md §10) and never called a
+spy in the copy. A speaker with no portrait yet reuses
 `advisor.jpg` and the new-portrait need is logged as a deferred decision — **never invent
 a new asset in a build**.
 
