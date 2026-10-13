@@ -270,6 +270,11 @@ guild knows its **home system fully + L0 everywhere**, nothing else.
 > for every guild, served once at a new route, `GET /board`; the controller stays public in the view's
 > `claims`. The view's geography is now just the detail the guild has earned (`known`). `GET /galaxy` is
 > unchanged and still serves the whole seed, so the `/galaxy` leak stays open until the client flip.)*
+> *(⤳ 13-10-26, roadmap 2.5 — the **client flip, slice 3a** (the fog flip, read-only; `docs/exploration-model.md`
+> §10): the player's client now draws the galaxy from the board and polls its own guild's fogged view, so a planet
+> it has not surveyed shows as "Unknown Archetype" / "No Survey Data", an archetype-only planet offers a Survey
+> button, and a surveyed or held one shows its whole surface. On the map, every rival is one pink. The survey
+> buttons do nothing yet (slice 3b), and `GET /galaxy` still serves the whole seed — the leak closes in slice 3c.)*
 
 > **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
 > 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all

@@ -39,6 +39,12 @@ board is now the whole static public galaxy — an object, `{ seed, galaxyParams
 systems }`, each system row gaining its `claimRadius` — and still carries no fogged planet detail and no Terran
 pointer. `GET /galaxy` is **still unchanged**; its cutover and the leak's closure remain the client flip (slice
 3). AS-BUILT notes in §4 ruling 12 and §7.)*
+*(⤳ 13-10-26 — the client flip (slice 3) runs as three slices (split by the slice-3a build prompt): **3a** the
+fog flip, read-only; **3b** the survey flow; **3c** the leak closure (`GET /galaxy`, `GET /starters`). **3a is
+BUILT** (roadmap 2.5): the client reads the **board** and the **per-guild poll** instead of `/galaxy` and the
+god's-eye `/snapshot`, and renders the map's ownership colour and both manifests **per level** (§10). The survey
+affordances are drawn but do nothing (3b). `GET /galaxy` and `GET /starters` are **unchanged — the leak is still
+OPEN** until 3c. AS-BUILT notes in §7 and §10.)*
 
 ## 0. The through-line
 
@@ -308,7 +314,11 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     slice, is BUILT — §7's AS-BUILT notes. Slices (2) and (3) remain.)* *(⤳ 09-10-26: slice (2) is
     BUILT — the AS-BUILT note below. The board-widening engine slice (the 13-10-26 note below)
     and then the client flip (slice 3) remain.)* *(⤳ 13-10-26: the board-widening slice is BUILT — the
-    AS-BUILT note closing the 13-10-26 note below. The client flip (slice 3) remains.)*
+    AS-BUILT note closing the 13-10-26 note below. The client flip (slice 3) remains.)* *(⤳ 13-10-26: slice
+    (3) is split **3a / 3b / 3c**; **3a**, the read-only fog flip, is BUILT — §10's AS-BUILT note. It meets
+    failure mode (c): an absent `claims` row reads as *unclaimed* (UNCLAIMED or SURVEY SYSTEM, never
+    "unknown"), and the client reads no `planetCount` — a body count is the board's `planets.length`. 3b (the
+    survey flow) and 3c (the `/galaxy` cutover, the leak's closure, `/starters`) remain.)*
 
     > **⤳ SEQUENCING, RULED 09-10-26 (the design room) — refines the build impact above.** Read literally,
     > slice (2) would make `GET /galaxy` stop serving the seed. That would break the running client, which
@@ -728,7 +738,9 @@ stands on.
   or filtered in `fog.js` `TOP_LEVEL` — an unclassified key throws, and a test fails on a new one —
   so nothing new reaches a player by default. The view is pure (it reads the record, writes
   nothing). `GET /snapshot?guild=<id>` serves it for headless proof (404 for an unknown guild);
-  plain `GET /snapshot` is unchanged. The client wiring is slice (c).
+  plain `GET /snapshot` is unchanged. The client wiring is slice (c). *(⤳ WIRED 13-10-26 — the client
+  flip, slice 3a: once a guild is seated, every snapshot the client reads is this view; the AS-BUILT note
+  closing the board note below.)*
   **⤳ AS-BUILT 08-10-26 — the controlled-system projection (§4 ruling 11; roadmap 2.5, the ruling-11
   cleanup; `sim/fog.js` `geographyFor`).** `geography.known` is now the **union** of the two sources
   (§3): (1) the guild's **record**, resolved through the seed as before; and (2) **every controlled
@@ -781,7 +793,15 @@ stands on.
   — put it back (rebuilt from the board and the view's own claims, `tests/systems-block.js`) and each view is
   its settlement-surface bytes, re-pinned in `tests/rival-leak-removed.test.js` and
   `tests/deep-scan-job.test.js`. Nothing live reads either half yet: the client still loads `GET /galaxy`
-  and plain `GET /snapshot` until the client flip (slice 3).
+  and plain `GET /snapshot` until the client flip (slice 3). *(⤳ AS-BUILT 13-10-26 — the client flip,
+  slice 3a: **the client now reads both halves.** It fetches `GET /board` once at connect (the map's whole
+  geometry; it no longer fetches `GET /galaxy` at all) and, once a guild is seated, polls **`GET
+  /snapshot?guild=<id>`** — the poll, the post-action re-read and entering the game. It reads `known` for every
+  planet's level and detail and `claims` for every controller (§10's AS-BUILT note). Plain `GET /snapshot` is
+  read only at connect — to learn whether, and which, guild is seated — and when founding, to pick a free guild
+  id; a guild cannot be asked for before it is known. Still god's-eye, and slice 3c's: that discovery read, the
+  embedded Production Console (`client/console.html`, which polls plain `/snapshot` on its own), and `POST
+  /action`'s reply, which carries the god's-eye snapshot.)*
   *(⤳ AS-BUILT 13-10-26 — the board-widening slice: the board's shape WIDENED to the whole static
   public galaxy. `getBoard()` now returns an object, `{ seed, galaxyParams, citadel, outposts, stats,
   systems }`, whose `systems` are the rows above, each gaining its `claimRadius`; still no fogged planet
@@ -838,6 +858,10 @@ stands on.
   — so it carries the static, unfogged blocks the ruling found the client reading off `/galaxy` (`galaxyParams`,
   the waystations, the Citadel, each `claimRadius`, the seed number, `stats`). `GET /galaxy` and `GET /starters`
   are still untouched: **the leak is still OPEN** until slice 3.)*
+  *(⤳ 13-10-26 — the client flip, slice 3a: the client **no longer reads** `GET /galaxy` — it renders only
+  from the board and `geography.known` — but the route is unchanged and still serves the whole seed to anyone
+  who asks, and `GET /starters` still names every starter's `terranHomeworldId`. **The leak is still OPEN**;
+  its closure is slice 3c.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
@@ -899,7 +923,10 @@ right. A guild's level on each planet *is* what renders.
 > art; the main is the two equal columns, with the venture panel blank. The rows behave exactly as
 > before. Nothing per-level is built yet: every planet still renders its full surface from the
 > current snapshot. The L0/L1/L2 states, "No Survey Data", the survey flow and the system manifest's
-> tag below are still to come.
+> tag below are still to come. *(⤳ 13-10-26: the L0/L1/L2 states, "No Survey Data", the tag's three
+> states and the map's ownership colour are BUILT by the client flip's slice 3a — the AS-BUILT note
+> closing this section. The survey flow is slice 3b. The blank venture panel's copy now reads "Select a
+> site to establish or manage a venture.")*
 
 **System manifest — the tag and the index tabs.**
 - The `UNCLAIMED` tag by the system id has **three states**: a **`SURVEY SYSTEM`** button when the
@@ -938,7 +965,8 @@ cyan, **any** rival's in a single bright pink (no per-rival distinction), unclai
 **slowly-rotating radar indicator** on a hex carrying an active scan. All level detail lives in the
 manifests, never on the map.
 
-> **⤳ DESIGN-AHEAD 09-10-26 (§4 ruling 12 — the client flip, slice 3; NOT built).** The
+> **⤳ DESIGN-AHEAD 09-10-26 (§4 ruling 12 — the client flip, slice 3) — AS-BUILT 13-10-26 for slice 3a
+> only (the note below this one); slices 3b and 3c are still to come.** The
 > per-level render above no longer reads a full-seed download (`window.__galaxy`). Its inputs
 > become the **L0 board** (the orbital layout — which planet tabs exist, in what order, for
 > every system) and the **polled `geography.known`** (the archetype that lifts a tab to L1,
@@ -952,3 +980,57 @@ manifests, never on the map.
 > the slim per-guild view at `GET /snapshot?guild=<id>` (`geography = { known }`, controllers in `claims`).
 > Per the design room's sequencing (§4 ruling 12), the client flip is also where **`GET /galaxy` stops
 > serving the seed** — the step that closes the `/galaxy` leak.)*
+>
+> **⤳ AS-BUILT 13-10-26 — the client flip, slice 3a: the fog flip, read-only (roadmap 2.5; client only —
+> `client/game.html`; no engine, server, view, board or golden change).** The render above, built, with its
+> inputs flipped. **No new number.**
+> - **The inputs.** At connect the client fetches **`GET /board`** into `GAME.galaxy` instead of `GET /galaxy`.
+>   The board is the shape `loadGalaxy` already read, so the map's geometry, starfield, waystations, Citadel,
+>   claim disks and HUD stats are unchanged; nothing reads a planet's archetype, nodes or slots off it any more.
+>   Once a guild is seated every snapshot read — the 1 s poll, the post-action re-read (`__refreshNow`) and
+>   entering the game — is **`GET /snapshot?guild=<id>`**, and `applySnapshot` keeps its `geography.known`
+>   beside `claims`. Plain `/snapshot` remains for the connect-time discovery read and founding's free-id pick
+>   (3c hardens both); the home picker before founding is unchanged (`/starters` + the board).
+> - **The levels, read off `known`, never worked out.** `adaptSeedSystem` → **`adaptBoardSystem`**: the board
+>   row gives the planets (`id`, `order` — the numeral), `known[systemId]` the per-planet detail, `claims` the
+>   controller. **No entry = L0; an archetype with empty `nodes` and `slots` = L1; any node or slot = L2.** Node
+>   and slot rows are `known`'s keys in their sorted order — on the committed seed that is the seed's own order
+>   (no planet's list is out of order), so the rows read "Resource Node 1, 2, …" exactly as before.
+>   - **The tag:** a disabled **`SURVEY SYSTEM`** button when the system is unclaimed and none of its planets is
+>     known; plain **`UNCLAIMED`** when one is (≥ L1) and nobody holds it; the **controller's name** when held
+>     (own, rival or bot — a held system is full L2 to everyone). No claim row reads as unclaimed.
+>   - **The tabs:** L0 is blank — the flat chip colour, a dashed edge, no art — labelled "Unknown Archetype";
+>     L1 shows its archetype art and label with a **`Survey`** control where the pip columns sit; L2 is the c1
+>     tab, pips from `known`'s counts. The system sub-line now says "N bodies" (the count is the board's L0
+>     layout; "surveyed" was untrue of an unsurveyed system).
+>   - **The planet manifest:** L0 — a blank hero, no blurb, and **"No Survey Data"** where the surface lists go
+>     (no Resources / Settlements tabs, no rows, no stamp); L1 — the hero art + blurb, and "No Survey Data"; L2 —
+>     the c1 layout, its rows from `known`. Every row behaves exactly as c1 left it (settlement rows clickable;
+>     no claim gate wired).
+>   - **Live:** an open detail screen re-renders when occupancy, `known` or a controller moves (it was occupancy
+>     only), so a survey landing or a claim lifts the screen in place.
+> - **The survey affordances are inert** (3b wires them to `queueScan`): `SURVEY SYSTEM` is a disabled button; a
+>   tab's `Survey` is a span — a button may not nest inside the tab's own button — that swallows its own click.
+>   No confirm popup, array picker, eta, radar or notice.
+> - **The map's ownership colour:** the player's systems and outposts in the current cyan, **every** rival's in
+>   one bright pink (`--rival` / `RIVAL_RGB`, `#ff5caa` — presentation, not a game number), unclaimed the
+>   neutral system blue. The per-rival hue (`guildColor`) is removed, and the map key gains a "Rival Guild" row.
+>   No radar indicator (3b).
+> - **The fogged poll is tolerated:** a rival's outpost panel reads "—" for the capacity and docks its fogged row
+>   does not carry (it would have thrown on the fogged row), and OPEN DETAILS opens the Outpost Manager for the player's own outposts
+>   only; Venture Management's art resolves a planet's archetype from `known` (it read the seed); a 404 on the
+>   per-guild poll — the guild no longer exists, e.g. after `/reset` — returns to the connect screen ("GUILD NOT
+>   FOUND") instead of freezing as LINK LOST. Every other screen already read only the player's own rows.
+> - **Not built:** slice **3b** (the survey flow, the radar, the scan notices) and slice **3c** (`GET /galaxy`'s
+>   cutover and the leak's closure, `GET /starters`' hardening, the connect-time god's-eye read, the embedded
+>   console's plain `/snapshot` poll, `POST /action`'s god's-eye reply). **The `/galaxy` leak is still OPEN.**
+> - **Proved** headless (Playwright) against a live `node sim/server.js`, the player founded through the connect
+>   screen and a rival, a bot and real Deep Scan Array surveys seated through `tools/admin.js` and `POST /action`
+>   — 56 checks: every level state (L0, L1, an L1/L2 mix lifted live on the open screen, own / rival / bot held
+>   at full L2 with the controller's name, the rival's unlicensed mine fogged to VACANT), the map colour by
+>   sampled pixels (own cyan, both rivals the same pink, unclaimed neither), the network (`/board` fetched,
+>   `/snapshot?guild=` polled, **no `/galaxy` from any frame**, plain `/snapshot` only before seating), the HUD,
+>   map, outposts, TRADE, Guild Hall, Deuterium, Operations and the production console with one guild and with
+>   three — **zero console errors**; and a `/reset` under the running client lands it back on the connect screen,
+>   no longer polling. The same script against `main`'s client fails the level checks, and against
+>   this client with the old sources restored fails all four network checks.
