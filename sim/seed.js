@@ -90,6 +90,19 @@ function setSeed(seedObject) {
   _index = null;
 }
 
+// copyCoords(coords) -> a fresh { q, r }, or null when there are none. The board copies every position it
+// takes from the seed through this, so a board row never shares an object with the seed — and a seed row
+// with no coords does not break the index.
+function copyCoords(coords) {
+  return coords ? { q: coords.q, r: coords.r } : null;
+}
+
+// byId — the sort comparator for rows with a string `id`: plain id order, the same comparison the older
+// sorts in this file write inline.
+function byId(a, b) {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 function buildIndex() {
   // Resolve relative to this file so it works regardless of cwd.
   const seed = _seed || require(path.join(__dirname, '..', 'data', 'seed.json'));
@@ -106,12 +119,11 @@ function buildIndex() {
   // waystations on distinct hexes), so a plain last-writer map is faithful.
   const byHex = new Map();
   const hexKey = (coords) => `${coords.q},${coords.r}`;
-  // board — the galaxy's STATIC L0 (docs/exploration-model.md §1, §4 ruling 12): one row per system, its
-  // identity, position, ring and ORBITAL LAYOUT — each planet's stable id and its order — and nothing else.
-  // No archetype, no node, no slot: those are L1/L2, and leaving them out is what makes the board safe to
-  // hand every viewer. The controller is live state and is NOT here — it reaches a viewer in the snapshot's
-  // `claims`. A position-derived name is identity, not geography. Built once here, like the other indexes.
-  const board = [];
+  // The board's systems — one row per system: its identity, position, ring, claim radius and ORBITAL LAYOUT
+  // (each planet's stable id and its order) and nothing else. Assembled into the whole board object below.
+  const boardSystems = [];
+  // The board's Syndicate waystations, copied out of the seed as the loop over `outposts` passes them.
+  const boardOutposts = [];
 
   for (const sys of seed.systems || []) {
     // The lowest-id Terran planet is the homeworld a guild starts on (§13);
@@ -154,14 +166,15 @@ function buildIndex() {
     // (with nodes + slots) on demand without a second pass over the seed. It's a
     // reference into the already-cached seed object, not a copy.
     bySystemRaw.set(sys.id, sys);
-    // `coords` is copied to just { q, r } so a board row never shares an object with the seed (and, like
-    // byHex below, a system with no coords does not break the index). `ring` is read exactly as
-    // getSystemLayout reads it.
-    board.push({
+    // `ring` is read exactly as getSystemLayout reads it. `claimRadius` is a plain number, so copying the
+    // value IS the copy; `?? null` keeps the key on a row whose seed system has none, so every row has the
+    // same shape (a radius of 0 stays 0 — `||` would have turned it into null).
+    boardSystems.push({
       id: sys.id,
       name: sys.name,
-      coords: sys.coords ? { q: sys.coords.q, r: sys.coords.r } : null,
+      coords: copyCoords(sys.coords),
       ring: sys.ring || null,
+      claimRadius: sys.claimRadius ?? null,
       planets: layout,
     });
     if (sys.coords) byHex.set(hexKey(sys.coords), { id: sys.id, kind: 'system', coords: sys.coords });
@@ -170,6 +183,9 @@ function buildIndex() {
   for (const out of seed.outposts || []) {
     byOutpost.set(out.id, { id: out.id, kind: 'outpost', name: out.name, coords: out.coords });
     if (out.coords) byHex.set(hexKey(out.coords), { id: out.id, kind: 'outpost', coords: out.coords });
+    // The board's waystation is the seed's own row — { id, coords, name }, in the seed's key order — copied,
+    // and WITHOUT the landmark's `kind` (that tag is for the live layer's claims, not the map).
+    boardOutposts.push({ id: out.id, coords: copyCoords(out.coords), name: out.name });
   }
 
   // The Citadel is a single galactic-origin landmark with no seed id of its own
@@ -180,15 +196,39 @@ function buildIndex() {
     : null;
   if (citadel && citadel.coords) byHex.set(hexKey(citadel.coords), { id: citadel.id, kind: 'citadel', coords: citadel.coords });
 
-  // The board in id order, so its serialized bytes depend only on the seed (invariant 9).
-  board.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-
   // galaxyParams — the seed's generation parameters (radius in world units, hexSize).
   // Carried through the index so `isHexInBounds` can test lattice membership from the
   // SAME two numbers the generator used (tools/generate_seed.js), never a chosen constant
   // (§18 / CLAUDE.md "Never invent a number"). A generator-less test seed may omit them,
   // in which case there is no lattice to bound and `isHexInBounds` answers false.
-  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, board, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
+  const galaxyParams = seed.galaxyParams || null;
+
+  // board — the galaxy's STATIC PUBLIC face (docs/exploration-model.md §1, §4 ruling 12 and its 13-10-26
+  // note): the seed with everything a guild can be fogged from taken out, served to every viewer at
+  // GET /board. Its keys, in this order:
+  //   seed, galaxyParams, citadel, outposts, stats — the galaxy's never-fogged config the map draws from:
+  //     the seed number (the starfield), the hex lattice, the Citadel, the Syndicate waystations, the HUD's
+  //     counts. The Citadel and the waystations are the seed's own rows, not the landmarks above (no `id:
+  //     'citadel'`, no `kind`), so the board reads exactly like the seed it was cut from.
+  //   systems — the rows built in the loop above, in id order.
+  // Left OUT, and why (the ruling's "out" list): a planet's archetype, nodes, slots and resource types (L1/L2 —
+  // they reach a guild only through its view's `known`); `terranHomeworldId` (it names which planet is
+  // Terran — an L1 fact); `starterEligible` (only the home picker needs it, at GET /starters); and the seed's
+  // `validation` block (a generation-time self-check nothing reads). The controller is live state and is not
+  // here either — it reaches a viewer in the snapshot's `claims`.
+  // Every piece is COPIED out of the seed, never shared with it, so nothing holding the board can reach into
+  // the seed. A seed missing a block gets `null` (or `[]` for the waystations) rather than a missing key.
+  // Systems and waystations are sorted by id, so the board's bytes depend only on the seed (invariant 9).
+  const board = {
+    seed: seed.seed ?? null,
+    galaxyParams: galaxyParams ? structuredClone(galaxyParams) : null,
+    citadel: citadel ? { coords: copyCoords(citadel.coords), radius: citadel.radius } : null,
+    outposts: boardOutposts.sort(byId),
+    stats: seed.stats ? structuredClone(seed.stats) : null,
+    systems: boardSystems.sort(byId),
+  };
+
+  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, board, citadel, seedNumber: seed.seed, galaxyParams };
 }
 
 function index() {
@@ -385,13 +425,15 @@ function getSystemLayout(id) {
   };
 }
 
-// getBoard() -> the galaxy's static L0 board, one row per system, sorted by id:
-//   { id, name, coords, ring, planets: [ { id, order } ] }
-// where `order` is the planet's index in the seed's own planet array + 1 — the order getSystemLayout lists
-// planets in, and the ordinal the site names' Roman numeral uses. A planet's `id` is the key the exploration
-// record and the view's `known` use, so the board and `known` join on it. The part of the map no guild is
-// ever fogged from (docs/exploration-model.md §1, §4 ruling 12), served to every viewer at GET /board. The cached rows are SHARED with the index, so a
-// caller that wants to change one copies it first.
+// getBoard() -> the galaxy's static public board — the whole map no guild is ever fogged from
+// (docs/exploration-model.md §1, §4 ruling 12 and its 13-10-26 note), served to every viewer at GET /board:
+//   { seed, galaxyParams, citadel, outposts: [ { id, coords, name } ], stats,
+//     systems: [ { id, name, coords, ring, claimRadius, planets: [ { id, order } ] } ] }
+// `systems` and `outposts` are sorted by id. A planet's `order` is its index in the seed's own planet array
+// + 1 — the order getSystemLayout lists planets in, and the ordinal the site names' Roman numeral uses. A
+// planet's `id` is the key the exploration record and the view's `known` use, so the board and `known` join
+// on it. The board shares nothing with the seed, but the cached object IS the index's own, handed out to
+// every caller — one that wants to change it copies it first.
 function getBoard() {
   return index().board;
 }

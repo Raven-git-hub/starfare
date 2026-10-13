@@ -221,7 +221,7 @@ test('TARGETS: a rival-held system is refused (L3), your own is refused, an uncl
 
 test('NO REACH LIMIT: the system farthest from the array, anywhere in the galaxy, is a legal target', () => {
   const at = arrayOf(BASE).coords;
-  const far = getBoard().reduce((best, sys) => (hexDistance(sys.coords, at) > hexDistance(best.coords, at) ? sys : best));
+  const far = getBoard().systems.reduce((best, sys) => (hexDistance(sys.coords, at) > hexDistance(best.coords, at) ? sys : best));
   assert.ok(hexDistance(far.coords, at) > 20);
   assert.deepEqual(arrayOf(accept(BASE, L1(far.id))).scan.targetSystemId, far.id);
 });

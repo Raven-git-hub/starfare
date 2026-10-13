@@ -52,11 +52,13 @@
 //                           live poll of the god's-eye snapshot, zero controls
 //   GET  /galaxy         -> the committed seed geometry (data/seed.json, served
 //                           verbatim) — the one full-galaxy read the client needs
-//   GET  /board          -> the galaxy's static L0 BOARD (sim/seed.js getBoard): per system
-//                           { id, name, coords, ring, planets: [{ id, order }] } and nothing
-//                           else — the leak-free map the client flip will read instead of
-//                           /galaxy (docs/exploration-model.md §4 ruling 12). ETag'd: a
-//                           matching If-None-Match gets a 304
+//   GET  /board          -> the galaxy's static public BOARD (sim/seed.js getBoard): the seed
+//                           with its fogged planet detail and Terran pointer taken out —
+//                           { seed, galaxyParams, citadel, outposts, stats, systems: [{ id,
+//                           name, coords, ring, claimRadius, planets: [{ id, order }] }] } —
+//                           the leak-free map the client flip will read instead of /galaxy
+//                           (docs/exploration-model.md §4 ruling 12). ETag'd: a matching
+//                           If-None-Match gets a 304
 //   GET  /health         -> liveness JSON + a one-line summary + autotick status
 //   GET  /snapshot       -> buildSnapshot(state) (the debug lens' data)
 //   GET  /snapshot?guild=<id> -> buildSnapshot(state, id): that guild's FOGGED view (roadmap 2.5 (a),
@@ -183,8 +185,9 @@ function setActiveSeed(seedObj) {
   refreshBoard();
 }
 
-// The ACTIVE galaxy's L0 BOARD, served at GET /board (docs/exploration-model.md §4 ruling 12): the
-// static, leak-free half of L0 — position + orbital layout — identical for every viewer. Pre-serialised
+// The ACTIVE galaxy's BOARD, served at GET /board (docs/exploration-model.md §4 ruling 12): the static,
+// leak-free half of L0 — every system's position + orbital layout — plus the galaxy's never-fogged config
+// (seed number, galaxyParams, Citadel, waystations, stats), identical for every viewer. Pre-serialised
 // for the same reason as the seed above: it is static for the galaxy's whole life.
 //
 // `boardEtag` names those exact bytes, so a client that already holds them gets a 304 instead of the
@@ -590,8 +593,9 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // The galaxy's static L0 BOARD (docs/exploration-model.md §4 ruling 12) — position and orbital layout
-  // for every system, nothing a guild could be fogged from. Served from the buffer refreshBoard() built.
+  // The galaxy's static public BOARD (docs/exploration-model.md §4 ruling 12) — position and orbital layout
+  // for every system plus the galaxy's public config, nothing a guild could be fogged from. Served from the
+  // buffer refreshBoard() built.
   // Nothing reads it yet: the client still loads /galaxy until the client flip (ruling 12, slice 3).
   //
   // "Cacheable": the response carries an ETag, and a client that sends it back in If-None-Match gets a

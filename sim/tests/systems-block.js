@@ -9,7 +9,8 @@
 // must come back exactly. That is the proof the removal is the slice's ONLY delta.
 //
 // The block is rebuilt from exactly two things, and nothing else:
-//   - the BOARD (`getBoard`) — the static half: id, name, coords, and planetCount = planets.length;
+//   - the BOARD's systems (`getBoard().systems`) — the static half: id, name, coords, and planetCount =
+//     planets.length (⤳ 13-10-26: the board widened to an object; its per-system rows are its `systems`);
 //   - the view's own CLAIMS — the live half: who controls each system.
 // So if the old bytes come back, nothing the old block carried is lost to a client that holds the board
 // and polls the slim view. Its shape is copied from sim/fog.js `geographyFor` at 348e0fc (just before the
@@ -31,7 +32,7 @@ function controllersFromClaims(view) {
 // legacySystemsBlock(view) -> slice 1's `geography.systems` for this view, rebuilt from the board + its claims.
 function legacySystemsBlock(view) {
   const controllers = controllersFromClaims(view);
-  return getBoard().map((b) => ({
+  return getBoard().systems.map((b) => ({
     id: b.id,
     name: b.name,
     coords: { q: b.coords.q, r: b.coords.r },
