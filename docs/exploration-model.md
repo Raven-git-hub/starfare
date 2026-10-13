@@ -871,18 +871,29 @@ stands on.
   Option-B leak gone rather than merely unused); **`GET /starters` drops `terranHomeworldId`** and
   returns `{ id, name, ring }` (the client sends only `homeSystemId` at founding and the engine resolves
   the Terran homeworld server-side, revealing it to that guild as its own home, §6 — so the field was
-  pure leak, “which planet is Terran” being L1, and no caller used it); **`POST /action` replies with the
-  fogged per-guild view** (`buildSnapshot(next, action.guildId)`), not the god's-eye lens; and **the
-  embedded Production Console polls per-guild** — `client/console.html` run embedded (`embed=1&guild=<id>`)
-  reads `GET /snapshot?guild=<id>`, which loses nothing since it only mounts for a system the player
-  controls (`__isMine`), while the standalone operator console keeps plain `/snapshot`. **Deferred to
-  Phase-2 auth** (a recorded decision, not an oversight): plain `GET /snapshot` (god's-eye) still serves
-  the operator/debug pages (`inspect.html`, `state_inspector.html`, the standalone console) and the CLI
+  pure leak, “which planet is Terran” being L1, and no caller used it); **the embedded Production
+  Console polls per-guild** — `client/console.html` run embedded (`embed=1&guild=<id>`) reads
+  `GET /snapshot?guild=<id>`, which loses nothing since it only mounts for a system the player controls
+  (`__isMine`), while the standalone operator console keeps plain `/snapshot`. **Deferred to Phase-2
+  auth** (a recorded decision, not an oversight): plain `GET /snapshot` (god's-eye) still serves the
+  operator/debug pages (`inspect.html`, `state_inspector.html`, the standalone console) and the CLI
   tools, and `GET /snapshot?guild=<any>` lets a caller name any guild — both closable only once real
   guild **authentication** binds a request to its guild (Phase-2: PostgreSQL + auth); the connect-time
   discovery read also stays plain `/snapshot` (it reads only public fields — guild ids/names and
-  `claims`). That residual is the “no-auth, client-picks-its-own-guild dev rig” §7 has flagged from the
-  start — 3c closes every path the player client uses, and the rest waits for auth. Built by slice 3c.)*
+  `claims`). `GET /system/:id` likewise serves **any** system's full seed layout (archetypes, nodes,
+  slots and `terranHomeworldId`) to any caller, so with `/galaxy` retired the seed is still
+  reconstructable by looping it — the player client no longer calls it, but the embedded console (its
+  own system) and `admin.js` (operator) do. And **the `POST /action` reply stays god's-eye** — fogging
+  it would break the operator CLI (`tools/admin.js` reads the reply as the god's-eye lens: `poolOf`,
+  cross-guild rows), while the player client reads only its OWN rows from it (the TRADE receipt's own
+  credits / fuel / shipment; the embedded console's own system — its one fogged read, `occupancy`'s
+  "worked" count, covers only ground the player holds, where every venture is its own), so no rival fact
+  is ever displayed; the god's-eye data merely rides in the envelope. That residual is the “no-auth,
+  client-picks-its-own-guild dev rig” §7 has flagged from the start — 3c closes every path by which the
+  player client fetches or displays fogged-away data; the raw endpoints above (plain `/snapshot`,
+  `GET /system/:id`, the `POST /action` reply envelope) still carry god's-eye / full-seed on the wire in
+  the no-auth rig — received by some callers, never displayed — and wait for auth together. Built by
+  slice 3c.)*
   *(⤳ 13-10-26: the board at `GET /board` is now the widened object — §4 ruling 12's 13-10-26 note, AS-BUILT
   — so it carries the static, unfogged blocks the ruling found the client reading off `/galaxy` (`galaxyParams`,
   the waystations, the Citadel, each `claimRadius`, the seed number, `stats`). `GET /galaxy` and `GET /starters`
