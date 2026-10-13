@@ -106,10 +106,12 @@ function buildIndex() {
   // waystations on distinct hexes), so a plain last-writer map is faithful.
   const byHex = new Map();
   const hexKey = (coords) => `${coords.q},${coords.r}`;
-  // l0Systems — every system's NEVER-FOGGED facts (docs/exploration-model.md §1, L0): its identity,
-  // position and planet count, one row per system, built once here (the controller is live state,
-  // added by the per-guild view from the claims). A position-derived name is identity, not geography.
-  const l0Systems = [];
+  // board — the galaxy's STATIC L0 (docs/exploration-model.md §1, §4 ruling 12): one row per system, its
+  // identity, position, ring and ORBITAL LAYOUT — each planet's stable id and its order — and nothing else.
+  // No archetype, no node, no slot: those are L1/L2, and leaving them out is what makes the board safe to
+  // hand every viewer. The controller is live state and is NOT here — it reaches a viewer in the snapshot's
+  // `claims`. A position-derived name is identity, not geography. Built once here, like the other indexes.
+  const board = [];
 
   for (const sys of seed.systems || []) {
     // The lowest-id Terran planet is the homeworld a guild starts on (§13);
@@ -119,8 +121,12 @@ function buildIndex() {
     // turns into a Roman numeral. Counted here, where the seed's order is being
     // walked anyway, so nothing later has to re-find a planet in its system.
     let ordinal = 0;
+    // The system's orbital layout for the board: the SAME ordinal, so a planet's board `order` and its
+    // site names' Roman numeral can never disagree (ruling 12: "no new numbering").
+    const layout = [];
     for (const planet of sys.planets || []) {
       ordinal += 1;
+      layout.push({ id: planet.id, order: ordinal });
       byPlanet.set(planet.id, { id: planet.id, archetype: planet.archetype, systemId: sys.id });
       if (planet.archetype === 'terran') {
         if (terranHomeworldId === null || planet.id < terranHomeworldId) terranHomeworldId = planet.id;
@@ -148,7 +154,16 @@ function buildIndex() {
     // (with nodes + slots) on demand without a second pass over the seed. It's a
     // reference into the already-cached seed object, not a copy.
     bySystemRaw.set(sys.id, sys);
-    l0Systems.push({ id: sys.id, name: sys.name, coords: sys.coords, planetCount: (sys.planets || []).length });
+    // `coords` is copied to just { q, r } so a board row never shares an object with the seed (and, like
+    // byHex below, a system with no coords does not break the index). `ring` is read exactly as
+    // getSystemLayout reads it.
+    board.push({
+      id: sys.id,
+      name: sys.name,
+      coords: sys.coords ? { q: sys.coords.q, r: sys.coords.r } : null,
+      ring: sys.ring || null,
+      planets: layout,
+    });
     if (sys.coords) byHex.set(hexKey(sys.coords), { id: sys.id, kind: 'system', coords: sys.coords });
   }
 
@@ -165,13 +180,15 @@ function buildIndex() {
     : null;
   if (citadel && citadel.coords) byHex.set(hexKey(citadel.coords), { id: citadel.id, kind: 'citadel', coords: citadel.coords });
 
+  // The board in id order, so its serialized bytes depend only on the seed (invariant 9).
+  board.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
   // galaxyParams — the seed's generation parameters (radius in world units, hexSize).
   // Carried through the index so `isHexInBounds` can test lattice membership from the
   // SAME two numbers the generator used (tools/generate_seed.js), never a chosen constant
   // (§18 / CLAUDE.md "Never invent a number"). A generator-less test seed may omit them,
   // in which case there is no lattice to bound and `isHexInBounds` answers false.
-  l0Systems.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, l0Systems, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
+  return { bySite, byPlanet, bySystem, bySystemRaw, byOutpost, byHex, board, citadel, seedNumber: seed.seed, galaxyParams: seed.galaxyParams || null };
 }
 
 function index() {
@@ -368,11 +385,15 @@ function getSystemLayout(id) {
   };
 }
 
-// getL0Systems() -> every system's L0 row `{ id, name, coords, planetCount }`, sorted by id — the
-// part of the map no guild is ever fogged from (docs/exploration-model.md §1). The cached rows are
-// SHARED with the index, so a caller emitting them copies first (the per-guild view does).
-function getL0Systems() {
-  return index().l0Systems;
+// getBoard() -> the galaxy's static L0 board, one row per system, sorted by id:
+//   { id, name, coords, ring, planets: [ { id, order } ] }
+// where `order` is the planet's index in the seed's own planet array + 1 — the order getSystemLayout lists
+// planets in, and the ordinal the site names' Roman numeral uses. A planet's `id` is the key the exploration
+// record and the view's `known` use, so the board and `known` join on it. The part of the map no guild is
+// ever fogged from (docs/exploration-model.md §1, §4 ruling 12), served to every viewer at GET /board. The cached rows are SHARED with the index, so a
+// caller that wants to change one copies it first.
+function getBoard() {
+  return index().board;
 }
 
 // getSeedNumber() -> the integer the seed was generated from. The live world
@@ -386,5 +407,5 @@ module.exports = {
   getSite, getPlanet, isResourceNode, isSettlementSlot, findNodesByResource, siteName, roman,
   getCitadel, getSystem, getClaimRadius, getOutpost, getOutposts, getLandmark,
   hexToPixel, isHexInBounds, seedLandmarkAtHex,
-  isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getL0Systems, getSeedNumber,
+  isStarterSystem, getTerranHomeworld, getStarterSystems, getSystemLayout, getBoard, getSeedNumber,
 };

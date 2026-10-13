@@ -50,7 +50,9 @@ test('GET /snapshot?guild= serves that guild\'s fogged view; plain /snapshot sta
   const mine = await req('GET', '/snapshot?guild=player-guild');
   assert.equal(mine.status, 200);
   assert.equal(mine.body.viewerGuildId, 'player-guild');
-  assert.ok(Array.isArray(mine.body.geography.systems) && mine.body.geography.known[HOME_A], 'with its geography');
+  // `{ known }` only since the L0-board slice (ruling 12, slice 2): L0 is GET /board's, the controller `claims`'.
+  assert.deepEqual(Object.keys(mine.body.geography), ['known']);
+  assert.ok(mine.body.geography.known[HOME_A], 'with its geography');
   assert.deepEqual(Object.keys(mine.body.guilds.find((g) => g.id === 'bot-guild')), ['id', 'name', 'isBot', 'homeSystemId'],
     'the rival cut to its public facts');
   assert.ok('stockpilesBySystem' in mine.body.guilds.find((g) => g.id === 'player-guild'), 'its own row in full');

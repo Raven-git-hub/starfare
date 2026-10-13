@@ -52,6 +52,11 @@
 //                           live poll of the god's-eye snapshot, zero controls
 //   GET  /galaxy         -> the committed seed geometry (data/seed.json, served
 //                           verbatim) — the one full-galaxy read the client needs
+//   GET  /board          -> the galaxy's static L0 BOARD (sim/seed.js getBoard): per system
+//                           { id, name, coords, ring, planets: [{ id, order }] } and nothing
+//                           else — the leak-free map the client flip will read instead of
+//                           /galaxy (docs/exploration-model.md §4 ruling 12). ETag'd: a
+//                           matching If-None-Match gets a 304
 //   GET  /health         -> liveness JSON + a one-line summary + autotick status
 //   GET  /snapshot       -> buildSnapshot(state) (the debug lens' data)
 //   GET  /snapshot?guild=<id> -> buildSnapshot(state, id): that guild's FOGGED view (roadmap 2.5 (a),
@@ -86,6 +91,7 @@
 
 const http = require('node:http');
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
 const { join, resolve, sep, extname } = require('node:path');
 
 const { createZeroState } = require('./scenarios/zero-state.js');
@@ -100,7 +106,7 @@ const {
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
 const { buildSnapshot } = require('./snapshot.js');
-const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber } = require('./seed.js');
+const { getStarterSystems, getSystemLayout, setSeed, getSeedNumber, getBoard } = require('./seed.js');
 const { listRecipes } = require('./recipes.js');
 const { ALL_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_KINDS } = require('./asset-recipes.js');
 const { RAW_RESOURCES, PROCESSED_GOODS, TIER3_GOODS, STOCKPILE_GOODS } = require('./resources.js');
@@ -174,6 +180,44 @@ const BAKED_SEED_PATH = join(__dirname, '..', 'data', 'seed.json');
 function setActiveSeed(seedObj) {
   setSeed(seedObj);                                   // swap the engine's index
   seedJsonBuffer = seedObj ? Buffer.from(JSON.stringify(seedObj)) : null;
+  refreshBoard();
+}
+
+// The ACTIVE galaxy's L0 BOARD, served at GET /board (docs/exploration-model.md §4 ruling 12): the
+// static, leak-free half of L0 — position + orbital layout — identical for every viewer. Pre-serialised
+// for the same reason as the seed above: it is static for the galaxy's whole life.
+//
+// `boardEtag` names those exact bytes, so a client that already holds them gets a 304 instead of the
+// board again. It is the galaxy's seed number (readable in a browser's network tab) plus a hash of the
+// bytes themselves. The hash is what makes it safe: a seed number alone names a galaxy only while the
+// generator stays the same, and a regenerated data/seed.json — or a galaxy re-created under a changed
+// generator — could reuse a number with a different layout. Same bytes ⇒ same tag; any change ⇒ a new one.
+//
+// refreshBoard() rebuilds the buffer and its tag from whatever seed the index now holds. It is called
+// wherever the seed buffer changes (setActiveSeed, and the no-volume boot), so a new galaxy and a delete
+// refresh the board for free — and it is null exactly when the seed buffer is, so both routes agree on
+// NO GALAXY.
+let boardJsonBuffer = null;
+let boardEtag = null;
+function refreshBoard() {
+  if (!seedJsonBuffer) {
+    boardJsonBuffer = null;
+    boardEtag = null;
+    return;
+  }
+  boardJsonBuffer = Buffer.from(JSON.stringify(getBoard()));
+  boardEtag = `"board-${getSeedNumber()}-${createHash('sha256').update(boardJsonBuffer).digest('hex')}"`;
+}
+
+// etagMatches(ifNoneMatch, etag) -> does the client's If-None-Match header name this tag? The header may
+// list several tags, comma-separated, or be `*` (any). The comparison is the WEAK one the HTTP spec asks
+// for on If-None-Match, so `W/"x"` matches `"x"`.
+function etagMatches(ifNoneMatch, etag) {
+  if (!ifNoneMatch || !etag) return false;
+  return ifNoneMatch.split(',').some((raw) => {
+    const tag = raw.trim();
+    return tag === '*' || tag === etag || tag === `W/${etag}`;
+  });
 }
 
 // --- opt-in file-backed durability (dev-rig prototype) ----------------------
@@ -212,6 +256,7 @@ function bootLiveState() {
     // own bytes, so /galaxy still serves the committed seed verbatim.
     setSeed(null);
     seedJsonBuffer = fs.readFileSync(BAKED_SEED_PATH);
+    refreshBoard();                                   // the board of that same committed seed
     return createZeroState();
   }
   const volumeSeed = loadSeed(persistDir);
@@ -380,7 +425,10 @@ function randomSeedNumber() { return Math.floor(Math.random() * 0x7fffffff) + 1;
 // DEFERRED, deliberately: conditional revalidation (ETag / Last-Modified -> 304)
 // and content-hashed asset filenames. Both are the efficient long-term answer;
 // neither is needed at this size, and the second needs an asset-versioning scheme
-// that does not exist yet.
+// that does not exist yet. *(⤳ 09-10-26: ONE route has a validator now — GET /board
+// sends an ETag and answers a matching If-None-Match with 304, because ruling 12
+// asks for the board to be "served once, cacheable". It keeps `no-cache` all the
+// same, so the browser still asks every time and a new galaxy is never served stale.)*
 const NO_CACHE = 'no-cache';
 
 function sendJson(res, status, obj) {
@@ -539,6 +587,32 @@ async function handleRequest(req, res) {
       'Cache-Control': NO_CACHE,
     });
     res.end(seedJsonBuffer);
+    return;
+  }
+
+  // The galaxy's static L0 BOARD (docs/exploration-model.md §4 ruling 12) — position and orbital layout
+  // for every system, nothing a guild could be fogged from. Served from the buffer refreshBoard() built.
+  // Nothing reads it yet: the client still loads /galaxy until the client flip (ruling 12, slice 3).
+  //
+  // "Cacheable": the response carries an ETag, and a client that sends it back in If-None-Match gets a
+  // 304 with no body. It still says `no-cache` (revalidate before every use) rather than a max-age, so a
+  // browser always asks — after a new galaxy the tag no longer matches, and it gets the new board.
+  if (method === 'GET' && path === '/board') {
+    if (!boardJsonBuffer || !hasGalaxy()) { sendJson(res, 404, NO_GALAXY); return; }
+    const headers = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Cache-Control': NO_CACHE,
+      ETag: boardEtag,
+    };
+    if (etagMatches(req.headers['if-none-match'], boardEtag)) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { ...headers, 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(boardJsonBuffer);
     return;
   }
 
@@ -851,7 +925,7 @@ async function handleRequest(req, res) {
       autotickLastError = null;
       const seedObj = generateGalaxySeed(seedNumber);    // 2. generate
       saveSeed(seedObj, persistDir);                     // 3. write it to the volume
-      setActiveSeed(seedObj);                            // 4. reload the index + /galaxy buffer
+      setActiveSeed(seedObj);                            // 4. reload the index + /galaxy and /board buffers
       // 5. THE ONE WALL-CLOCK READ IN THE WHOLE SYSTEM (docs/cycle-and-calendar.md §2).
       //    It happens here, at the operator seam, exactly like STARFARE_TICK_MS — never
       //    in advance/tick/resolveProduction, which read only integers already in state.

@@ -264,6 +264,12 @@ guild knows its **home system fully + L0 everywhere**, nothing else.
 > surface — every node **and** every slot — together; and the per-guild view shows every slot of every
 > controlled system and every surveyed planet. The claim gate that reads a known slot is still recorded, not
 > enforced (the Prefecture slice).)*
+> *(⤳ 09-10-26, roadmap 2.5 — the **L0-board** engine slice (`docs/exploration-model.md` §4 ruling 12, slice
+> 2): L0 is no longer rebuilt inside every per-guild view. Its static half — every system's position and
+> orbital layout (each planet's id and order), with no archetype, node or slot — is one **board**, the same
+> for every guild, served once at a new route, `GET /board`; the controller stays public in the view's
+> `claims`. The view's geography is now just the detail the guild has earned (`known`). `GET /galaxy` is
+> unchanged and still serves the whole seed, so the `/galaxy` leak stays open until the client flip.)*
 
 > **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
 > 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all

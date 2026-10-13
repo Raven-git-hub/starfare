@@ -23,7 +23,9 @@
 //      back to the 52e5e3f bytes; the state and the god's-eye lens did not move.) (⤳ 09-10-26, the
 //      settlement-surface slice: the state and both views re-pinned again — founding now records the home's
 //      settlement slots and every `known` entry carries `slots` — each with a strip-and-prove back to the
-//      previous bytes (tests/slot-strip.js); the god's-eye lens did not move.)
+//      previous bytes (tests/slot-strip.js); the god's-eye lens did not move.) (⤳ 09-10-26, the L0-board
+//      slice: both views re-pinned once more — `geography.systems` is gone — each with a put-back-and-prove
+//      to the settlement-surface bytes (tests/systems-block.js); the state and the god's-eye lens did not move.)
 //  10. INVARIANTS: a malformed job fails loudly; the completion step halts, naming the tick.
 // The per-guild view (a rival never sees the job) is tested with the rest of the fog, in fog.test.js.
 
@@ -45,11 +47,12 @@ const { hexDistance } = require('../transport.js');
 const {
   SCAN_TICKS, SCAN_L1_TICKS, SCAN_L2_TICKS, SCAN_LEVELS, stepScanCompletions,
 } = require('../deep-scan-arrays.js');
-const { getStarterSystems, getSystem, getSystemLayout, getL0Systems } = require('../seed.js');
+const { getStarterSystems, getSystem, getSystemLayout, getBoard } = require('../seed.js');
 const { placeCraft } = require('./kit-fixtures.js');
 const { idleArrayScript } = require('./idle-array-script.js');
 const { withoutRivalGround } = require('./rival-leak-script.js');
 const { withoutRecordSlots, withoutKnownSlots, stripKnownSlots } = require('./slot-strip.js');
+const { withSystemsBlock } = require('./systems-block.js');
 const {
   validateAction, applyAction, createQueueScanAction, createRemoveDeepScanArrayAction, createFoundGuildAction,
 } = require('../actions.js');
@@ -218,7 +221,7 @@ test('TARGETS: a rival-held system is refused (L3), your own is refused, an uncl
 
 test('NO REACH LIMIT: the system farthest from the array, anywhere in the galaxy, is a legal target', () => {
   const at = arrayOf(BASE).coords;
-  const far = getL0Systems().reduce((best, sys) => (hexDistance(sys.coords, at) > hexDistance(best.coords, at) ? sys : best));
+  const far = getBoard().reduce((best, sys) => (hexDistance(sys.coords, at) > hexDistance(best.coords, at) ? sys : best));
   assert.ok(hexDistance(far.coords, at) > 20);
   assert.deepEqual(arrayOf(accept(BASE, L1(far.id))).scan.targetSystemId, far.id);
 });
@@ -376,6 +379,9 @@ const IDLE_ARRAY_VIEWS_RULING_11 = {
 
 // The full state and per-guild views of the same two steps, recorded 09-10-26 after the settlement-surface
 // slice: founding records the home system's settlement slots, and every `known` entry carries `slots`.
+// ⤳ 09-10-26 (the L0-board slice): the two VIEW pins are no longer the full views — `geography.systems` is
+// gone — but kept as the put-back-and-prove: put the block back (from the board + the view's own claims) and
+// the view still hashes to these. The state pins are still the full state (the slice moved no state).
 const IDLE_ARRAY_WITH_SLOTS = {
   deployed: {
     state: 'fa7e6eb02b7e34d9786e8aa0a7891eee33f66d1662e3f34817e30a9ec76a8b6f',
@@ -386,6 +392,19 @@ const IDLE_ARRAY_WITH_SLOTS = {
     state: 'f64134c05b54949c13caab500179819e3093fc6c81375175e1bb73dbe6245c9e',
     [A]: 'c471faf51b510dc186a2439aaabf0a642458dd700042f5d108dd6832a88fb3d7',
     [B]: 'adf28fa9e0a378e58be27f738dd8ce60187d8dc8f364f7db80c97b47d03cb18e',
+  },
+};
+
+// The full per-guild views after the L0-board slice (ruling 12 slice 2). Recorded on main at 348e0fc — BEFORE
+// the slice — by deleting `geography.systems` from each IDLE_ARRAY_WITH_SLOTS view and hashing the rest.
+const IDLE_ARRAY_SLIM = {
+  deployed: {
+    [A]: '5cf7e1b4e7d78ba29aaefe26e388dc15f919b40da85af3f2b7baed1996fd0a05',
+    [B]: 'd8dc827424be9f2d4b8df75c50a8c0ea46b562acba2c72af92dd706ec652a5d8',
+  },
+  ticked: {
+    [A]: 'fea7e69b4d0ed0d18ab22700cc0bcf255e51d83d83c50f04ae8db3b044feeadd',
+    [B]: 'd9e2cd5278e3b83bf3d89f7705bbcb64fc4b02b9e3a42c2ef4d8e96aae02b322',
   },
 };
 
@@ -401,13 +420,16 @@ test('OMIT-WHEN-IDLE: a galaxy whose array is idle is byte-identical to main bef
     assert.equal(sha(JSON.stringify(buildSnapshot(s))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
     for (const guildId of [A, B]) {
       const view = buildSnapshot(s, guildId);
-      assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_WITH_SLOTS[name][guildId], `${guildId}'s view moved at "${name}"`);
-      // Strip the slots from `known` and it is the 08-10-26 (ruling 11) view…
-      const { view: noKnownSlots, count: shown } = withoutKnownSlots(view);
+      assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_SLIM[name][guildId], `${guildId}'s view moved at "${name}"`);
+      // Put `geography.systems` back and it is the 09-10-26 (settlement-surface) view…
+      const legacy = withSystemsBlock(view);
+      assert.equal(sha(JSON.stringify(legacy)), IDLE_ARRAY_WITH_SLOTS[name][guildId], `${guildId}'s view moved OUTSIDE geography.systems at "${name}"`);
+      // …strip the slots from `known` and it is the 08-10-26 (ruling 11) view…
+      const { view: noKnownSlots, count: shown } = withoutKnownSlots(legacy);
       assert.ok(shown > 0, `${guildId}'s view really shows settlement slots`);
       assert.equal(sha(JSON.stringify(noKnownSlots)), IDLE_ARRAY_VIEWS_RULING_11[name][guildId], `${guildId}'s view moved OUTSIDE the slots at "${name}"`);
       // …and strip the rival's ground too (ruling 11's projection) and it is the 52e5e3f view, byte for byte.
-      assert.equal(sha(JSON.stringify(withoutRivalGround(stripKnownSlots(view)))), pins[guildId], `${guildId}'s view moved OUTSIDE the rival's ground at "${name}"`);
+      assert.equal(sha(JSON.stringify(withoutRivalGround(stripKnownSlots(legacy)))), pins[guildId], `${guildId}'s view moved OUTSIDE the rival's ground at "${name}"`);
     }
   }
 });

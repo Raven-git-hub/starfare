@@ -104,11 +104,14 @@ function withoutRivalFacts(state) {
 // withoutRivalGround(view) -> a copy of a per-guild view with what it shows of RIVAL-HELD ground taken out:
 // the `geography.known` entries of every system a rival controls, and every node lockout on a node in one.
 // The cleanup is meant to change the view THERE and nowhere else.
+// ⤳ 09-10-26 (the L0-board slice, ruling 12 slice 2): who controls what is read off the view's `claims` —
+// the slim view has no `geography.systems` block to read it from. Every claim row is kept in a view, so it
+// is the same set the block's `controllerGuildId` gave; the pins taken on main still holding proves it.
 function withoutRivalGround(view) {
   const out = structuredClone(view);
-  const rivalHeld = new Set(out.geography.systems
-    .filter((s) => s.controllerGuildId && s.controllerGuildId !== out.viewerGuildId)
-    .map((s) => s.id));
+  const rivalHeld = new Set(out.claims
+    .filter((c) => c.landmarkKind === 'system' && c.ownerGuildId !== out.viewerGuildId)
+    .map((c) => c.landmarkId));
   for (const systemId of rivalHeld) delete out.geography.known[systemId];
   out.nodeLockouts = out.nodeLockouts.filter((l) => !rivalHeld.has(getSite(l.siteId).systemId));
   return out;

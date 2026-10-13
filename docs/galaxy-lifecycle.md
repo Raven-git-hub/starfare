@@ -47,7 +47,9 @@ deploy); only the live state persists in the volume. Change: the **active galaxy
    displayed** as `SEED ####`.
 3. **Write** the generated `seed.json` to the volume.
 4. **Reload the seed index** so `sim/seed.js` (and the `/galaxy` buffer) serve the NEW seed. This must
-   happen **before** step 5.
+   happen **before** step 5. *(⤳ 09-10-26: the `/board` buffer — the L0 board and its ETag,
+   `docs/exploration-model.md` §4 ruling 12 — is rebuilt in the same step, so a new galaxy is never
+   served an old board.)*
 5. **Build a fresh zero-state on the new seed** (`createZeroState`) — which re-plants the Syndicate's
    claims (`getCitadel()` + one waystation claim per `getOutposts()` entry) on **this** galaxy's
    landmarks. The waystations/Citadel are part of the generated geometry; the zero-state re-establishes
