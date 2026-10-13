@@ -16,6 +16,7 @@
     --outpost: #e8b93a;
     --citadel: #f2ce5d;
     --accent: #43d9c8;
+    --rival: #ff5caa;   /* every rival guild on the map (exploration-model.md §10); RIVAL_RGB in the map script */
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1621,6 +1622,24 @@ select.field{appearance:none; cursor:pointer;}
 #detail-screen .blank-ph .t{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; }
 #detail-screen .blank-ph .s{ font-size:11px; margin-top:8px; max-width:30ch; line-height:1.6; }
 
+/* ===== the levels (exploration 2.5, the fog flip — docs/exploration-model.md §10) =====
+   L0 tab: blank, no art (the archetype is not known). L0 planet manifest: a blank hero and no blurb.
+   Below L2 the main reads "No Survey Data" where the surface lists go. The survey affordances —
+   the system tag's SURVEY SYSTEM and an L1 tab's Survey — are drawn but inert until slice 3b. */
+#detail-screen .list-row.tab.tex-unknown{ background:var(--bg-chip); border-style:dashed; }
+#detail-screen .list-row.tab.tex-unknown::before{ background:none; }
+#detail-screen .list-row.tab.tex-unknown .node-type{ color:var(--ink-faint); }
+#detail-screen .arch-blurb.arch-unknown{ display:none!important; }
+#detail-screen .hero.blank{ background-image:none; }
+#detail-screen .survey-btn{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--brass); background:rgba(201,162,39,.10); border:1px solid var(--brass-dim); border-radius:6px; padding:6px 12px; cursor:default; }
+#detail-screen .survey-btn:disabled{ opacity:1; }
+/* an L1 tab's Survey sits where the L2 pip columns would (top-right of the tab) */
+#detail-screen .list-row.tab .tab-survey{ position:absolute; top:12px; right:14px; z-index:2; padding:5px 10px; background:rgba(11,13,18,.62); }
+#detail-screen .no-survey{ text-align:center; color:var(--ink-faint); padding:48px 0; }
+#detail-screen .no-survey .ns-glyph{ width:44px; height:44px; margin:0 auto 10px; border:1px solid var(--line); border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Cinzel',serif; font-size:17px; color:var(--brass-dim); }
+#detail-screen .no-survey .ns-title{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; }
+
 /* volume slider in the top bar */
 #volSlider{ -webkit-appearance:none; appearance:none; width:82px; height:3px; background:var(--line-bright); border-radius:2px; outline:none; cursor:pointer; }
 #volSlider::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; width:11px; height:11px; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 0 6px rgba(67,217,200,.5); }
@@ -3072,7 +3091,7 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 
   <!-- Shown ONLY when the live galaxy could not be read. There is no file picker:
-       the client loads the real committed seed from GET /galaxy and nothing else. -->
+       the client loads the galaxy's L0 board from GET /board and nothing else. -->
   <div id="loadpanel" style="display:none">
     <div class="title">NO UPLINK</div>
     <div class="sub">The galaxy could not be read from the server.</div>
@@ -3083,6 +3102,7 @@ select.field{appearance:none; cursor:pointer;}
     <div class="heading">MAP KEY</div>
     <div class="legend-row"><div class="swatch" style="background:var(--system)"></div> Solar System</div>
     <div class="legend-row"><div class="swatch" style="background:var(--accent)"></div> <span id="legend-me">Your Guild</span></div>
+    <div class="legend-row"><div class="swatch" style="background:var(--rival)"></div> Rival Guild</div>
     <div class="legend-row"><div class="swatch" style="background:var(--outpost)"></div> Waystation</div>
     <div class="legend-row"><div class="swatch diamond" style="background:var(--accent)"></div> Guild Outpost</div>
     <div class="legend-row"><div class="swatch" style="background:var(--citadel)"></div> The Citadel</div>
@@ -3197,7 +3217,7 @@ select.field{appearance:none; cursor:pointer;}
         <div class="blank-ph">
           <div class="g">§</div>
           <div class="t">Venture detail</div>
-          <div class="s">A later pass. Selecting a site opens its Establish / Manage popup exactly as it does today.</div>
+          <div class="s">Select a site to establish or manage a venture.</div>
         </div>
       </div>
     </div>
@@ -5586,15 +5606,19 @@ select.field{appearance:none; cursor:pointer;}
       // (design.md §18 — the client computes no game number). Capacity is a large integer;
       // thousands separators are presentation only. The Hold line is the stockpile's published
       // `used` (outpostHoldText), kept live by the poll (__setLiveTerritory).
+      // A RIVAL's outpost row arrives fogged — where it is and whose, nothing operational
+      // (exploration-model.md §7) — so its capacity and docks read "—" rather than throw.
       const anchor = systemById.get(hit.anchorSystemId);
       document.getElementById('sp-anchor').textContent = anchor && anchor.name ? anchor.name : hit.anchorSystemId;
-      document.getElementById('sp-capacity').textContent = hit.capacity.toLocaleString() + ' cargo space';
-      document.getElementById('sp-docks').textContent = hit.dockCapacity;
+      document.getElementById('sp-capacity').textContent = typeof hit.capacity === 'number' ? hit.capacity.toLocaleString() + ' cargo space' : '—';
+      document.getElementById('sp-docks').textContent = typeof hit.dockCapacity === 'number' ? hit.dockCapacity : '—';
       document.getElementById('sp-hold').textContent = outpostHoldText(hit);
       outpostRows.style.display = 'block';
-      // OPEN DETAILS now opens the read-only Outpost Manager (roadmap 2.2) for this outpost.
-      detailsBtn.disabled = false;
-      detailsBtn.title = 'Open the Outpost Manager';
+      // OPEN DETAILS opens the Outpost Manager (roadmap 2.2) — for the player's OWN outpost only:
+      // a rival's dock, stockpile and craft are its operations, which its fogged row does not carry.
+      const ownOutpost = hit.guildId === PLAYER_GUILD.guildId;
+      detailsBtn.disabled = !ownOutpost;
+      detailsBtn.title = ownOutpost ? 'Open the Outpost Manager' : 'A rival guild’s outpost';
     } else if (type === 'tollGate') {
       const guild = guildById.get(hit.guildId);
       nameEl.textContent = hit.name;
@@ -5640,7 +5664,8 @@ select.field{appearance:none; cursor:pointer;}
     document.getElementById('recenter').disabled = true;
   });
 
-  // OPEN DETAILS -> the System View screen, fed the clicked system's real seed data
+  // OPEN DETAILS -> the System View screen, fed the clicked system's board row (its layout; the
+  // detail screen joins the guild's known detail and the claims onto it)
   document.getElementById('sp-details').addEventListener('click', () => {
     if (selectedType === 'system' && selected && selected.planets) window.openSystemDetail(selected);
     else if (selectedType === 'outpost' && selected && window.openWaystationDetail) window.openWaystationDetail(selected);
@@ -5728,12 +5753,13 @@ select.field{appearance:none; cursor:pointer;}
   window.__setLiveTerritory = function (live) {
     // EVERY guild goes into the lookup — the player's own included, so the system
     // panel and the detail header name a controller instead of saying "Unclaimed"
-    // on the player's own home. The player's guild takes the reserved accent; a
-    // rival gets its stable per-id colour.
+    // on the player's own home. Ownership colour is two-way (exploration-model.md §10):
+    // the player's guild takes the reserved accent, and EVERY rival the one rival
+    // colour — no per-rival distinction. Unclaimed systems keep the neutral system blue.
     const guilds = (live.guilds || []).map((g) => ({
       id: g.id,
       name: g.name || g.id,
-      color: g.id === live.myGuildId ? { r: 67, g: 217, b: 200 } : guildColor(g.id),
+      color: g.id === live.myGuildId ? { r: 67, g: 217, b: 200 } : RIVAL_RGB,
     }));
     const claims = { ...(live.systemClaims || {}) };
     // The player's own systems also drive the self-coloured territory fill and the
@@ -5792,21 +5818,10 @@ select.field{appearance:none; cursor:pointer;}
     liveInTransitCraft = (list || []).map((c) => ({ id: c.id, class: c.class, trip: c.trip }));
   };
 
-  // A stable colour per rival guild id. PRESENTATION ONLY — a hue, not a game
-  // number: the same id always gets the same colour so the map reads consistently
-  // across polls and reloads. The player's own accent (the teal above) is reserved.
-  function guildColor(id) {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-    const hue = h % 360;
-    // hue -> rgb at fixed saturation/lightness, so every rival reads at the same weight
-    const f = (n) => {
-      const k = (n + hue / 30) % 12;
-      const c = 0.45 * Math.min(1, Math.max(-1, Math.min(k - 3, 9 - k)));
-      return Math.round(255 * (0.62 - c));
-    };
-    return { r: f(0), g: f(8), b: f(4) };
-  }
+  // The ONE colour every rival guild is drawn in — §10's "a single bright pink (no per-rival
+  // distinction)". PRESENTATION ONLY, not a game number; the same pink is --rival in the CSS
+  // (the map key's swatch). The player's own accent (the teal above) is reserved.
+  const RIVAL_RGB = { r: 255, g: 92, b: 170 };
   window.__flyTo = function(q, r, z){
     if(!galaxy) return;
     if(window.closeTab) window.closeTab();
@@ -5957,20 +5972,39 @@ const el = {
   overlayClose: document.getElementById('overlayClose'),
 };
 
-function adaptSeedSystem(sys){
+// One system for the detail screen, joined from the three things the client is sent
+// (docs/exploration-model.md §4 ruling 12, §10):
+//   the BOARD row     — which planets orbit, and in what order (L0, for every system);
+//   geography.known   — what this guild has earned past L0, per planet (L1 archetype, L2 surface);
+//   claims            — who controls it (public; no claim row = unclaimed).
+// A planet's LEVEL is read off known, never worked out: no entry = L0; an entry whose nodes and
+// slots are both empty = L1 (archetype only); any node or slot = L2 (its whole surface). Every
+// site keeps its `id` — the JOIN KEY into the snapshot's occupancy map, so the manifest says what
+// is actually seated there rather than guessing.
+function adaptBoardSystem(sys){
+  var known = window.__knownSystem ? window.__knownSystem(sys.id) : {};
   return {
     name: sys.name, id: sys.id, ring: sys.ring||null, coords: sys.coords||null,
+    claimed: window.__isClaimed ? window.__isClaimed(sys.id) : false,
     controller: (window.__controllerFor ? window.__controllerFor(sys.id) : 'Unclaimed'),
-    // Every site keeps its `id` — that id is the JOIN KEY into the snapshot's
-    // occupancy map, so the manifest can say what is actually seated here rather
-    // than guessing. (Slice 2: this used to drop the ids and keep a bare
-    // resource-type / a slot count.)
-    planets: (sys.planets||[]).map(function(p,i){ return {
-      id:p.id, order:i+1, roman:toRoman(i+1), archetype:p.archetype,
-      nodes:(p.resourceNodes||[]).map(function(n){ return { id:n.id, resourceType:n.resourceType }; }),
-      slots:(p.settlementSlots||[]).map(function(sl){ return { id:sl.id }; })
-    };})
+    planets: (sys.planets||[]).map(function(p){
+      var k = known[p.id] || null;
+      var nodeIds = k ? Object.keys(k.nodes || {}) : [];
+      var slotIds = k ? Object.keys(k.slots || {}) : [];
+      return {
+        id: p.id, order: p.order, roman: toRoman(p.order),
+        level: !k ? 0 : ((nodeIds.length || slotIds.length) ? 2 : 1),
+        archetype: k ? k.archetype : null,
+        nodes: nodeIds.map(function(id){ return { id:id, resourceType:k.nodes[id] }; }),
+        slots: slotIds.map(function(id){ return { id:id }; })
+      };
+    })
   };
+}
+// Does the guild know any planet of this system past L0? (§10: the tag reads SURVEY SYSTEM only
+// while the system is unclaimed and none of its archetypes are known.)
+function knowsAnyArchetype(system){
+  return system.planets.some(function(p){ return p.level >= 1; });
 }
 function planetDesignation(p){ return SYSTEM.name + ' ' + p.roman; }
 
@@ -6062,18 +6096,35 @@ function pipColumns(count, cls){
 el.backBtn.addEventListener('click', function(){ view={screen:'system', planetId:null, planetTab:'resources'}; render(); });
 if (el.dropdown){
   el.dropdown.addEventListener('change', function(){
-    const id=this.value; const seed=(window.__galaxy && window.__galaxy.systems.filter(function(s){return s.id===id;})[0]);
-    if(seed) window.openSystemDetail(seed);
+    const row = window.__boardSystem ? window.__boardSystem(this.value) : null;
+    if(row) window.openSystemDetail(row);
   });
+}
+
+// The survey affordances (§10) are drawn where they belong but do NOTHING yet: the survey flow —
+// the confirm popup, the array picker, queueScan — is the next slice (roadmap 2.5, slice 3b).
+// The system tag's is a disabled <button>. A planet tab's sits inside the tab (itself a <button>,
+// which may not nest another), so it is a span; it swallows its own click so pressing it does not
+// open the planet behind it.
+const SURVEY_TAB_HTML = '<span class="survey-btn tab-survey" role="button" aria-disabled="true">Survey</span>';
+
+// The system manifest's tag, in the three states §10 gives it:
+//   held                         -> the controller's name (a held system is full L2 to everyone, ruling 11);
+//   unclaimed, an archetype known -> a plain UNCLAIMED (the CSS sets the case);
+//   unclaimed, nothing known      -> the SURVEY SYSTEM button (L0).
+function renderSystemTag(){
+  if (SYSTEM.claimed || knowsAnyArchetype(SYSTEM)) { el.controller.textContent = SYSTEM.controller; return; }
+  el.controller.innerHTML = '<button type="button" class="survey-btn" disabled>Survey System</button>';
 }
 
 function renderSystemView(){
   el.titleMain.textContent = SYSTEM.name;
-  el.controller.textContent = SYSTEM.controller;
+  renderSystemTag();
   el.controller.style.display = '';
   const ringBit = SYSTEM.ring ? SYSTEM.ring.toUpperCase()+' RING \u00b7 ' : '';
   const coordBit = SYSTEM.coords ? ('q'+SYSTEM.coords.q+' r'+SYSTEM.coords.r) : SYSTEM.id;
-  el.titleSub.textContent = SYSTEM.planets.length + ' surveyed bodies \u00b7 ' + ringBit + coordBit;
+  // The body count is the board's orbital layout — L0, known for every system, surveyed or not.
+  el.titleSub.textContent = SYSTEM.planets.length + (SYSTEM.planets.length===1 ? ' body' : ' bodies') + ' \u00b7 ' + ringBit + coordBit;
 
   if (el.dropdown){
     let owned = (window.__myGuildSystems||[]).slice();
@@ -6083,14 +6134,28 @@ function renderSystemView(){
   }
   el.pvTabs.style.display='none';
 
+  // One tab per planet, drawn at the guild's level on it (§10):
+  //   L0 — blank, no art, "Unknown Archetype";
+  //   L1 — the archetype art + label, the pip columns replaced by a Survey button;
+  //   L2 — the art, the label and the pip columns with the real counts.
   el.stack.innerHTML='';
   SYSTEM.planets.slice().sort(function(a,b){return b.order-a.order;}).forEach(function(p){
     const row=document.createElement('button');
-    row.className='list-row tab tex-'+p.archetype;
-    var worked = workedCount(p);
-    row.innerHTML = pipColumns(p.nodes.length,'sq') + pipColumns(p.slots.length,'tri') +
-      '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">'+ARCHETYPE_LABEL[p.archetype]+
-      (worked ? ' \u00b7 '+worked+(worked===1?' site worked':' sites worked') : '')+'</span></span>';
+    if (p.level === 0){
+      row.className='list-row tab tex-unknown';
+      row.innerHTML = '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">Unknown Archetype</span></span>';
+    } else if (p.level === 1){
+      row.className='list-row tab tex-'+p.archetype;
+      row.innerHTML = SURVEY_TAB_HTML +
+        '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">'+ARCHETYPE_LABEL[p.archetype]+'</span></span>';
+      row.querySelector('.tab-survey').addEventListener('click', function(e){ e.stopPropagation(); });
+    } else {
+      row.className='list-row tab tex-'+p.archetype;
+      var worked = workedCount(p);
+      row.innerHTML = pipColumns(p.nodes.length,'sq') + pipColumns(p.slots.length,'tri') +
+        '<span class="node-meta"><span class="node-name">'+planetDesignation(p)+'</span><span class="node-type">'+ARCHETYPE_LABEL[p.archetype]+
+        (worked ? ' \u00b7 '+worked+(worked===1?' site worked':' sites worked') : '')+'</span></span>';
+    }
     row.addEventListener('click', function(){ view={screen:'planet', planetId:p.id, planetTab:'resources'}; render(); });
     el.stack.appendChild(row);
   });
@@ -6108,14 +6173,35 @@ function renderPlanetView(){
   const p = SYSTEM.planets.filter(function(pl){return pl.id===view.planetId;})[0];
   el.titleMain.textContent = planetDesignation(p);
   el.controller.style.display='none';
-  el.titleSub.textContent = ARCHETYPE_LABEL[p.archetype] + ' \u00b7 ' + p.id;
+  el.titleSub.textContent = (p.level ? ARCHETYPE_LABEL[p.archetype] : 'Unknown Archetype') + ' \u00b7 ' + p.id;
   if (el.dropdown) el.dropdown.style.display='none';
+  el.backBtn.classList.add('visible');
+  el.mainHeading.textContent='Planet Manifest';
 
-  // The index is the archetype: its fixed blurb over the hero art (the hero is set below).
-  // The arch-<archetype> class picks the blurb's tint from the palette tokens.
-  el.archBlurb.className = 'arch-blurb arch-' + p.archetype;
-  el.archEyebrow.textContent = ARCHETYPE_LABEL[p.archetype] + ' archetype';
-  el.archText.textContent = ARCHETYPE_BLURB[p.archetype];
+  // The index is the archetype: its fixed blurb over the hero art. The arch-<archetype> class
+  // picks the blurb's tint from the palette tokens. At L0 the archetype is not known, so the
+  // hero is blank and there is no blurb (§10).
+  if (p.level === 0){
+    el.archBlurb.className = 'arch-blurb arch-unknown';
+    el.archEyebrow.textContent = '';
+    el.archText.textContent = '';
+    el.hero.className = 'hero blank';
+  } else {
+    el.archBlurb.className = 'arch-blurb arch-' + p.archetype;
+    el.archEyebrow.textContent = ARCHETYPE_LABEL[p.archetype] + ' archetype';
+    el.archText.textContent = ARCHETYPE_BLURB[p.archetype];
+    el.hero.className = 'hero planet-' + p.archetype;
+  }
+
+  // Below L2 the surface is unknown, so the main reads "No Survey Data" where the surface lists
+  // would be — no Resources / Settlements tabs, no rows, no counts (§10).
+  if (p.level < 2){
+    el.pvTabs.style.display='none';
+    el.pvTabs.innerHTML='';
+    el.siteStack.innerHTML = '<div class="no-survey"><div class="ns-glyph">\u00a7</div><div class="ns-title">No Survey Data</div></div>';
+    el.mainStamp.textContent = '';
+    return;
+  }
 
   el.pvTabs.style.display='';
   el.pvTabs.innerHTML =
@@ -6125,9 +6211,7 @@ function renderPlanetView(){
     b.addEventListener('click', function(){ view.planetTab=this.getAttribute('data-t'); render(); });
   });
 
-  // Every row is seed GEOMETRY joined to LIVE occupancy by the site's id. There is
-  // no establish control here — establishing is the next slice; a vacant site is
-  // reported honestly, not made actionable.
+  // Every row is KNOWN geometry (geography.known) joined to LIVE occupancy by the site's id.
   el.siteStack.innerHTML='';
   if (view.planetTab==='resources'){
     p.nodes.forEach(function(node,i){
@@ -6167,10 +6251,7 @@ function renderPlanetView(){
     }
   }
 
-  el.backBtn.classList.add('visible');
-  el.hero.className='hero planet-'+p.archetype;
-  el.mainHeading.textContent='Planet Manifest';
-  // The stamp counts the rows the two tabs list — seed geometry, not a game number.
+  // The stamp counts the rows the two tabs list — known geometry, not a game number.
   // (The empty-state copy is hidden in this layout, so it is no longer set here.)
   el.mainStamp.textContent = p.nodes.length + (p.nodes.length===1?' node':' nodes') +
     ' \u00b7 ' + p.slots.length + (p.slots.length===1?' slot':' slots');
@@ -6264,22 +6345,23 @@ function render(){
 function closeDetail(){ el.overlay.classList.remove('open'); document.getElementById('detail-screen').classList.remove('open'); }
 document.getElementById('detail-exit').addEventListener('click', closeDetail);
 
-window.openSystemDetail = function(seedSystem){
-  SYSTEM = adaptSeedSystem(seedSystem);
+// `boardSystem` is the system's row on the L0 board (the map hands over the row it drew).
+window.openSystemDetail = function(boardSystem){
+  SYSTEM = adaptBoardSystem(boardSystem);
   view = { screen:'system', planetId:null, planetTab:'resources' };
   render();
   document.getElementById('detail-screen').classList.add('open');
 };
 
-// Called by the snapshot poll when occupancy MOVED. Re-adapts the open system from
-// the seed (so the controller line and every site state re-read live) and redraws
-// the screen the player is on, keeping their place in the drill-down.
+// Called by the snapshot poll when what the screen draws MOVED (occupancy, the known detail, a
+// controller). Re-adapts the open system from its board row and the fresh known + claims, and
+// redraws the screen the player is on, keeping their place in the drill-down.
 window.__refreshDetail = function(){
   if (!SYSTEM) return;
   if (!document.getElementById('detail-screen').classList.contains('open')) return;
-  var seed = window.__galaxy && window.__galaxy.systems.filter(function(x){ return x.id === SYSTEM.id; })[0];
-  if (!seed) return;
-  SYSTEM = adaptSeedSystem(seed);
+  var row = window.__boardSystem ? window.__boardSystem(SYSTEM.id) : null;
+  if (!row) return;
+  SYSTEM = adaptBoardSystem(row);
   render();
 };
 
@@ -7636,7 +7718,8 @@ var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollT
 //   guildNameById { guildId: name }            names only — no guild's economics
 //   occupancy     { siteId: ventureId }        verbatim from the snapshot
 //   siteInfo      { siteId: {...} }            the player-safe read of who holds a site
-var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'',
+//   known         { systemId: { planetId: {...} } }  geography.known: the earned L1/L2 detail
+var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'', known:{},
              myVentures:{}, myAssets:[], windowN:null,
              // The last snapshot as it arrived. The TRADE panel reads its prices,
              // priceHistory and the player guild's stockpiles straight off this —
@@ -7645,8 +7728,22 @@ var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteS
 
 async function apiGet(path){
   var res = await fetch(path);
-  if(!res.ok) throw new Error(path + ' → HTTP ' + res.status);
+  if(!res.ok){
+    // The status rides on the error so a caller can tell "that guild is gone" (404 on the
+    // per-guild snapshot) from a link that is simply down.
+    var err = new Error(path + ' → HTTP ' + res.status);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
+}
+// THE PLAYER'S VIEW (docs/exploration-model.md §7, §4 ruling 12 slice 3a): the fogged per-guild
+// snapshot — own data in full, rivals cut to the public allow-list, and `geography.known`, the map
+// detail this guild has earned. Every read once the player is seated goes through here. Plain
+// /snapshot (the god's-eye lens) is read only at connect, to learn which guild is seated and to
+// pick a free guild id when founding — a guild cannot be asked for before it is known.
+function guildSnapshotPath(){
+  return '/snapshot?guild=' + encodeURIComponent(GAME.guildId);
 }
 // POST /action returns { accepted, reason, snapshot }: a rejection is a normal
 // answer the player must SEE, not an error to swallow.
@@ -7741,7 +7838,7 @@ async function shellConnectInit(){
   if (waitTimer !== null){ clearInterval(waitTimer); waitTimer = null; }
 
   // THE LIFECYCLE COMES FIRST (galaxy-lifecycle.md, "the three lifecycle states").
-  // A server with no galaxy is up and healthy — /galaxy and /starters answer 404
+  // A server with no galaxy is up and healthy — /board and /starters answer 404
   // by design — so asking /health before anything else is what keeps a normal
   // state from being reported to the player as a broken uplink.
   var health = await readHealth();
@@ -7755,8 +7852,13 @@ async function shellConnectInit(){
 
   var snap;
   try {
+    // The connect-time discovery read stays on plain /snapshot: it is how the page learns
+    // whether a guild is seated, and which. (Hardening this dev-rig read is slice 3c.)
     snap = await apiGet('/snapshot');
-    GAME.galaxy = GAME.galaxy || await apiGet('/galaxy');
+    // The map's geometry is the L0 BOARD (exploration-model.md §4 ruling 12): every system's
+    // position and orbital layout plus the galaxy's public config, and no planet detail. The
+    // full seed at /galaxy is no longer read.
+    GAME.galaxy = GAME.galaxy || await apiGet('/board');
   } catch (err) {
     u.textContent = '✕ no uplink: ' + err.message;
     btn.disabled = false;
@@ -7804,7 +7906,7 @@ async function shellConnectInit(){
 // NO GALAXY, from the player's side: a calm wait, not an error. There is nothing a
 // player can do about it — only an operator creates a galaxy — so the page simply
 // keeps asking, and connects by itself the moment one exists. It deliberately does
-// NOT read /galaxy or /starters while waiting: both are 404 by design here.
+// NOT read /board or /starters while waiting: both are 404 by design here.
 function showWaitingForGalaxy(){
   var btn = document.getElementById('connectBtn');
   setText('gx-name', 'NO GALAXY');
@@ -7876,7 +7978,7 @@ async function shellConnect(){
 }
 
 async function shellEnterGame(){
-  var galaxy = GAME.galaxy || (GAME.galaxy = await apiGet('/galaxy'));
+  var galaxy = GAME.galaxy || (GAME.galaxy = await apiGet('/board'));
   // The recipe catalog is static engine CONFIG, not live state — fetched once (as
   // the console already does) purely so a refinery reads as what it produces.
   try {
@@ -7888,11 +7990,11 @@ async function shellEnterGame(){
   // Fetched once, so the TRADE tab groups holdings by tier without the browser ever
   // typing a good name of its own.
   try { GAME.goods = await apiGet('/goods'); } catch (err) { /* the tabs read empty */ }
-  var snap = await apiGet('/snapshot');
+  // From here on every snapshot is the player's fogged view (guildSnapshotPath).
+  var snap = await apiGet(guildSnapshotPath());
   document.getElementById('splash').classList.remove('active');
   document.getElementById('connect').classList.remove('active');
   document.getElementById('gameTop').classList.add('show');
-  window.__galaxy = galaxy;                 // the REAL committed seed, from GET /galaxy
   if (window.__loadGalaxy) window.__loadGalaxy(galaxy);
   applySnapshot(snap);
   startLivePoll();
@@ -7917,11 +8019,17 @@ function applySnapshot(snap){
   setText('hud-cr', me ? Number(me.credits).toLocaleString() : '—');
   setText('legend-me', me ? GAME.guildName : 'Your Guild');
 
-  // Territory: claims[] carries who owns which system — the shared, in-world layer.
+  // Territory: claims[] carries who owns which system — the shared, in-world layer. A system
+  // with no claim row is UNCLAIMED (ownership is public, so absent means nobody, never "unknown").
   LIVE.systemClaims = {};
   (snap.claims || []).forEach(function(c){
     if (c.landmarkKind === 'system') LIVE.systemClaims[c.landmarkId] = c.ownerGuildId;
   });
+  // The map detail this guild has EARNED past L0 (exploration-model.md §7): its own surveys plus
+  // every controlled system at full L2, grouped { systemId: { planetId: { archetype, nodes:
+  // { nodeId: resourceType }, slots: { slotId: true } } } }. The detail screen reads a planet's
+  // level straight off it; nothing here is derived.
+  LIVE.known = (snap.geography && snap.geography.known) || {};
   LIVE.guildNameById = {};
   (snap.guilds || []).forEach(function(g){ LIVE.guildNameById[g.id] = g.name || g.id; });
 
@@ -7977,10 +8085,13 @@ function applySnapshot(snap){
                                   ownerName: LIVE.guildNameById[v.ownerGuildId] || v.ownerGuildId };
     }
   });
-  // Re-render an open detail screen only when occupancy actually MOVED, so a site
-  // seated (or vacated) under the player updates without the list churning — and
-  // without a re-render every second throwing away their scroll position.
-  var sig = Object.keys(LIVE.occupancy).sort().map(function(k){ return k + ':' + LIVE.occupancy[k]; }).join(',');
+  // Re-render an open detail screen only when what it draws actually MOVED — occupancy, the
+  // known detail (a survey landing, a system claimed or lost) or a controller — so a change
+  // under the player shows without the list churning, and without a re-render every second
+  // throwing away their scroll position.
+  var sig = Object.keys(LIVE.occupancy).sort().map(function(k){ return k + ':' + LIVE.occupancy[k]; }).join(',') +
+    '|' + JSON.stringify(LIVE.known) +
+    '|' + Object.keys(LIVE.systemClaims).sort().map(function(k){ return k + ':' + LIVE.systemClaims[k]; }).join(',');
   if (sig !== LIVE.siteSig){
     LIVE.siteSig = sig;
     if (window.__refreshDetail) window.__refreshDetail();
@@ -8070,7 +8181,13 @@ window.__controllerFor = function(id){
   var owner = LIVE.systemClaims[id];
   return owner ? (LIVE.guildNameById[owner] || owner) : 'Unclaimed';
 };
+window.__isClaimed = function(id){ return !!LIVE.systemClaims[id]; };
 window.__isMine = function(id){ return !!GAME.guildId && LIVE.systemClaims[id] === GAME.guildId; };
+// One system's earned detail, { planetId: { archetype, nodes, slots } } — {} when the guild knows
+// none of its planets past L0. Read verbatim from geography.known.
+window.__knownSystem = function(id){ return LIVE.known[id] || {}; };
+// One system's board row (position + orbital layout), for the detail screen.
+window.__boardSystem = function(id){ return systemById(id); };
 // The live site lookups the detail screen renders from.
 window.__siteInfo = function(siteId){ return LIVE.siteInfo[siteId] || null; };
 window.__occupancy = function(siteId){ return LIVE.occupancy[siteId] || null; };
@@ -8091,7 +8208,7 @@ window.__systemName = function(id){ var s = systemById(id); return (s && s.name)
 // The ONE canonical outpost display-name resolver for an id — every outpost name a player sees
 // (the OPERATIONS hub, the map, the Dispatch popup, the Outpost Manager title, the idle-transport
 // group headers) derives here, so the manager and Operations can never drift. Resolution order:
-//   1. Seed waystation (Syndicate) — the static /galaxy geometry the client already holds
+//   1. Seed waystation (Syndicate) — the static board geometry the client already holds
 //      (GAME.galaxy.outposts, never a stored byte). UNCHANGED first branch: every existing
 //      waystation caller still resolves by seed name, so this extension is a no-op for them.
 //   2. Guild outpost — never in the seed (a guild outpost has no stored name by design); its
@@ -8118,7 +8235,7 @@ window.__outpostName = function(id){
 };
 // Reverse-map a resolved hex { q, r } to the landmark (system or outpost) that sits on it, or null
 // if none does — the OPERATIONS IN TRANSIT list names a guild craft's destination (its final leg's
-// `to` coords) the way the map names any landmark: off the seed the client already holds
+// `to` coords) the way the map names any landmark: off the board the client already holds
 // (GAME.galaxy), never a stored byte. A hex holds at most one landmark, so a system is checked
 // before an outpost. PRESENTATION ONLY (§18): a coordinate the engine surfaced, resolved to a name.
 // A GUILD outpost is never in the seed, so it is looked up last on the live snapshot's `outposts` rows
@@ -8135,7 +8252,7 @@ window.__landmarkNameAt = function(q, r){
   var g = snap && (snap.outposts || []).filter(function(x){ return x.coords && x.coords.q === q && x.coords.r === r; })[0];
   return g ? window.__outpostName(g.id) : null;
 };
-window.__refreshNow = function(){ return apiGet('/snapshot').then(applySnapshot); };
+window.__refreshNow = function(){ return apiGet(guildSnapshotPath()).then(applySnapshot); };
 // The stored terms of one of the player's own ventures (or null) — read back by the
 // establishment receipt so the licence it reports is the one the engine recorded.
 window.__myVenture = function(ventureId){ return LIVE.myVentures[ventureId] || null; };
@@ -8181,7 +8298,7 @@ function startLivePoll(){
     // The server's own clock, seed and uptime. Best effort and separate: SERVER
     // state going quiet must not look like the galaxy going quiet.
     readHealth().then(applyServerClock);
-    apiGet('/snapshot').then(function(snap){
+    apiGet(guildSnapshotPath()).then(function(snap){
       // NO GALAXY arrives here at HTTP 200 as a marker, not an error — the operator
       // deleted the galaxy out from under us. It is not a snapshot either: applying
       // it would throw, and leaving the last one on screen would show a galaxy that
@@ -8192,6 +8309,10 @@ function startLivePoll(){
       noteTick(snap.tick);
       applySnapshot(snap);
     }).catch(function(err){
+      // A 404 is the server saying this guild no longer exists (the galaxy was reset under
+      // us). There is no view to poll for a guild that is not there, so go back and ask
+      // again, as a closed galaxy does — never sit on a frozen HUD that looks live.
+      if (err && err.status === 404){ guildGone(); return; }
       setText('hud-link', 'LINK LOST');
     });
   }, POLL_MS);
@@ -8206,6 +8327,19 @@ function galaxyClosed(){
   stopLivePoll();
   setText('hud-link', 'GALAXY CLOSED');
   GAME.guildId = null; GAME.guildName = null; GAME.homeSystemId = null; GAME.galaxy = null;
+  document.getElementById('gameTop').classList.remove('show');
+  shellGo('connect');
+  shellConnectInit();
+}
+
+// The galaxy is still here but our guild is not (the per-guild snapshot answered 404). Before
+// the fog flip the god's-eye poll simply showed no guild; a fogged view cannot be asked for a
+// guild that does not exist, so drop the identity and return to the connect screen, which
+// re-reads the galaxy and offers the found-your-guild form. The board is kept: same galaxy.
+function guildGone(){
+  stopLivePoll();
+  setText('hud-link', 'GUILD NOT FOUND');
+  GAME.guildId = null; GAME.guildName = null; GAME.homeSystemId = null; GAME.needFound = true;
   document.getElementById('gameTop').classList.remove('show');
   shellGo('connect');
   shellConnectInit();
@@ -11877,14 +12011,13 @@ function paintInventoryHero(d){
     return 'assets/industrial/' + (table[biome] || FALLBACK_ART);
   }
 
-  // Resolve a venture's BIOME (planet archetype) from its site via the client's OWN embedded seed —
-  // the same window.__galaxy the manifest/establish flow reads. Archetype is never added to the
-  // snapshot (Part 3): systemId + planetId → the seed planet's archetype.
+  // Resolve a venture's BIOME (planet archetype) from its site via geography.known — the same
+  // earned detail the manifest/establish flow reads (the board carries no archetype). A venture
+  // sits in a system its guild controls, which known holds at full L2, so this always resolves for
+  // the player's own; an unresolved one falls back to FALLBACK_ART.
   function biomeOf(site){
-    if(!site || !window.__galaxy) return null;
-    var sys = (window.__galaxy.systems || []).filter(function(s){ return s.id === site.systemId; })[0];
-    if(!sys) return null;
-    var pl = (sys.planets || []).filter(function(p){ return p.id === site.planetId; })[0];
+    if(!site || !window.__knownSystem) return null;
+    var pl = window.__knownSystem(site.systemId)[site.planetId];
     return pl ? pl.archetype : null;
   }
 
@@ -12157,7 +12290,7 @@ function paintInventoryHero(d){
    "Show on map", which closes the popup and jump-and-centres on the craft's hex (zoom 9, matching
    My System). Destination / route / fuel / the real dispatch are slice (b) and slot into the main
    column later. The client computes NO game number (§5/§18): it reads the craft's published
-   `location`, resolves names/coords off the seed the client already holds, and draws.
+   `location`, resolves names/coords off the board the client already holds, and draws.
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -12234,7 +12367,7 @@ function paintInventoryHero(d){
   }
 
   // The craft's coordinates for "Show on map": a bare hex is its own {q,r}; a landmark craft is that
-  // landmark's `coords`, looked up in the seed the client already holds (GAME.galaxy). Dispatch
+  // landmark's `coords`, looked up in the board the client already holds (GAME.galaxy). Dispatch
   // measures from resolved coordinates the same way for a system, an outpost, or a deep-space berth
   // (§15.4), so this is one path with no special case. null if the landmark isn't in the seed.
   function coordsOf(v){
