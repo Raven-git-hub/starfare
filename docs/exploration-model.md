@@ -34,6 +34,11 @@ ruling 12, slice 2): the galaxy's static L0 — every system's position and orbi
 **new** route, `GET /board`, and the per-guild view drops its per-tick `geography.systems` block (`geography` is
 `{ known }`; the controller is read from `claims`). **`GET /galaxy` is unchanged and still serves the whole
 seed**, so the `/galaxy` leak stays open until the client flip (slice 3). AS-BUILT notes in §4 ruling 12 and §7.)*
+*(⤳ 13-10-26 — the **board-widening** engine slice is BUILT (roadmap 2.5; §4 ruling 12's 13-10-26 note): the
+board is now the whole static public galaxy — an object, `{ seed, galaxyParams, citadel, outposts, stats,
+systems }`, each system row gaining its `claimRadius` — and still carries no fogged planet detail and no Terran
+pointer. `GET /galaxy` is **still unchanged**; its cutover and the leak's closure remain the client flip (slice
+3). AS-BUILT notes in §4 ruling 12 and §7.)*
 
 ## 0. The through-line
 
@@ -64,7 +69,9 @@ depends on the guild's situation.
   the fact can move. The **static** half — position + orbital layout — is the **board** (`GET /board`, sent
   once). The **dynamic** half — the controlling guild — rides the snapshot's **`claims`** (every claim row is
   public; no system claim = unclaimed). Together they are this bullet's L0, unchanged: a split of where each
-  fact travels, not a change to what L0 is.)*
+  fact travels, not a change to what L0 is.)* *(⤳ AS-BUILT 13-10-26, the board-widening slice: the board also
+  carries every Syndicate waystation and the Citadel — §4 ruling 12's 13-10-26 note — so the "always visible"
+  waystations above reach a viewer on the board too.)*
 - **L1 — a system's planet archetypes.** Cut by **either**: a transport sitting idle in the
   system (instant, but costs the trip — fuel + travel time), **or** a Deep Scan Array L1 scan
   of the system (no trip, but takes time). The player picks whichever is cheaper for the case.
@@ -300,7 +307,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     are independent; the client flip is last. *(⤳ 09-10-26: slice (1), the settlement-surface engine
     slice, is BUILT — §7's AS-BUILT notes. Slices (2) and (3) remain.)* *(⤳ 09-10-26: slice (2) is
     BUILT — the AS-BUILT note below. The board-widening engine slice (the 13-10-26 note below)
-    and then the client flip (slice 3) remain.)*
+    and then the client flip (slice 3) remain.)* *(⤳ 13-10-26: the board-widening slice is BUILT — the
+    AS-BUILT note closing the 13-10-26 note below. The client flip (slice 3) remains.)*
 
     > **⤳ SEQUENCING, RULED 09-10-26 (the design room) — refines the build impact above.** Read literally,
     > slice (2) would make `GET /galaxy` stop serving the seed. That would break the running client, which
@@ -350,7 +358,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     >   (348e0fc) by deleting `geography.systems` from each old view; `known` hashes to slice 1's.
     >   **The god's-eye lens did not move** (no god's-eye pin was touched).
     >
-    > **⤳ 13-10-26 — DESIGN-AHEAD: the board widens to the whole static public galaxy.** Slice 2
+    > **⤳ 13-10-26 — RULED, and now AS-BUILT (the note closing this one): the board widens to the whole
+    > static public galaxy.** *(Written DESIGN-AHEAD; built the same day.)* Slice 2
     > built the board as a systems-only array (above). Grounding the client flip (slice 3) surfaced
     > that the running client reads more than systems off `/galaxy`: `galaxyParams` (the hex grid, in
     > every map calculation), the Syndicate **waystations** and the **Citadel** (both drawn on the
@@ -374,12 +383,50 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     > the systems-only shape in the 09-10 ruling bullet and the slice-2 AS-BUILT note above. **A small
     > board-widening engine slice builds it** — reshape `getBoard()` to the object, re-pin `/board`'s
     > bytes + ETag and the board tests, and extend the leak-free assertion to `terranHomeworldId` —
-    > still engine-only and non-breaking, since nothing reads `/board` until the client flip. **Then**
+    > still engine-only and non-breaking, since nothing reads `/board` until the client flip.
+    > *(⤳ BUILT 13-10-26 — the AS-BUILT note below.)* **Then**
     > slice (3), the client flip, reads the board (already the shape the client's `loadGalaxy()`
     > expects, minus planet detail) + `known` + `claims`, drops the `/galaxy` download, closing the leak.
     > **Not built (slice (3)):** the `/galaxy` cutover and the leak's closure, `GET /starters`' hardening
     > (ruled into "the same slice" as `/galaxy`'s — so it follows `/galaxy` to slice (3); flagged on the
     > roadmap's decision checklist), and every client change.
+    >
+    > **⤳ AS-BUILT 13-10-26 — the board-widening engine slice (roadmap 2.5).** Engine + server; no client,
+    > no `/galaxy` or `/starters` change, no per-guild view change, and nothing live reads `/board` yet.
+    > **No new number.**
+    > - **The board** — `getBoard()` (`sim/seed.js`) returns the **object** above, keys in that order, built
+    >   once in the cached seed index. `seed` is the seed number. `galaxyParams` and `stats` are deep copies of
+    >   the seed's own blocks. `citadel` is the seed's own `{ coords: { q, r }, radius }`, taken from the
+    >   Citadel the index already resolves but **not** that landmark's shape (no `id: 'citadel'`, no `kind`),
+    >   so the board reads like the seed it was cut from (on the roadmap's decision checklist). `outposts` is
+    >   every Syndicate waystation as the seed's own row, `{ id, coords: { q, r }, name }`, sorted by id (no
+    >   landmark `kind`). `systems` is slice 2's rows, sorted by id, each gaining **`claimRadius`** — the seed
+    >   system's own number — between `ring` and `planets`. Planets are unchanged: `[ { id, order } ]`. A seed
+    >   missing a block (a bare test fixture) gets `null` for it — `[]` for the waystations, `null` for a
+    >   system's absent `claimRadius` — so no row or block ever loses a key. **Copied, never aliased:** every
+    >   object in the board is new, so nothing holding the board can reach into the seed.
+    > - **Left out, as ruled:** each planet's archetype, nodes, slots and resource types; `terranHomeworldId`;
+    >   `starterEligible`; `validation`. `stats` is carried whole, as ruled, so it includes galaxy-wide
+    >   **counts** (`totalResourceNodes`, `totalSettlementSlots`, `starterSystems`, …) — the HUD's numbers. A
+    >   count says how many, never where (on the decision checklist).
+    > - **The route** — `GET /board` is unchanged in mechanics: `refreshBoard()`'s pre-serialised buffer,
+    >   `404 NO_GALAXY`, the `ETag` + `304`, `Cache-Control: no-cache`, the CORS headers. Its bytes changed, so
+    >   its ETag did. On the committed seed the board is **313,702 bytes against `/galaxy`'s 8,693,128 (3.6%)**
+    >   (slice 2's systems-only board was 283,008, 3.3%).
+    > - **Proved** (`tests/l0-board.test.js`): the object's keys; `seed`, `galaxyParams`, `citadel`,
+    >   `outposts` and `stats` each equal to the seed's; the waystations id-sorted and each exactly `{ id,
+    >   coords, name }`; every system row's `claimRadius` equal to its seed system's and to `getClaimRadius`;
+    >   `systems` id-sorted, with `planets` equal to `getSystemLayout`'s (order = seed index + 1); the whole
+    >   board byte-equal to a second spelling straight off the raw seed. **The leak-free tripwire is widened**:
+    >   the board's JSON text — asserted on the served bytes too — holds none of the four fogged words **nor
+    >   `terranHomeworldId`, `starterEligible` or `validation`**, and the check is proven to bite: each
+    >   forbidden word, on a system row or at the top level, fails it. **Copy, never alias:** no object in the
+    >   board is an object of the seed. **Pinned:** the committed seed's board bytes (size + sha256), which
+    >   `/board`'s ETag names. Determinism, the 404, a new galaxy's new board and ETag, and the 304 hold as in
+    >   slice 2. **Nothing else moved:** the per-guild view goldens (`tests/rival-leak-removed.test.js`,
+    >   `tests/deep-scan-job.test.js`) pass unchanged — `tests/systems-block.js` now reads
+    >   `getBoard().systems`, and putting the block back still reproduces them byte for byte — and no god's-eye
+    >   pin was touched.
 
 ## 5. The Deep Scan Array
 
@@ -735,8 +782,11 @@ stands on.
   its settlement-surface bytes, re-pinned in `tests/rival-leak-removed.test.js` and
   `tests/deep-scan-job.test.js`. Nothing live reads either half yet: the client still loads `GET /galaxy`
   and plain `GET /snapshot` until the client flip (slice 3).
-  *(⤳ 13-10-26: the board's shape WIDENS to the whole static public galaxy — §4 ruling 12's
-  13-10-26 note; a small board-widening engine slice builds it before the client flip.)*
+  *(⤳ AS-BUILT 13-10-26 — the board-widening slice: the board's shape WIDENED to the whole static
+  public galaxy. `getBoard()` now returns an object, `{ seed, galaxyParams, citadel, outposts, stats,
+  systems }`, whose `systems` are the rows above, each gaining its `claimRadius`; still no fogged planet
+  detail and no `terranHomeworldId` (§4 ruling 12's 13-10-26 note has the details). The view is untouched,
+  and a planet id in `known` now joins onto `board.systems[].planets`.)*
 - **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
@@ -784,6 +834,10 @@ stands on.
   until then. **The `/galaxy` leak is therefore still OPEN.** `GET /starters` is untouched too; its
   hardening was ruled into "the same slice" as `/galaxy`'s, so it follows `/galaxy` to slice 3 —
   flagged on the roadmap's decision checklist to confirm.)*
+  *(⤳ 13-10-26: the board at `GET /board` is now the widened object — §4 ruling 12's 13-10-26 note, AS-BUILT
+  — so it carries the static, unfogged blocks the ruling found the client reading off `/galaxy` (`galaxyParams`,
+  the waystations, the Citadel, each `claimRadius`, the seed number, `stats`). `GET /galaxy` and `GET /starters`
+  are still untouched: **the leak is still OPEN** until slice 3.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 

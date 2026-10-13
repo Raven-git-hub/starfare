@@ -21,6 +21,15 @@
 //      in fog.test.js are unchanged: the lens builds no geography.)
 //   6. THE ROUTE: GET /board serves the board with an ETag and answers a matching If-None-Match with 304;
 //      404 with no galaxy; a new galaxy refreshes the board and changes the ETag (ruling 12's failure mode (b)).
+//
+// ⤳ 13-10-26 — the board-widening engine slice (§4 ruling 12's 13-10-26 note): the board is no longer a
+// systems-only array but the whole static public galaxy, an OBJECT —
+//   { seed, galaxyParams, citadel, outposts, stats, systems: [ { id, name, coords, ring, claimRadius, planets } ] }
+// — the seed with its fogged planet detail and its Terran pointer taken out. So: SHAPE also checks the five
+// top-level blocks equal the seed's and every row's `claimRadius` equals its seed system's; LEAK-FREE also
+// forbids `terranHomeworldId`, `starterEligible` and `validation`, and proves the check bites; COPY, NEVER
+// ALIAS checks the board shares no object with the seed; PINNED pins the committed seed's board bytes and the
+// ETag that names them. The per-guild view is untouched (it never reads the board's top level).
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -32,7 +41,7 @@ const { spawn } = require('node:child_process');
 const { createHash } = require('node:crypto');
 
 const {
-  getBoard, getSystem, getSystemLayout, getSite, getSeedNumber, setSeed, roman,
+  getBoard, getSystem, getSystemLayout, getSite, getSeedNumber, setSeed, roman, getClaimRadius, getStarterSystems,
 } = require('../seed.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { systemControllers } = require('../claims.js');
@@ -49,33 +58,97 @@ const bytes = (x) => JSON.stringify(x);
 
 // The four words that name L1/L2 geography in the seed. None may appear in the board.
 const FOGGED_FIELDS = ['archetype', 'resourceType', 'resourceNodes', 'settlementSlots'];
+// ⤳ 13-10-26: the rest of ruling 12's "out" list. None is fogged geometry, but none belongs on the board:
+// `terranHomeworldId` names which planet is Terran (an L1 fact — a leak), `starterEligible` is the home
+// picker's (GET /starters), and `validation` is the seed's gen-time self-check, unread.
+const OUT_FIELDS = ['terranHomeworldId', 'starterEligible', 'validation'];
+const FORBIDDEN = [...FOGGED_FIELDS, ...OUT_FIELDS];
+
+// leakedFields(text) -> every forbidden word found anywhere in a serialized board; [] means leak-free. A plain
+// text search, not a walk of the keys, so the word is caught wherever it sits — as a key or inside a value.
+function leakedFields(text) {
+  return FORBIDDEN.filter((field) => text.includes(field));
+}
+
+const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 // boardFromSeed(seed) -> the board, spelled a SECOND way: straight off a raw seed object, without the engine's
-// index. If the engine's board and this one ever differ by a byte, one of them is wrong.
+// index. If the engine's board and this one ever differ by a byte, one of them is wrong. (It shares objects with
+// the seed, which is fine for a spelling that is only ever stringified; the engine's must not — see COPY below.)
 function boardFromSeed(seed) {
-  return seed.systems
-    .map((sys) => ({
-      id: sys.id,
-      name: sys.name,
-      coords: { q: sys.coords.q, r: sys.coords.r },
-      ring: sys.ring || null,
-      planets: sys.planets.map((p, i) => ({ id: p.id, order: i + 1 })),
-    }))
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return {
+    seed: seed.seed,
+    galaxyParams: seed.galaxyParams,
+    citadel: seed.citadel,
+    outposts: [...seed.outposts].sort(byId),
+    stats: seed.stats,
+    systems: seed.systems
+      .map((sys) => ({
+        id: sys.id,
+        name: sys.name,
+        coords: { q: sys.coords.q, r: sys.coords.r },
+        ring: sys.ring || null,
+        claimRadius: sys.claimRadius,
+        planets: sys.planets.map((p, i) => ({ id: p.id, order: i + 1 })),
+      }))
+      .sort(byId),
+  };
 }
+
+// objectsIn(value) -> the Set of every object and array reachable from `value`, itself included.
+function objectsIn(value, out = new Set()) {
+  if (value === null || typeof value !== 'object' || out.has(value)) return out;
+  out.add(value);
+  for (const child of Object.values(value)) objectsIn(child, out);
+  return out;
+}
+
+// The committed seed's board, pinned: its size and the sha256 of its bytes — the hash GET /board's ETag carries.
+// Recorded 13-10-26 by the board-widening slice. (Before it, the systems-only board was 283,008 bytes, sha256
+// f901b66938dd67bd3b558913882f854ed0b901f46497b170e767c2da0c8216fe.) A deliberate change to the board re-pins
+// these; an accidental one fails here first.
+const BOARD_PIN = {
+  bytes: 313702,
+  sha256: 'f5c5e90930de20fa79400990bb50cd2e9808de6979569348b39eb7528ea31f20',
+};
 
 // --- 1. shape ---------------------------------------------------------------------------------------------
 
-test('SHAPE: one row per seed system, sorted by id, exactly { id, name, coords, ring, planets: [{ id, order }] }', () => {
+test('SHAPE: the board is the seed\'s public face — { seed, galaxyParams, citadel, outposts, stats, systems }, each block the seed\'s', () => {
   const board = getBoard();
   const seed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
-  assert.equal(board.length, seed.systems.length, 'every system on the seed');
-  assert.deepEqual(board.map((s) => s.id), board.map((s) => s.id).sort(), 'id order');
+  assert.deepEqual(Object.keys(board), ['seed', 'galaxyParams', 'citadel', 'outposts', 'stats', 'systems']);
   assert.equal(bytes(board), bytes(boardFromSeed(seed)), 'the same bytes as the board spelled straight off the seed');
-  for (const row of board) {
-    assert.deepEqual(Object.keys(row), ['id', 'name', 'coords', 'ring', 'planets']);
+  // The galaxy's public config is the seed's own, value for value.
+  assert.equal(board.seed, seed.seed);
+  assert.equal(board.seed, getSeedNumber());
+  assert.deepEqual(board.galaxyParams, seed.galaxyParams);
+  assert.deepEqual(board.citadel, seed.citadel, 'the seed\'s Citadel — not the landmark: no id, no kind');
+  assert.deepEqual(board.stats, seed.stats);
+  // The waystations: every one the seed has, exactly { id, coords: { q, r }, name }, in id order.
+  assert.equal(board.outposts.length, seed.outposts.length);
+  assert.ok(board.outposts.length > 0, 'the committed seed has waystations, so this check can fail');
+  assert.deepEqual(board.outposts, [...seed.outposts].sort(byId));
+  assert.deepEqual(board.outposts.map((o) => o.id), board.outposts.map((o) => o.id).sort(), 'id order');
+  for (const out of board.outposts) {
+    assert.deepEqual(Object.keys(out), ['id', 'coords', 'name']);
+    assert.deepEqual(Object.keys(out.coords), ['q', 'r']);
+  }
+});
+
+test('SHAPE: one system row per seed system, sorted by id, exactly { id, name, coords, ring, claimRadius, planets: [{ id, order }] }', () => {
+  const { systems } = getBoard();
+  const seed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
+  const seedSystem = new Map(seed.systems.map((sys) => [sys.id, sys]));
+  assert.equal(systems.length, seed.systems.length, 'every system on the seed');
+  assert.deepEqual(systems.map((s) => s.id), systems.map((s) => s.id).sort(), 'id order');
+  for (const row of systems) {
+    assert.deepEqual(Object.keys(row), ['id', 'name', 'coords', 'ring', 'claimRadius', 'planets']);
     assert.deepEqual(Object.keys(row.coords), ['q', 'r']);
     assert.deepEqual(row.coords, getSystem(row.id).coords);
+    // The claim radius is the seed system's own — the same number the engine's own reader answers.
+    assert.equal(row.claimRadius, seedSystem.get(row.id).claimRadius);
+    assert.equal(row.claimRadius, getClaimRadius(row.id));
     const layout = getSystemLayout(row.id);
     assert.equal(row.name, layout.name);
     assert.equal(row.ring, layout.ring);
@@ -89,7 +162,7 @@ test('NO NEW NUMBERING: a planet\'s board order is the Roman numeral its sites a
   // siteName (sim/seed.js) names a site "<system> <planet's Roman ordinal> · Node n". The board's order must be
   // that same ordinal, or a client would label one planet two ways.
   let checked = 0;
-  for (const row of getBoard()) {
+  for (const row of getBoard().systems) {
     for (const [i, planet] of getSystemLayout(row.id).planets.entries()) {
       const node = planet.resourceNodes[0];
       if (!node) continue;
@@ -103,16 +176,51 @@ test('NO NEW NUMBERING: a planet\'s board order is the Roman numeral its sites a
 
 // --- 2. leak-free -----------------------------------------------------------------------------------------
 
-test('LEAK-FREE: the serialized board holds no archetype, resource type, node or slot — and no site id', () => {
+test('LEAK-FREE: the serialized board holds no archetype, resource type, node or slot, no Terran pointer, no starter flag, no validation block — and no site id', () => {
   const text = bytes(getBoard());
   const seedText = fs.readFileSync(SEED_PATH, 'utf8');
-  for (const field of FOGGED_FIELDS) {
-    assert.ok(seedText.includes(field), `the seed does carry "${field}", so this check can fail`);
-    assert.equal(text.includes(field), false, `the board leaks "${field}"`);
-  }
+  // Every forbidden word is really there to leak, so a misspelt one cannot pass for free. The seed file carries
+  // six of them; the Terran pointer it does not — the index derives it, and its own starter rows carry it.
+  const sourceText = seedText + bytes(getStarterSystems());
+  for (const field of FORBIDDEN) assert.ok(sourceText.includes(field), `the source does carry "${field}", so this check can fail`);
+  assert.deepEqual(leakedFields(text), [], 'the board leaks');
   // A node id is `<planet>_nNN`, a slot id `<planet>_sNN`: none may appear, not even as a bare id.
   assert.match(seedText, /_[ns]\d+"/, 'the seed does carry site ids');
   assert.doesNotMatch(text, /_[ns]\d+"/, 'the board names a node or slot');
+});
+
+test('LEAK-FREE BITES: a board carrying any forbidden field — on a system row or at the top — fails the check', () => {
+  for (const field of FORBIDDEN) {
+    const onRow = structuredClone(getBoard());
+    onRow.systems[0][field] = 'x';
+    assert.deepEqual(leakedFields(bytes(onRow)), [field], `"${field}" on a system row`);
+    const onTop = structuredClone(getBoard());
+    onTop[field] = 'x';
+    assert.deepEqual(leakedFields(bytes(onTop)), [field], `"${field}" at the top level`);
+  }
+  // The realistic slip: a starter system's row gains the Terran pointer exactly as the index holds it.
+  const starter = getStarterSystems()[0];
+  const leaky = structuredClone(getBoard());
+  leaky.systems.find((row) => row.id === starter.id).terranHomeworldId = starter.terranHomeworldId;
+  assert.deepEqual(leakedFields(bytes(leaky)), ['terranHomeworldId']);
+});
+
+test('COPY, NEVER ALIAS: the board shares no object with the seed it was cut from', () => {
+  // Index a seed object we hold, so we can ask of every object in the board: is this one of the seed's?
+  const seed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
+  try {
+    setSeed(seed);
+    const seedObjects = objectsIn(seed);
+    const boardObjects = [...objectsIn(getBoard())];
+    // The walk really reached the rows: at least a row, its coords and its planets array per system, and one
+    // object per planet.
+    const floor = 3 * seed.systems.length + seed.stats.totalPlanets;
+    assert.ok(boardObjects.length >= floor, `walked ${boardObjects.length} board objects, expected at least ${floor}`);
+    const shared = boardObjects.filter((o) => seedObjects.has(o));
+    assert.deepEqual(shared, [], 'the board hands out an object of the seed');
+  } finally {
+    setSeed(null); // back to the committed seed for every other test in this file
+  }
 });
 
 // --- 3. deterministic -------------------------------------------------------------------------------------
@@ -136,19 +244,25 @@ test('DETERMINISTIC: the same seed gives the same board bytes; a different seed 
   assert.equal(bytes(getBoard()), committed);
 });
 
+test('PINNED: the committed seed\'s board is exactly the pinned bytes', () => {
+  const text = bytes(getBoard());
+  assert.equal(Buffer.byteLength(text), BOARD_PIN.bytes, 'the board\'s size moved');
+  assert.equal(sha(text), BOARD_PIN.sha256, 'the board\'s bytes moved');
+});
+
 // --- 4. the join ------------------------------------------------------------------------------------------
 
 test('THE JOIN: every planet `known` names is on the board in its own system; a controlled system\'s are all of them', () => {
   const s = rivalLeakScript().licensed;
   // A frontier planet A surveyed itself, so `known` holds all three kinds of entry (own, rival, surveyed).
-  const frontier = getBoard().find((row) => row.id !== A_HOME && row.id !== B_HOME && row.planets.length > 1);
+  const frontier = getBoard().systems.find((row) => row.id !== A_HOME && row.id !== B_HOME && row.planets.length > 1);
   const surveyed = structuredClone(s);
   revealPlanetSurface(surveyed.guilds.find((g) => g.id === A), frontier.planets[0].id, surveyed.tick);
-  const byId = new Map(getBoard().map((row) => [row.id, row]));
+  const rowById = new Map(getBoard().systems.map((row) => [row.id, row]));
   for (const guildId of [A, B]) {
     const { known } = buildSnapshot(surveyed, guildId).geography;
     for (const [systemId, planets] of Object.entries(known)) {
-      const boardIds = byId.get(systemId).planets.map((p) => p.id);
+      const boardIds = rowById.get(systemId).planets.map((p) => p.id);
       for (const planetId of Object.keys(planets)) assert.ok(boardIds.includes(planetId), `${planetId} is not on the board under ${systemId}`);
       // A controlled system is shown at full L2 (ruling 11): every planet the board lists, no more, no fewer.
       if (systemControllers(surveyed).has(systemId)) assert.deepEqual(Object.keys(planets), [...boardIds].sort());
@@ -215,10 +329,12 @@ test('GET /board serves the board, with an ETag and the /galaxy CORS headers; /g
     assert.match(res.headers.get('content-type'), /^application\/json/);
     assert.equal(res.headers.get('access-control-allow-origin'), '*');
     assert.equal(res.headers.get('cache-control'), 'no-cache', 'revalidate every time, so a new galaxy is never served stale');
-    assert.match(res.headers.get('etag'), new RegExp(`^"board-${getSeedNumber()}-[0-9a-f]{64}"$`));
+    // The tag names the pinned bytes: the committed seed's number and the sha256 of its board.
+    assert.equal(res.headers.get('etag'), `"board-${getSeedNumber()}-${BOARD_PIN.sha256}"`);
     const text = await res.text();
     assert.equal(text, bytes(getBoard()), 'the board, byte for byte');
-    for (const field of FOGGED_FIELDS) assert.equal(text.includes(field), false, `the served board leaks "${field}"`);
+    // The leak-free tripwire, on the bytes a browser actually receives.
+    assert.deepEqual(leakedFields(text), [], 'the served board leaks');
 
     // /galaxy still serves the committed seed verbatim (its cutover is the client flip, slice 3).
     const galaxy = await fetch(`${base}/galaxy`);
@@ -293,6 +409,8 @@ test('LIFECYCLE: 404 with no galaxy; a new galaxy refreshes the board and its ET
     const seed = await (await fetch(`${base}/galaxy`)).json();
     assert.equal(seed.seed, seedNumber);
     assert.equal(text, bytes(boardFromSeed(seed)), `the board of galaxy ${seedNumber}, from that galaxy's own seed`);
+    assert.equal(JSON.parse(text).seed, seedNumber, 'the board names its own galaxy');
+    assert.deepEqual(leakedFields(text), [], `the board of galaxy ${seedNumber} leaks`);
     return { etag, text };
   }
   try {

@@ -3664,7 +3664,9 @@ boundary so the later hex-map swap doesn't touch it.
   settlement-surface engine slice — BUILT, below; (2) the L0-board engine slice — BUILT, the last entry
   below (the board at a **new** `GET /board`; `GET /galaxy` unchanged, so the `/galaxy` leak is **still
   open**); (3) the client flip — not yet, and per the design room's 09-10-26 sequencing it now also carries
-  the `/galaxy` cutover and the leak's closure.)*
+  the `/galaxy` cutover and the leak's closure.)* *(⤳ 13-10-26 — ruling 12 widened the board to the whole
+  static public galaxy (`exploration-model.md` §4 ruling 12's 13-10-26 note), so a **board-widening engine
+  slice** runs between (2) and (3) — BUILT, the last entry below. The client flip remains.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -3903,6 +3905,39 @@ boundary so the later hex-map swap doesn't touch it.
     shape line. Tripwires checked to fail: the board leaking an archetype, a 0-based order, `setActiveSeed` not
     refreshing the board, the `systems` block coming back. Sim 2,150 → **2,159**, tools **78** (unchanged).
     Checklist items below.
+  - **The board-widening engine slice (ruling 12, between slices 2 and 3) — ⤳ AS-BUILT 13-10-26 (engine +
+    server; no client, no `/galaxy` or `/starters` change, no per-guild view change).**
+    `docs/exploration-model.md` §4 ruling 12 (the 13-10-26 note, now AS-BUILT), §7 (the board note; the
+    `/galaxy` note), §1. **No new number.** **Why:** grounding the client flip found the client reads more than
+    systems off `/galaxy` — `galaxyParams`, the waystations, the Citadel, each `claimRadius`, the seed number,
+    `stats` — all static and unfogged; the board must carry them or the client can never stop reading `/galaxy`
+    (the L0-board slice's checklist seam 4(a), now ruled). **(1) The board:** `getBoard()` (`sim/seed.js`)
+    returns an **object** — `{ seed, galaxyParams, citadel, outposts, stats, systems }`, keys in that order,
+    built once in the cached index. `systems` is slice 2's id-sorted rows, each gaining **`claimRadius`** (the
+    seed system's own) between `ring` and `planets`; planets unchanged, `[ { id, order } ]`. `seed` = the seed
+    number; `galaxyParams` and `stats` = deep copies of the seed's; `citadel` = the seed's own `{ coords,
+    radius }` (from the index's resolved Citadel, without the landmark's `id` / `kind`); `outposts` = every
+    Syndicate waystation as the seed's `{ id, coords: { q, r }, name }`, id-sorted. A seed missing a block
+    gets `null` (`[]` for the waystations; `null` for an absent `claimRadius`), so no key ever goes missing.
+    **Copied, never aliased** — no object in the board is the seed's. **Out, as ruled:** archetype / nodes /
+    slots / resource types, `terranHomeworldId`, `starterEligible`, `validation`. **(2) The route:** `GET
+    /board` unchanged in mechanics (`refreshBoard()`'s buffer, `404 NO_GALAXY`, ETag + 304, `no-cache`, CORS);
+    its bytes changed, so its ETag did. The board is **313,702 bytes vs `/galaxy`'s 8,693,128 (3.6%)** on the
+    committed seed (was 283,008, 3.3%). **Proved** (`tests/l0-board.test.js`, 9 → 13): the object's keys, its
+    five top-level blocks each equal to the seed's, the waystations id-sorted and exactly `{ id, coords, name
+    }`, every row's `claimRadius` equal to its seed system's and to `getClaimRadius`, `systems` id-sorted with
+    `planets` equal to `getSystemLayout`'s, the whole board byte-equal to a second spelling straight off the
+    raw seed; the **leak-free tripwire widened** to `terranHomeworldId`, `starterEligible` and `validation` (on
+    the board's JSON and on the served bytes) and **proven to bite** (each forbidden word, on a row or at the
+    top, fails it — a permanent test); **copy, never alias** (a walk of every object in the board finds none
+    of the seed's); the committed seed's board **pinned** (size + sha256), and `/board`'s ETag asserted to
+    name those bytes; a new galaxy's board names its own seed number and is leak-free. **Nothing else
+    moved:** `tests/systems-block.js` and one `tests/deep-scan-job.test.js` line now read
+    `getBoard().systems`; every per-guild view golden (`tests/rival-leak-removed.test.js`,
+    `tests/deep-scan-job.test.js`) passes **unchanged** — no pin edited — and no god's-eye pin was touched.
+    Tripwires checked to fail against the real engine: `terranHomeworldId` copied onto every board row (the
+    leak-free, shape, pin and route tests go red) and `galaxyParams` aliased instead of copied (the alias test
+    goes red). Sim 2,159 → **2,163**, tools **78** (unchanged). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4963,7 +4998,12 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   1. **The ETag's form.** The build prompt suggested `"board-<seed>"`. Built as **`"board-<seed>-<sha256 of the board bytes>"`**: a seed number names a galaxy only while the generator stays the same, so a regenerated `data/seed.json`, or a galaxy re-created on the same number under a changed generator, could reuse a tag for a different layout — and a client would be told its stale board is current (failure mode (b), and through it (a)). The hash makes "same tag" mean "same bytes". The seed number stays in it for a human reading a network tab. Confirm, or rule the plain seed tag.
   2. **"Cacheable" = ETag + `no-cache`, not a `max-age`.** The board is revalidated on every use (a 304 costs one round trip, no body). A `max-age` would skip even that, but would let a browser keep a previous galaxy's board for that long after a Create. Confirm, or rule a lifetime.
   3. **`GET /starters` follows `/galaxy` to slice 3.** §7 ruled its hardening into "the same slice" as `/galaxy`'s repoint; the design room's sequencing moved that repoint to the client flip, so `/starters` is **untouched** here and still lists every starter system's `terranHomeworldId`. Confirm it moves with `/galaxy`, or rule it into its own slice.
-  4. **Seams — not decisions, recorded so the client flip finds them:** (a) **the board as ruled is systems only, and the client reads more than systems from `/galaxy` today** — `galaxyParams` (the hex lattice, read throughout the map code), the Syndicate waystations (`outposts`), the `citadel`, each system's `claimRadius` (the control disk), the `seed` number and `stats`. None is fogged (all are static, guild-free geometry), so none leaks; but once `/galaxy` stops serving the seed, slice 3 needs a source for each — e.g. widen the board (or wrap it: `{ galaxyParams, citadel, waystations, systems }`), or read waystations and the Citadel off the Syndicate's `claims` rows (each carries its resolved landmark with coords). Needs a ruling before slice 3. (b) `ring` is L0 on the board, while a **rival** system claim's landmark still drops it (`RIVAL_SYSTEM_LANDMARK_FIELDS`, `sim/fog.js` — "position-derived, dropped … to keep the row to L0"). Harmless — the board gives every viewer the ring anyway — but that comment's reason no longer holds; the same "tidy later" as the ruling-11 item 2 above. Not changed: it would move the view bytes. (c) `getBoard()` hands out the index's own cached rows (like `getL0Systems()` did); the server serialises them once per seed, nothing mutates them.
+  4. **Seams — not decisions, recorded so the client flip finds them:** (a) **the board as ruled is systems only, and the client reads more than systems from `/galaxy` today** — `galaxyParams` (the hex lattice, read throughout the map code), the Syndicate waystations (`outposts`), the `citadel`, each system's `claimRadius` (the control disk), the `seed` number and `stats`. None is fogged (all are static, guild-free geometry), so none leaks; but once `/galaxy` stops serving the seed, slice 3 needs a source for each — e.g. widen the board (or wrap it: `{ galaxyParams, citadel, waystations, systems }`), or read waystations and the Citadel off the Syndicate's `claims` rows (each carries its resolved landmark with coords). Needs a ruling before slice 3. *(⤳ RULED 13-10-26 — widen the board (`exploration-model.md` §4 ruling 12's 13-10-26 note); BUILT the same day by the board-widening engine slice, items below.)* (b) `ring` is L0 on the board, while a **rival** system claim's landmark still drops it (`RIVAL_SYSTEM_LANDMARK_FIELDS`, `sim/fog.js` — "position-derived, dropped … to keep the row to L0"). Harmless — the board gives every viewer the ring anyway — but that comment's reason no longer holds; the same "tidy later" as the ruling-11 item 2 above. Not changed: it would move the view bytes. (c) `getBoard()` hands out the index's own cached rows (like `getL0Systems()` did); the server serialises them once per seed, nothing mutates them.
+- **The board-widening engine slice (2.5, ruling 12) — items for a ruling or a confirm** — *surfaced 13-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **The board's `citadel` is the seed's shape, not the landmark's.** The build prompt asked for both "the resolved Citadel the index already holds" and a `citadel` "equal [to] the seed's"; the index's Citadel is a landmark, `{ id: 'citadel', kind: 'citadel', coords, radius }`, the seed's is `{ coords, radius }`. Built as the seed's — its `coords` and `radius` taken from the index's resolved Citadel — because the ruling describes the board as "the seed with its fogged per-planet surface taken out", and the waystations are the seed's rows (no `kind`) the same way. The client reads only `.coords` / `.radius`. Confirm, or rule the landmark shape (adds `id` / `kind`; re-pins the board).
+  2. **`stats` is carried whole, so it includes galaxy-wide counts of fogged things** — `totalResourceNodes`, `totalSettlementSlots`, `starterSystems` (and `totalPlanets`, `rareTierRepairs`, `armEligibleHexesConsidered`). The ruling put `stats` "in" as the HUD's block; a count says how many, never where, so nothing locatable leaks. Recorded so it is a known decision, not an accident. Related: the leak-free check is a case-sensitive text search, and `totalResourceNodes` / `totalSettlementSlots` pass it only because camelCase capitalises the `R` / `S` of the forbidden `resourceNodes` / `settlementSlots`. Confirm the whole block, or rule a cut-down `stats` (e.g. just what the HUD shows).
+  3. **`claimRadius` is the seed's value, copied as is** (`null` if absent) — not passed through `getClaimRadius`, which also refuses a non-integer or negative radius. On every generated seed they agree, and the test asserts that on the committed seed. Confirm, or rule that the board reads through `getClaimRadius`.
+  4. **Seams — not decisions, recorded so the client flip finds them:** (a) a seed missing a block gets `null` for it (`[]` for the waystations) rather than a missing key — no generated seed lacks one; only bare test fixtures do. (b) `getBoard()` still hands out the index's own cached object, now the whole board (the L0-board slice's seam (c)); the server serialises it once per seed, nothing mutates it. (c) `GET /starters` still lists every starter system's `terranHomeworldId` — unchanged, and still on the L0-board slice's item 3 (it follows `/galaxy` to slice 3).
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**
