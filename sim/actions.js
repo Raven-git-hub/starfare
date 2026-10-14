@@ -1246,8 +1246,8 @@ function createRemoveOutpostAction({ guildId, outpostId: oId }) {
 // that reveals every planet's archetype — or 'L2' — a PLANET scan, naming `targetPlanetId`, that reveals
 // that planet's whole surface (its resource nodes and settlement slots). It completes SCAN_TICKS[level]
 // ticks later (sim/deep-scan-arrays.js). The constructor only enforces the always-required fields and
-// passes on whichever target it was given; validateAction judges legality (the array idle, the target real
-// and unclaimed, the L1→L2 chain).
+// passes on whichever target it was given; validateAction judges legality (the array idle, the target real,
+// not already being scanned by another of the guild's arrays, and unclaimed, the L1→L2 chain).
 function createQueueScanAction({ guildId, arrayId, level, targetSystemId, targetPlanetId }) {
   if (guildId === undefined) throw new Error('createQueueScanAction: guildId is required');
   if (arrayId === undefined) throw new Error('createQueueScanAction: arrayId is required');
@@ -3964,6 +3964,20 @@ function validateAction(state, action) {
         return { valid: false, reason: `targetPlanetId ${JSON.stringify(action.targetPlanetId)} is not a planet on the seed` };
       }
       systemId = planet.systemId;
+    }
+    // ONE ARRAY PER TARGET (ruled 14-10-26, the design room; roadmap 2.5 slice-3b checklist item 8): refused
+    // when ANOTHER of this guild's arrays is already running this exact scan — the same level on the same
+    // target. A second would learn nothing (the reveal is learn-once), so it would only tie up an array. The
+    // match is exact: two planets of one system are two targets, and an L1 of a system and an L2 of one of
+    // its planets are different scans, so all of those are still allowed. It sits here, after the target is
+    // known to be well-formed, because it compares targets; its reason is the busy-array refusal's, naming
+    // the array that holds the job.
+    const twin = (state.deepScanArrays || []).find((a) => a.ownerGuildId === action.guildId && a.id !== array.id
+      && a.scan && a.scan.level === action.level
+      && (action.level === 'L1' ? a.scan.targetSystemId === action.targetSystemId : a.scan.targetPlanetId === action.targetPlanetId));
+    if (twin) {
+      const target = action.level === 'L1' ? `system ${action.targetSystemId}` : `planet ${action.targetPlanetId}`;
+      return { valid: false, reason: `Deep Scan Array ${JSON.stringify(twin.id)} is already running an ${action.level} scan of ${target} (it completes at tick ${twin.scan.completeTick}) — one array per target; a second would only repeat it` };
     }
     // UNCLAIMED TARGETS ONLY (§5; §4 ruling 4). The controller is read from the claim rows through
     // `systemControllers` — the SAME read the completion step re-asks (sim/deep-scan-arrays.js), so the

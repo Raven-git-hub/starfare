@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine half BUILT, client half next):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -597,3 +597,86 @@ The Teardown control that writes the notice is `outpost-teardown.md` §10.
   against a real reclaim's snapshot. It checks the row and title, the unread count, the popup (speaker, verbatim line,
   facts, buttons), the pilot / fleet split across a sequence of opens, read-on-open, and Show on map's target in each
   case: idle on the hex, idle on another hex, really dispatched (in flight), landed at a system, and gone.
+
+## 13. The scan notices — `scan_complete` and `scan_voided` (2.5 Deep Scan Array, RULED 14-10-26)
+
+*Status: **RULED + BUILT** (14-10-26). Ruled by the design room 14-10-26, closing roadmap 2.5's slice-3b checklist
+item 9(a) (the notice was DEFERRED 13-10-26 until the engine emitted an event). **Both halves are BUILT in one slice**,
+engine and client: "AS-BUILT", the last record below. Modelled on §11: a writer that already holds everything the
+notice needs records one self-contained row through the shared `recordEvent`. Retention, acknowledge and surfacing
+are §3–§5's, unchanged. The scan itself is `docs/exploration-model.md` §5's and is untouched: the notice only
+reports how a job ended.*
+
+**Why.** A Deep Scan Array's job is re-checked when it finishes (`exploration-model.md` §5): unclaimed or own-held
+ground reveals; ground a rival now controls "completes to nothing". Either way the job clears. Until this slice no
+event was written, so a player learned only from the next poll, when geography appeared or silently did not.
+
+**The types.** Both join `EVENT_TYPES` in `sim/events.js`, so `checkEventLog` accepts them. Both are **passive,
+informational** notices, like `delivery_space_warning`: no action-item, no decision.
+- **`scan_complete`** — the job finished and revealed its target. Written **always** on the reveal path, **even when
+  nothing new was learned** (an already-charted target): the job still finished and the array is free, and the
+  notice says so.
+- **`scan_voided`** — the job finished to nothing: a rival came to control the target's system first.
+
+**The writer.** `stepScanCompletions` (`sim/deep-scan-arrays.js`), the end-of-tick step that finishes a due job, and
+nothing else. On the tick it finishes the job, it writes one row to the **owning** guild's log through `recordEvent`,
+stamped with that tick. Born unread. Arrays are finished in id order, so two of a guild's arrays finishing on one tick
+write their notices in array-id order (invariant 9). The guild whose claim voided the job is **not** told: the scan
+was private.
+
+**The payloads** (self-contained: the array may be gone, and the system may change hands again, by the time the
+player reads them):
+- Both carry **`arrayId`**, **`level`** (`'L1'` | `'L2'`), the target key the job carried (**`targetSystemId`** for an
+  L1, **`targetPlanetId`** for an L2) and **`targetName`**: an L1's system seed name, or an L2's planet
+  **designation** — its system's name and its Roman ordinal ("Nyx IV"), the 1-based place in the seed's planet order
+  that the board's `order` and the site names already number it by (`scanTargetName`). Falls back to the raw id, as
+  `ventureName` does.
+- **`scan_complete`** adds **`newFacts`**: the reveal loop's own count of facts that were new
+  (`revealSystemArchetypes` / `revealPlanetSurface` return it). An L1 counts each planet archetype; an L2 each
+  resource node and settlement slot. `0` means it was all known already.
+- **`scan_voided`** adds **`byGuildId`** + **`byGuildName`**: the guild that controls the target's system (from
+  `systemControllers`, the same read that voided the job) and its name from the guild row, falling back to the id.
+  Who holds a system is L0 and public (`exploration-model.md` §1), so naming it leaks nothing.
+
+**The surface — the MESSAGES inbox + popup (§8 / §9), in the scout's voice:**
+- the inbox rows read **"Survey complete — {targetName}"** and **"Survey voided — {targetName}"**, newest-first, with
+  the unread dot as any notice; the popup titles are the bare "Survey complete" / "Survey voided";
+- the hero is the guild's **scout** (`client/assets/characters/spy.jpg`, never called a spy in the copy), the eyebrow
+  "Guild Scout" — the same scout and eyebrow as the survey confirm (`exploration-model.md` §10);
+- **Dismiss alone** — passive, no forks, no Show on map;
+- the body, one line per paragraph (placeholder copy, to refine at review):
+  - complete: "Deep Scan Array 03 — survey of {targetName} complete." then "{newFacts} readings logged." (one: "1
+    reading logged."), or, when `newFacts` is 0, "Nothing new — already charted.";
+  - voided: "Deep Scan Array 03 — survey of {targetName} voided; {byGuildName} claimed it before it finished."
+- the facts block: `Array` (the array's serial, "Deep Scan Array 03", the survey picker's name for it); `Target` =
+  `targetName`; `Survey` = "System survey" (L1) / "Planet survey" (L2); then `New readings` = `newFacts` (complete) or
+  `Claimed by` = `byGuildName` (voided); then `Completed` / `Voided` = the event `whenDay`.
+
+Opening the message acknowledges it (§8, read-on-open), unchanged.
+
+**A NO-OP elsewhere.** A galaxy in which no scan finishes writes no scan notice, so every log, snapshot and golden
+without a finished scan is unchanged.
+
+**AS-BUILT (14-10-26; engine + client; roadmap 2.5, ruling 12 — the scan edges).** Built to this section, no design
+change; **no new number** (no constant, no retention change).
+- **The engine.** `SCAN_COMPLETE` / `SCAN_VOIDED` join `EVENT_TYPES` and the exports of `sim/events.js`.
+  `stepScanCompletions` builds the shared part of the payload once per job (`arrayId`, `level`, the target key,
+  `targetName` through the new `scanTargetName`), then on the reveal path keeps the reveal loop's return value as
+  `newFacts` and writes `scan_complete`; on the void path it writes `scan_voided` with the controller and its name.
+  The reveal, the void condition and the job-clear are unchanged. **No snapshot change:** `guilds[].events` carries
+  the rows with their `whenDay` (no `unlockDay`), `attention.notices` counts them while unread, and the per-guild view
+  shows a guild only its own (`sim/fog.js` drops a rival's `events`), so a rival's view is byte-identical.
+- **The goldens moved only by the notice** (`sim/tests/scan-notice.test.js`, "GOLDENS DELTA"): four scripted
+  completions (`sim/tests/scan-notice-script.js` — an L1, an L2, a repeat L1 that learns nothing, and a voided L1)
+  were hashed on main at 8b24026, before the slice: state, the god's-eye lens and both guilds' views. On this build,
+  strip the scan notices (and wind the guild's `eventSeq` back past them) and the state, the god's-eye lens and the
+  owner's view are those bytes exactly; the rival's view is those bytes without any strip.
+- **The client** (`client/game.html`, beside §11's notice code): `noticeTitle` / `noticeRowTitle` gain a branch per
+  type; `isScanNotice`, `scanArrayLabel`, `scanTargetLabel`, `scanBody` and `scanFacts` build the card from the
+  payload; `openNotice` gains a `scan` flag that sets the eyebrow "Guild Scout" and the portrait `spy.jpg`, and hides
+  the forks and Show on map, on every open (a scout card hands the pilot's forks back, and the next Syndicate notice
+  gets the adviser back). The count of readings is the engine's `newFacts`; the client words it and computes nothing.
+- **Tripwires:** `sim/tests/scan-notice.test.js` (the writer on every path, the payloads, the surfacing, the goldens
+  delta), `sim/tests/scan-notice-client.test.js` (the page's own notice code in a `node:vm` sandbox against real
+  engine output: rows, popups, the re-dress across opens, read-on-open; red against the pre-slice client), and
+  `sim/tests/events.test.js`'s vocabulary test (now eight types).

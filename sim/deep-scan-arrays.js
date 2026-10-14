@@ -18,10 +18,13 @@
 // Like outposts.js, this file constructs no entity — `createDeepScanArray` lives with the other entity
 // constructors in state.js — so it stays free of a require cycle with state.js. Its one MUTATION is the
 // tick step `stepScanCompletions`, which edits the tick's own clone in place, as every tick step does.
+// (That step also writes the job's completion NOTICE — `scan_complete` / `scan_voided`, docs/event-log.md
+// §13 — through the shared `recordEvent`.)
 
-const { getPlanet } = require('./seed.js');
+const { getPlanet, getSystem, getSystemLayout, roman } = require('./seed.js');
 const { systemControllers } = require('./claims.js');
 const { revealSystemArchetypes, revealPlanetSurface } = require('./exploration.js');
+const { recordEvent, SCAN_COMPLETE, SCAN_VOIDED } = require('./events.js');
 
 // The id scheme is `deepScanArray_<guildId>_NN`, 1-based and zero-padded to two digits — the exact mirror
 // of outposts.js's `outpost_<guildId>_NN`. STABLE and DETERMINISTIC (§15.2, invariant 9): two runs of the
@@ -92,6 +95,22 @@ function scanTargetSystemId(job) {
   return planet ? planet.systemId : null;
 }
 
+// scanTargetName(job) -> the target's display name, for the completion notice: an L1's SYSTEM seed name
+// ("Nyx"), an L2's planet DESIGNATION ("Nyx IV" — its system's name and its Roman ordinal, the 1-based
+// place in the seed's planet order that the board's `order` and the site names already number it by).
+// Carried in the payload because the notice must read the same after the world moves on (the
+// `ventureName` reason, docs/event-log.md §2). Falls back to the raw id, as `ventureName` does.
+function scanTargetName(job) {
+  if (job.level === 'L1') {
+    const system = getSystem(job.targetSystemId);
+    return (system && system.name) || job.targetSystemId;
+  }
+  const planet = getPlanet(job.targetPlanetId);
+  const layout = planet ? getSystemLayout(planet.systemId) : null;
+  const ordinal = layout ? layout.planets.findIndex((p) => p.id === job.targetPlanetId) + 1 : 0;
+  return ordinal > 0 ? `${layout.name} ${roman(ordinal)}` : job.targetPlanetId;
+}
+
 // stepScanCompletions(state, tick) — every array whose job is DUE (`completeTick <= tick`) finishes it now.
 // Runs at the END of every tick (sim/tick.js), `tick` being the tick just built, and mutates `state` in
 // place. `<=` and not `===`, the arrivals idiom: a due job can never be stepped over.
@@ -110,8 +129,18 @@ function scanTargetSystemId(job) {
 // The job is CLEARED either way — the key deleted (omit-when-idle) — and the array is free for its next job.
 // A removed array took its job with it (the job lives on the row), so it never reaches this step.
 //
-// DETERMINISM (invariant 9): arrays in id order. Each reveal writes only its own guild's record, stamped
-// `tick`, so no value depends on the visiting order anyway.
+// THE NOTICE (docs/event-log.md §13, ruled 14-10-26). Either way the owning guild gets ONE notice, written
+// here through the shared `recordEvent`, stamped `tick`:
+//   - on the REVEAL path, `scan_complete`, ALWAYS — even when the reveal learned nothing new (an
+//     already-charted target): the job still finished and the array is free, and the notice says so;
+//   - on the VOID path, `scan_voided`, naming the rival that controls the target's system. That is public
+//     (L0: who holds a system is never fogged), so naming it leaks nothing.
+// The payload is self-contained — it carries the names it needs, since the array may be gone and the
+// system may change hands again by the time the player reads it.
+//
+// DETERMINISM (invariant 9): arrays in id order. Each reveal and each notice writes only its own guild's
+// record and log, stamped `tick`; a guild with two arrays finishing on one tick gets its notices in array-id
+// order, so the event ids are fixed too.
 function stepScanCompletions(state, tick) {
   const due = (state.deepScanArrays || []).filter((a) => a.scan && a.scan.completeTick <= tick);
   if (due.length === 0) return state;
@@ -126,10 +155,25 @@ function stepScanCompletions(state, tick) {
     if (!SCAN_LEVELS.includes(job.level)) {
       throw new Error(`stepScanCompletions: at tick ${tick} array ${JSON.stringify(array.id)} holds a scan of unknown level ${JSON.stringify(job.level)}`);
     }
+    // What both notices say about the job: which array, which level, which target (the key the job itself
+    // carries), and the target's name.
+    const target = {
+      arrayId: array.id,
+      level: job.level,
+      ...(job.level === 'L1' ? { targetSystemId: job.targetSystemId } : { targetPlanetId: job.targetPlanetId }),
+      targetName: scanTargetName(job),
+    };
     const controller = controllers.get(scanTargetSystemId(job));
     if (controller === undefined || controller === owner.id) {
-      if (job.level === 'L1') revealSystemArchetypes(owner, job.targetSystemId, tick);
-      else revealPlanetSurface(owner, job.targetPlanetId, tick);
+      // Learn-once: `newFacts` is how many facts were NEW (0 = it was all known already).
+      const newFacts = job.level === 'L1'
+        ? revealSystemArchetypes(owner, job.targetSystemId, tick)
+        : revealPlanetSurface(owner, job.targetPlanetId, tick);
+      recordEvent(owner, tick, SCAN_COMPLETE, { ...target, newFacts });
+    } else {
+      // A claim may name a guild with no row (none does today); the id then stands in for the name.
+      const rival = (state.guilds || []).find((g) => g.id === controller);
+      recordEvent(owner, tick, SCAN_VOIDED, { ...target, byGuildId: controller, byGuildName: (rival && rival.name) || controller });
     }
     delete array.scan;
   }
@@ -146,5 +190,6 @@ module.exports = {
   SCAN_LEVELS,
   copyScanJob,
   scanTargetSystemId,
+  scanTargetName,
   stepScanCompletions,
 };
