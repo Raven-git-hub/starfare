@@ -862,3 +862,68 @@ test('deleteRouteBody: builds the exact body; a missing flag throws', () => {
   assert.throws(() => A.deleteRouteBody({ guild: 'g1' }), /delete-route: --id is required/);
   assert.deepEqual([...A.ROUTE_COMMANDS], ['save-route', 'delete-route']);
 });
+
+// --- the fog tooling (docs/operator-adjust.md §3.7; roadmap 2.5) ----------------------------------
+// `reveal` posts the engine's `reveal` action; `snapshot --guild` reads GET /snapshot?guild=<id>. The
+// CLI only wires flags to fields — whether an id is real is the engine's answer.
+
+test('parseArgs: reveal carries --guild / --system / --planet / --l1, and snapshot carries --guild', () => {
+  assert.deepEqual(
+    A.parseArgs(['reveal', '--guild', 'g1', '--system', 'sys_0009', '--l1']),
+    { command: 'reveal', flags: { _: [], guild: 'g1', system: 'sys_0009', l1: true } },
+  );
+  assert.deepEqual(
+    A.parseArgs(['reveal', '--guild=g1', '--planet=pl_00042']),
+    { command: 'reveal', flags: { _: [], guild: 'g1', planet: 'pl_00042' } },
+  );
+  assert.deepEqual(
+    A.parseArgs(['snapshot', '--guild', 'g1', '--pick', 'geography']),
+    { command: 'snapshot', flags: { _: [], guild: 'g1', pick: 'geography' } },
+  );
+  assert.throws(() => A.parseArgs(['reveal', '--l1=yes']), /--l1 takes no value/);
+});
+
+test('revealActionFor: the three forms build the exact engine action', () => {
+  const cases = [
+    { argv: ['reveal', '--guild', 'g1', '--system', 'sys_0009'], want: { type: 'reveal', guildId: 'g1', systemId: 'sys_0009' } },
+    { argv: ['reveal', '--guild', 'g1', '--system', 'sys_0009', '--l1'], want: { type: 'reveal', guildId: 'g1', systemId: 'sys_0009', l1: true } },
+    { argv: ['reveal', '--guild', 'g1', '--planet', 'pl_00042'], want: { type: 'reveal', guildId: 'g1', planetId: 'pl_00042' } },
+  ];
+  for (const c of cases) {
+    assert.deepEqual(A.revealActionFor(A.parseArgs(c.argv).flags), c.want, c.argv.join(' '));
+  }
+});
+
+test('revealActionFor: a missing or conflicting flag throws rather than posting a half action', () => {
+  assert.throws(() => A.revealActionFor({ system: 'sys_0009' }), /reveal: --guild is required/);
+  assert.throws(() => A.revealActionFor({ guild: 'g1' }), /reveal: --system or --planet is required/);
+  assert.throws(() => A.revealActionFor({ guild: 'g1', l1: true }), /reveal: --system or --planet is required/);
+  assert.throws(() => A.revealActionFor({ guild: 'g1', system: 'sys_0009', planet: 'pl_00042' }), /exactly one of --system \/ --planet, not both/);
+  assert.throws(() => A.revealActionFor({ guild: 'g1', planet: 'pl_00042', l1: true }), /--l1 goes with --system only/);
+  assert.deepEqual([...A.FOG_COMMANDS], ['reveal']);
+});
+
+test('snapshotPath: --guild G reads /snapshot?guild=G (encoded); no --guild reads the god\'s-eye /snapshot', () => {
+  assert.equal(A.snapshotPath({}), '/snapshot');
+  assert.equal(A.snapshotPath({ pick: 'geography', json: true }), '/snapshot', 'the other snapshot flags do not change the route');
+  assert.equal(A.snapshotPath({ guild: 'player-guild' }), '/snapshot?guild=player-guild');
+  assert.equal(A.snapshotPath({ guild: 'a b&c' }), '/snapshot?guild=a%20b%26c', 'an odd id cannot smuggle in a second query key');
+});
+
+test('knownCounts: counts what geography.known holds — the map, one system, or one planet', () => {
+  // A `geography.known` block as sim/fog.js emits it.
+  const known = {
+    sys_0006: {
+      pl_00010: { archetype: 'terran', nodes: { pl_00010_n01: 'titanium', pl_00010_n02: 'titanium' }, slots: { pl_00010_s01: true } },
+    },
+    sys_0009: {
+      pl_00020: { archetype: 'gasGiant', nodes: { pl_00020_n01: 'hydrogen' }, slots: {} },
+      pl_00021: { archetype: 'ice', nodes: {}, slots: {} },
+    },
+  };
+  assert.deepEqual(A.knownCounts(known), { planets: 3, nodes: 3, slots: 1 });
+  assert.deepEqual(A.knownCounts(known, { systemId: 'sys_0009' }), { planets: 2, nodes: 1, slots: 0 });
+  assert.deepEqual(A.knownCounts(known, { planetId: 'pl_00010' }), { planets: 1, nodes: 2, slots: 1 });
+  assert.deepEqual(A.knownCounts(known, { systemId: 'sys_9999' }), { planets: 0, nodes: 0, slots: 0 }, 'an unknown system');
+  assert.deepEqual(A.knownCounts(undefined, {}), { planets: 0, nodes: 0, slots: 0 }, 'a view with no known block');
+});

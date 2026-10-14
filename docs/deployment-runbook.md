@@ -221,14 +221,15 @@ against a local `node sim/server.js`:
 | Command | Endpoint(s) it wraps | What it does |
 |---|---|---|
 | `health` | `GET /health` | Liveness, galaxy state + seed, tick, guild count, autotick status. |
-| `snapshot [--json] [--pick a.b.c]` | `GET /snapshot` | Default: a compact summary (tick, the `calendar` block, guild + venture counts). `--json` dumps the whole snapshot; `--pick calendar` extracts one dotted path. |
-| `starters` | `GET /starters` | Every startable system (id, ring, name, Terran homeworld). |
+| `snapshot [--guild ID] [--json] [--pick a.b.c]` | `GET /snapshot`, or `GET /snapshot?guild=ID` | Default: a compact summary (tick, the `calendar` block, guild + venture counts). `--json` dumps the whole snapshot; `--pick calendar` extracts one dotted path. `--guild ID` reads that guild's **fogged** view instead of the god's-eye one (the summary adds the viewer and how much of the map it knows); `--json` / `--pick` work on either, e.g. `snapshot --guild ID --pick geography.known`. An unknown guild is a one-line error, exit 1. |
+| `starters` | `GET /starters` | Every startable system (id, ring, name). |
 | `new-galaxy [--seed N] [--utc-offset H]` | `POST /admin/galaxy/new`, then `GET /snapshot` | Creates a galaxy and reads back `calendar.dayAnchorTick` to confirm it is midnight-anchored. `--utc-offset` is in **hours** (default 0 = UTC; `-12`…`+14`, halves allowed) and picks *which* midnight — frozen at creation. **Warns that this REPLACES the active galaxy.** |
 | `seat-demo [--window N]` | `POST /admin/galaxy/new` *or* `POST /reset` + `POST /action`, `GET /starters`, `GET /system/:id`, `POST /action` ×5 | The two-mine 100 %-licence console demo — see below. |
 | `verify-cycle [--seed N]` | `POST /admin/galaxy/new`, `GET /starters`, `GET /system/:id`, `POST /action` ×3, `GET /snapshot` | **The standard post-redeploy check** — see below. |
 | `tick [n]` | `POST /tick` ×n | Manual advance (default 1), for short-window testing when the boot clock is off. |
+| `reveal --guild ID (--system ID [--l1] \| --planet ID)` | `POST /action`, then `GET /snapshot?guild=ID` | **Operator fog lever** (`docs/operator-adjust.md` §3.7): writes geography into the guild's exploration record — a whole system (every planet and its surface), with `--l1` only its planets' archetypes, or one planet's whole surface — and prints what the guild now knows there. Learn-once (a repeat changes nothing); moves no credits, fuel or goods. A refused reveal exits 1. |
 
-Flags: `--base <url>`, `--seed N`, `--pick a.b.c`, `--json`, `--window N`, `--help`/`-h`.
+Flags: `--base <url>`, `--seed N`, `--pick a.b.c`, `--json`, `--window N`, `--guild ID`, `--system ID`, `--planet ID`, `--l1`, `--help`/`-h`. (The other operator levers and primitives — `adjust-*`, `grant-*`, `spawn-*`, the deploy and route commands — are listed in `node tools/admin.js --help`.)
 
 ### `verify-cycle` — the standard post-redeploy check
 

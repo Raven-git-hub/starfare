@@ -40,15 +40,18 @@ const FLAG_SPEC = Object.freeze({
   'utc-offset': 'number', // new-galaxy: which midnight the cycle rolls on, in HOURS
   json: 'bool',     // snapshot: dump the whole thing
   // The operator adjust levers (docs/operator-adjust.md §5).
-  guild: 'string',    // which guild the adjust acts on
+  guild: 'string',    // which guild the adjust / reveal acts on; snapshot: read that guild's fogged view
   delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
-  system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint
+  system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint; reveal: which system
   good: 'string',     // adjust-goods: which stockpile good
   kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost | deepScan (the kit's kind)
   asset: 'string',    // remove-asset / load-kit: which asset id
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
   'remove-asset': 'bool', // remove-venture: delete the freed asset too (else keep it idle)
+  // The fog tooling (docs/operator-adjust.md §3.7).
+  planet: 'string',   // reveal: one planet's whole surface (instead of --system)
+  l1: 'bool',         // reveal --system: its planets' archetypes only (else every surface too)
   // The vehicle spawn/remove primitive (design.md §15.4, roadmap 2.2 spawn).
   class: 'string',    // spawn-vehicle: lightTransport | mediumTransport | heavyTransport | spycraft
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
@@ -707,6 +710,53 @@ function deleteRouteBody(flags) {
   };
 }
 
+// The fog tooling (docs/operator-adjust.md §3.7; roadmap 2.5): `reveal` writes geography into a guild's
+// exploration record over POST /action, and `snapshot --guild` reads that guild's fogged view back.
+const FOG_COMMANDS = Object.freeze(['reveal']);
+
+// revealActionFor(flags) -> the exact `reveal` action POST /action validates. Exactly one target:
+// --system (the whole system; add --l1 for its planets' archetypes only) or --planet (one planet's whole
+// surface). Both, neither, or --l1 beside --planet THROWS — the engine refuses those too, but a mistyped
+// operator command should fail here, before anything is posted. Whether the id is real is the engine's
+// answer, not this file's. PURE and exported.
+function revealActionFor(flags) {
+  const guildId = requireFlag(flags, 'guild', 'reveal');
+  const hasSystem = flags.system !== undefined;
+  const hasPlanet = flags.planet !== undefined;
+  if (hasSystem && hasPlanet) throw new Error('reveal: give exactly one of --system / --planet, not both');
+  if (!hasSystem && !hasPlanet) throw new Error('reveal: --system or --planet is required (exactly one)');
+  if (hasPlanet) {
+    if (flags.l1) throw new Error('reveal: --l1 goes with --system only — a planet reveal is always its whole surface');
+    return { type: 'reveal', guildId, planetId: flags.planet };
+  }
+  return flags.l1
+    ? { type: 'reveal', guildId, systemId: flags.system, l1: true }
+    : { type: 'reveal', guildId, systemId: flags.system };
+}
+
+// snapshotPath(flags) -> which snapshot `snapshot` reads: with --guild, GET /snapshot?guild=<id> (that
+// guild's FOGGED view, the id URL-encoded); without, plain GET /snapshot (the god's-eye lens). PURE and exported.
+function snapshotPath(flags) {
+  return flags.guild === undefined ? '/snapshot' : `/snapshot?guild=${encodeURIComponent(flags.guild)}`;
+}
+
+// knownCounts(known, target) -> { planets, nodes, slots } that a fogged view's `geography.known` holds
+// within the target: one system ({ systemId }), one planet ({ planetId }, in whichever system lists it), or
+// the whole map ({}). It only counts what the view says; `reveal` and `snapshot --guild` print it. PURE and exported.
+function knownCounts(known, { systemId, planetId } = {}) {
+  const out = { planets: 0, nodes: 0, slots: 0 };
+  for (const sysId of Object.keys(known || {})) {
+    if (systemId !== undefined && sysId !== systemId) continue;
+    for (const pId of Object.keys(known[sysId])) {
+      if (planetId !== undefined && pId !== planetId) continue;
+      out.planets += 1;
+      out.nodes += Object.keys(known[sysId][pId].nodes).length;
+      out.slots += Object.keys(known[sysId][pId].slots).length;
+    }
+  }
+  return out;
+}
+
 module.exports = {
   parseArgs, pick, findResourceNodes, pickResourceNode, pickIdleAssetId, judgeVerify, utcOffsetMinutesFromHours,
   adjustActionFor, ADJUST_COMMANDS,
@@ -717,6 +767,7 @@ module.exports = {
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS, KIT_KINDS, idleKitsIn, structureUnder,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
+  revealActionFor, snapshotPath, knownCounts, FOG_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
   EXPECTED_STARTER_CREDITS, EXPECTED_STARTER_FLEET, EXPECTED_STARTER_KITS,
 };
@@ -760,13 +811,17 @@ async function request(base, method, path, body) {
   return { status: res.status, ok: res.ok, json, text };
 }
 
-async function callJson(base, method, path, body) {
-  const r = await request(base, method, path, body);
+// jsonOrThrow(r, method, path) -> the response's JSON, or THROWS naming the route and the status.
+function jsonOrThrow(r, method, path) {
   if (!r.ok || r.json === null) {
     const detail = r.json ? JSON.stringify(r.json) : r.text.slice(0, 300);
     throw new Error(`${method} ${path} -> HTTP ${r.status}: ${detail}`);
   }
   return r.json;
+}
+
+async function callJson(base, method, path, body) {
+  return jsonOrThrow(await request(base, method, path, body), method, path);
 }
 
 const getJson = (base, path) => callJson(base, 'GET', path);
@@ -781,9 +836,16 @@ async function act(base, action) {
   return out.snapshot;
 }
 
-// A snapshot, insisting there is a galaxy behind it.
-async function liveSnapshot(base) {
-  const snap = await getJson(base, '/snapshot');
+// A snapshot, insisting there is a galaxy behind it. Given a guild, that guild's FOGGED view (GET
+// /snapshot?guild=<id>); without one, the god's-eye lens. The per-guild route answers 404 for a guild the
+// galaxy does not hold — said plainly here, naming the guild, rather than as a raw HTTP dump.
+async function liveSnapshot(base, guildId) {
+  const path = snapshotPath(guildId === undefined ? {} : { guild: guildId });
+  const r = await request(base, 'GET', path);
+  if (guildId !== undefined && r.status === 404) {
+    throw new Error(`no guild ${JSON.stringify(guildId)} in the galaxy on ${base} (GET ${path} -> 404)`);
+  }
+  const snap = jsonOrThrow(r, 'GET', path);
   if (snap && snap.state === 'no-galaxy') {
     throw new Error(`NO GALAXY on ${base} — ${snap.reason}. Create one: node tools/admin.js new-galaxy`);
   }
@@ -819,8 +881,10 @@ async function cmdHealth(base) {
   row('serverTime', h.serverTime);
 }
 
+// `--guild` picks the lens (snapshotPath): that guild's fogged view, or the god's-eye one without it.
+// `--json` and `--pick` work the same on either, so `snapshot --guild G --pick geography` dumps what G knows.
 async function cmdSnapshot(base, flags) {
-  const snap = await liveSnapshot(base);
+  const snap = await liveSnapshot(base, flags.guild);
   if (flags.json) { log(JSON.stringify(snap, null, 2)); return; }
   if (flags.pick !== undefined) {
     const value = pick(snap, flags.pick);
@@ -832,6 +896,13 @@ async function cmdSnapshot(base, flags) {
   row('calendar', calendarLine(snap.calendar));
   row('guilds', (snap.guilds || []).length);
   row('ventures', (snap.ventures || []).length);
+  // Only the fogged view names a viewer: whose eyes these are, and how much map they have past L0.
+  if (snap.viewerGuildId !== undefined) {
+    const known = (snap.geography && snap.geography.known) || {};
+    const c = knownCounts(known);
+    row('viewer', snap.viewerGuildId);
+    row('known', `${Object.keys(known).length} system(s) · ${c.planets} planet(s) · ${c.nodes} node(s) · ${c.slots} slot(s)`);
+  }
 }
 
 // Each starter is { id, name, ring } — GET /starters no longer names a starter's Terran homeworld (an L1
@@ -1372,6 +1443,24 @@ async function cmdDeleteRoute(base, flags) {
   printSavedRoutes(out.snapshot, body.guildId);
 }
 
+// reveal (docs/operator-adjust.md §3.7): build the action (the PURE revealActionFor) and POST it over the
+// shared `act` helper, so a refused reveal throws and exits 1. The /action reply is the god's-eye lens,
+// which carries no exploration record, so the guild's own fogged view is read back to print what it now
+// knows of the target. (A controlled system shows at full L2 in any view, whatever was revealed.)
+async function cmdReveal(base, flags) {
+  const action = revealActionFor(flags);
+  await act(base, action); // refused action => throw => exit 1
+  const view = await liveSnapshot(base, action.guildId);
+  const target = action.planetId !== undefined ? { planetId: action.planetId } : { systemId: action.systemId };
+  const c = knownCounts(view.geography && view.geography.known, target);
+  row('action', action.type);
+  row('guild', action.guildId);
+  if (action.planetId !== undefined) row('revealed', `planet ${action.planetId} — its whole surface (L2)`);
+  else if (action.l1) row('revealed', `system ${action.systemId} — its planets' archetypes (L1)`);
+  else row('revealed', `system ${action.systemId} — every planet and its whole surface (L2)`);
+  row('now knows', `${c.planets} planet(s) · ${c.nodes} node(s) · ${c.slots} slot(s) there`);
+}
+
 const USAGE = `starfare operator CLI — a thin client over the running server's API.
 
   node tools/admin.js <command> [flags]
@@ -1379,8 +1468,9 @@ const USAGE = `starfare operator CLI — a thin client over the running server's
 
 Commands
   health                      GET  /health
-  snapshot [--json] [--pick a.b.c]
-                              GET  /snapshot (default: a compact summary)
+  snapshot [--guild ID] [--json] [--pick a.b.c]
+                              GET  /snapshot (default: a compact summary); with --guild,
+                              GET  /snapshot?guild=ID — that guild's FOGGED view
   starters                    GET  /starters
   new-galaxy [--seed N] [--utc-offset H]
                               POST /admin/galaxy/new  — REPLACES the active galaxy
@@ -1395,6 +1485,13 @@ Operator adjust levers (docs/operator-adjust.md — dev/steward, exit 1 on a ref
   grant-asset     --guild ID --kind miner|factory --system ID   mint one idle asset
   remove-asset    --guild ID --asset ID [--close]   remove an asset (occupied: detach, or --close)
   remove-venture  --guild ID --venture ID [--remove-asset]   tear a venture down (keep / remove asset)
+
+Fog tooling (docs/operator-adjust.md §3.7 — operator, exit 1 on a refused action)
+  reveal          --guild ID (--system ID [--l1] | --planet ID)
+                  write geography into the guild's exploration record: a whole system (every planet and
+                  its surface), with --l1 only its planets' archetypes, or one planet's whole surface.
+                  Learn-once: revealing what the guild already knows changes nothing. Moves no credits,
+                  fuel or goods. Read the result back with: snapshot --guild ID --pick geography.known
 
 Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 1 on a refused action)
   spawn-vehicle   --guild ID --class C (one of --system ID / --outpost ID / --hex q,r) [--condition F]
@@ -1465,10 +1562,13 @@ Flags
   --utc-offset H new-galaxy: which midnight the galaxy's day rolls on, in HOURS
                  (default 0 = UTC; -12 .. +14; halves allowed, e.g. +5.5). FROZEN
                  at creation — only a new galaxy can carry a different one.
-  --guild ID     adjust levers: which guild the adjust acts on
+  --guild ID     adjust levers / reveal: which guild it acts on;
+                 snapshot: read that guild's fogged view instead of the god's-eye one
   --delta N      adjust-credits/fuel/goods: a SIGNED integer (grant +, remove −)
   --system ID    adjust-goods / grant-asset / grant-kit: which system's cell / where to mint;
-                 spawn-outpost: the system the outpost anchors to
+                 spawn-outpost: the system the outpost anchors to; reveal: the system to reveal
+  --planet ID    reveal: the one planet to reveal (instead of --system)
+  --l1           reveal --system: its planets' archetypes only (default: every surface too)
   --good G       adjust-goods: which stockpile good
   --kind K       grant-asset: miner | factory; grant-kit: outpost | deepScan
   --asset ID     remove-asset / load-kit: which asset id
@@ -1520,6 +1620,7 @@ async function main(argv) {
     case 'deploy-asset': await cmdDeployAsset(base, flags); return;
     case 'save-route': await cmdSaveRoute(base, flags); return;
     case 'delete-route': await cmdDeleteRoute(base, flags); return;
+    case 'reveal': await cmdReveal(base, flags); return;
     default:
       // The six operator adjust levers share one thin command (docs/operator-adjust.md §5).
       if (ADJUST_COMMANDS.includes(command)) { await cmdAdjust(base, command, flags); return; }

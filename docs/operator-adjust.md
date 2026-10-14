@@ -23,6 +23,10 @@ When the storyteller lands it may **reuse the same primitives underneath**, wrap
 audited events (a gifted cache, a seized factory) -- but that is a later slice, and it is the
 storyteller's job to make them diegetic, not this tool's.
 
+*(⤳ 14-10-26 -- a seventh lever, `reveal` (sec. 3.7), joins the family as its first **knowledge**
+lever: it writes what a guild KNOWS of the map (its exploration record), not anything it holds. Same
+species, same pipeline, same operator surface.)*
+
 ## 2. The one rule: an adjust keeps the invariants whole
 
 The engine's quantities are conserved, and the tripwires (design.md sec. 15.5) treat a break as
@@ -32,13 +36,17 @@ counter-move** its quantity requires, and because each is a normal action it is 
 replayable** (unlike a raw file edit, which vanishes on a replay-from-genesis) and **integer**
 (sec. 15.2). A reject leaves state untouched.
 
+`reveal` (sec. 3.7) keeps the invariants whole the other way: it touches **none** of their quantities
+-- no credits, fuel, goods or supply -- so there is no counter-move to make, and nothing to refresh.
+
 ## 3. The actions
 
 **AS-BUILT 16-09-26** -- all six actions are BUILT in `sim/actions.js` (validate + apply, exported
 constructors) and ride the existing `POST /action` pipeline unchanged; the invariant-safety bar is
 `sim/tests/operator-adjust.test.js` (17 tests). Additive only -- no existing action path changed, so
 every determinism / persist golden is byte-identical and the suite moved 1,298 -> **1,315 green**.
-Each of §3.1--§3.6 below is marked ✅ where it stands.
+Each of §3.1--§3.6 below is marked ✅ where it stands. *(⤳ 14-10-26: §3.7 `reveal` is BUILT the same
+way -- additive, no existing action path changed, no golden moved; its bar is `sim/tests/reveal.test.js`.)*
 
 All take a `guildId` that must name an existing guild; all record their tick; all reject-whole
 (state untouched) on any failure. Scalars use a **signed `delta`** -- positive grants, negative
@@ -130,6 +138,44 @@ Tear a venture down -- the storyteller "destroy" beat -- via the shared `applyVe
 it does not **create** them -- a working venture needs a site/asset/type/rate and that is
 `establishVenture` (sec. 7).
 
+### 3.7 `reveal { guildId, systemId?, planetId?, l1? }` ✅ BUILT 14-10-26
+
+The first **knowledge** lever (roadmap 2.5, the CLI fog tooling). It writes geography straight into
+the guild's **exploration record** (`guild.exploration`, `docs/exploration-model.md` §7), so an
+operator can put a guild into a known fog state for a test or a hand-run beat -- what the guild would
+otherwise learn only by founding or by its own Deep Scan Array scan. **Exactly one target**, in one of
+three forms, each through the `sim/exploration.js` primitive the matching mechanic already uses (so an
+operator reveal can never write a shape the game would not):
+
+| Form | Reveals | Primitive (the mechanic that uses it) |
+|---|---|---|
+| `{ guildId, systemId }` | the whole system -- every planet's archetype (L1) and its whole surface, every node and slot (L2) | `revealSystem` (founding) |
+| `{ guildId, systemId, l1: true }` | every planet's archetype (L1) only -- no node, no slot | `revealSystemArchetypes` (an L1 scan) |
+| `{ guildId, planetId }` | that one planet at L2 -- its archetype and its whole surface; no sibling planet | `reveal` + `revealPlanetSurface` (an L2 scan) |
+
+- **Invariant-neutral.** It writes only the record -- ids and ticks. No credits, fuel, goods or supply
+  move, so unlike sec. 3.1--3.6 it keeps the invariants whole by touching none of their quantities, not by
+  balancing; the apply refreshes no economic cache. `POST /action`'s post-apply check sees every conserved
+  total unchanged, and the god's-eye snapshot (which carries no record) does not move a byte.
+- **Records its tick** (sec. 15.2): every fact it adds is stamped with the tick it was applied on.
+- **Learn-once / idempotent.** Revealing what the guild already knows **adds nothing and still succeeds**
+  -- a known fact keeps its first tick, as with a scan. (This differs on purpose from sec. 6's refused
+  zero `delta`: a zero delta asks for nothing; a repeat reveal asks a real question whose answer is
+  "already known".) Widening an L1 reveal to a full one adds the surface and leaves the planets on their
+  L1 tick.
+- **Reject** (state untouched, each with its own reason): an unknown `guildId`; both targets, or
+  neither; a `systemId` / `planetId` the seed lacks (a bad id is a refusal, never a silent no-op); an
+  `l1` that is not `true` / `false`; and `l1` with a `planetId` (a planet reveal is always its whole
+  surface).
+- **Places freely**, as `grantAsset` / `grantKit` do: any real system or planet, held or not -- there is
+  no unclaimed-only gate (the scan has one) and no cost or duration (it is a steward poke, not a scan).
+  *(Decision checklist: confirm the free placement.)*
+- **No negative form.** The record is known-forever (`exploration-model.md` §3) -- it never shrinks -- so
+  there is no "forget"; a fresh fog state is a fresh guild or galaxy.
+
+Proved in `sim/tests/reveal.test.js` (the three forms, idempotence, every refusal, the tick, the
+economy no-op, and a headless round-trip over the real server).
+
 ## 4. The removal matrix (the four operator intents)
 
 The asset<->venture pair has two entities; a removal can touch each independently. Three combinations
@@ -163,6 +209,20 @@ levers ride `POST /action`. NOTE on naming: the doc's §5 example spelled the cr
 `grant-credits`; the CLI ships it as `adjust-credits` (matching the `adjustCredits` action, and honest
 about the signed delta doing both grant and remove) -- the removal example `remove-asset` is unchanged.
 
+*(⤳ AS-BUILT 14-10-26 -- the fog tooling, two more `tools/admin.js` affordances:)*
+- **`reveal --guild <id> --system <sysId>`** (the whole system), **`--system <sysId> --l1`** (its
+  planets' archetypes), or **`--planet <planetId>`** (one planet's whole surface) -- posts sec. 3.7's
+  `reveal` over `act()`; a refusal exits `1`. The pure flags->action mapping (`revealActionFor`) throws on a
+  missing `--guild`, on both or neither target, and on `--l1` with `--planet`, before anything is posted.
+  It prints what was revealed and what the guild now knows there, read back from the guild's own fogged
+  view (the `POST /action` reply is the god's-eye lens, which carries no record).
+- **`snapshot --guild <id>`** -- reads `GET /snapshot?guild=<id>` (that guild's **fogged** view) instead of
+  the god's-eye `GET /snapshot`; `--json` and `--pick` work on either, so `snapshot --guild G --pick
+  geography.known` dumps what G knows. A guild the galaxy lacks is the route's 404, reported as a one-line
+  error naming the guild (exit `1`). A read, not a lever.
+`reveal` rides the same no-auth `POST /action` as every lever here -- one more entry in the recorded
+Phase-2-auth residual (`exploration-model.md` §7), not a new kind of exposure; no player client surfaces it.
+
 These are ordinary actions in `sim/actions.js` (validate + apply), so they ride the existing
 `POST /action` pipeline and are **journaled and invariant-checked for free** -- the same channel and
 posture as `setSyndicateCommitment` / `setWindowN`. The **operator surface is `tools/admin.js`**: a
@@ -178,7 +238,10 @@ scaffold actions carry). No new endpoint is required; the levers are the actions
   founding leaves it.)
 - **Unknown target** -- a `guildId`, `systemId`, `good`, `assetId`, `ventureId`, or asset `kind` that
   does not exist -> reject-whole. Never mint a placeless or unknown thing.
-- **No-op** -- a zero `delta` is refused (nothing to record); an empty action is refused.
+- **No-op** -- a zero `delta` is refused (nothing to record); an empty action is refused. *(`reveal` is
+  the deliberate exception: a repeat reveal is an **accepted** no-op, learn-once -- sec. 3.7.)*
+- **Reveal target** -- both targets, neither, a system / planet the seed lacks, or `l1` on a planet ->
+  reject-whole, naming which (sec. 3.7). Never a silent no-op on a bad id.
 - **Determinism / replay** -- every lever is a journaled action recording its tick, so a
   replay-from-genesis reproduces it (invariant 9). A raw state-file edit does not -- which is *why*
   these are actions, not an `/admin` file poke.
@@ -204,3 +267,6 @@ scaffold actions carry). No new endpoint is required; the levers are the actions
   in-world events, but it is not this slice.
 - **Contraband fuel, per-role auth** -- the fuel lever targets the legal hoard only; Phase-3 auth is the
   real operator/player fence. Both flagged, neither built.
+- **A whole-map reveal (`--all`)** -- revealing every system would put all ~5,290 planets into one
+  guild's view; left as a possible later add (decision checklist), not built with sec. 3.7.
+- **Forgetting** -- the record is known-forever, so `reveal` has no negative form (sec. 3.7).
