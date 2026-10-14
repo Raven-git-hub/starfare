@@ -49,7 +49,8 @@ deploy); only the live state persists in the volume. Change: the **active galaxy
 4. **Reload the seed index** so `sim/seed.js` (and the `/galaxy` buffer) serve the NEW seed. This must
    happen **before** step 5. *(⤳ 09-10-26: the `/board` buffer — the L0 board and its ETag,
    `docs/exploration-model.md` §4 ruling 12 — is rebuilt in the same step, so a new galaxy is never
-   served an old board.)*
+   served an old board.)* *(⤳ 14-10-26: the `/galaxy` buffer is gone — ruling 12 slice 3c retired the
+   route that served the whole seed; the `/board` buffer is the one rebuilt here.)*
 5. **Build a fresh zero-state on the new seed** (`createZeroState`) — which re-plants the Syndicate's
    claims (`getCitadel()` + one waystation claim per `getOutposts()` entry) on **this** galaxy's
    landmarks. The waystations/Citadel are part of the generated geometry; the zero-state re-establishes
@@ -116,7 +117,8 @@ The engine/server half is landed; the admin-panel UI is Slice B. What exists now
 - `sim/server.js` holds the two states: **NO-GALAXY** is `liveState === null`, and every route answers
   `{state:'no-galaxy', reason}` — `/galaxy`, `/starters`, `/system/:id` as 404; `/snapshot` as a 200
   marker the client can read; `/tick`, `/action`, `/reset`, `/autotick/*` as a 409 refusal. Nothing
-  throws. With a boot clock configured but no galaxy the clock is **ARMED**, not started, and starts on
+  throws. *(⤳ 14-10-26: `/board` answers the no-galaxy 404 in `/galaxy`'s place — `/galaxy` is retired,
+  ruling 12 slice 3c, and is an unknown route either way.)* With a boot clock configured but no galaxy the clock is **ARMED**, not started, and starts on
   Create.
 - **`POST /admin/galaxy/new {seed?}`** and **`POST /admin/galaxy/delete`**, open at the server exactly
   as `/reset` is (Cloudflare Access is the gate; real role auth stays Phase 3), namespaced under

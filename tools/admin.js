@@ -834,11 +834,14 @@ async function cmdSnapshot(base, flags) {
   row('ventures', (snap.ventures || []).length);
 }
 
+// Each starter is { id, name, ring } — GET /starters no longer names a starter's Terran homeworld (an L1
+// fact; ruling 12 slice 3c, docs/exploration-model.md §7). An operator who needs it reads the system's
+// full seed layout at GET /system/:id, which still carries `terranHomeworldId`.
 async function cmdStarters(base) {
   const out = await getJson(base, '/starters');
   row('starters', out.count);
   for (const s of out.starters || []) {
-    log(`  ${s.id}  ${String(s.ring || '?').padEnd(6)} ${s.name}  (homeworld ${s.terranHomeworldId})`);
+    log(`  ${s.id}  ${String(s.ring || '?').padEnd(6)} ${s.name}`);
   }
 }
 

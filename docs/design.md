@@ -281,13 +281,22 @@ guild knows its **home system fully + L0 everywhere**, nothing else.
 > "Surveying · <time left>" and the map turns a radar on that system. The result appears when the job ends, with
 > no notice yet — the scan-complete / voided notice is deferred until the engine emits an event for it.
 > `GET /galaxy` still serves the whole seed — the leak closes in slice 3c.)*
+> *(⤳ 14-10-26, roadmap 2.5 — the **client flip, slice 3c** (the leak closure; `docs/exploration-model.md` §7):
+> **the `/galaxy` leak is closed on every path the player's client uses.** `GET /galaxy`, which handed the whole
+> seed to anyone who asked, is retired (a 404); the home-system picker's `GET /starters` now names each starter
+> only by id, name and ring — no longer which of its planets is Terran; and the Production Console embedded in
+> the client reads the player's own fogged view, not the god's-eye one. What stays open is the dev rig's
+> no-auth operator surface — the god's-eye `GET /snapshot`, `GET /snapshot?guild=` for any guild,
+> `GET /system/:id`'s full layout, and `POST /action`'s god's-eye reply — recorded as a deliberate decision:
+> each closes only when Phase-2 authentication binds a request to its guild.)*
 
 > **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
 > 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all
 > the rulings, the Deep Scan Array (discovery wired, monitoring design-ahead), founding state, the
 > per-guild snapshot architecture (the `buildSnapshot(state, guildId)` keystone + the `/galaxy`
-> leak noted-and-deferred), and the "can't claim unexplored" coupling the Prefecture slice will
-> enforce. This section holds the narrative and the headline rulings; that file is the model.
+> leak noted-and-deferred *(⤳ 14-10-26: closed by slice 3c; its no-auth residual waits for Phase-2
+> auth)*), and the "can't claim unexplored" coupling the Prefecture slice will enforce. This section
+> holds the narrative and the headline rulings; that file is the model.
 
 ### Toll Gates & Toll Paths
 

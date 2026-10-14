@@ -50,6 +50,12 @@ OPEN** until 3c. AS-BUILT notes in §7 and §10.)*
 job reads "Surveying · <eta>" on its tag / tab and turns the map's radar on its system. The **completion notice is
 DEFERRED** (ruled 13-10-26, the design room) — it needs an engine event the scan does not emit yet. 3c (the leak
 closure) remains: the `/galaxy` leak is **still OPEN**. AS-BUILT note in §10.)*
+*(⤳ 14-10-26 — **3c, the leak closure, is BUILT** (roadmap 2.5; server routes + the embedded console's poll; no
+engine, state, view, board or golden change): `GET /galaxy` is **retired** (a 404), `GET /starters` returns
+`{ id, name, ring }` (no `terranHomeworldId`), and the embedded Production Console polls the player's own fogged
+view. **The `/galaxy` leak is CLOSED** on every path the player client uses; the dev rig's no-auth operator/debug
+surface (plain `/snapshot`, `/snapshot?guild=<any>`, `GET /system/:id`, `POST /action`'s reply) is the recorded
+Phase-2-auth residual. **Ruling 12 is fully built.** AS-BUILT note in §7.)*
 
 ## 0. The through-line
 
@@ -324,7 +330,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     failure mode (c): an absent `claims` row reads as *unclaimed* (UNCLAIMED or SURVEY SYSTEM, never
     "unknown"), and the client reads no `planetCount` — a body count is the board's `planets.length`. 3b (the
     survey flow) and 3c (the `/galaxy` cutover, the leak's closure, `/starters`) remain.)* *(⤳ 13-10-26: **3b**,
-    the survey flow, is BUILT — §10's AS-BUILT note (its completion notice deferred). 3c remains.)*
+    the survey flow, is BUILT — §10's AS-BUILT note (its completion notice deferred). 3c remains.)* *(⤳ 14-10-26:
+    **3c**, the leak closure, is BUILT — §7's slice-3c AS-BUILT note. Ruling 12 is fully built.)*
 
     > **⤳ SEQUENCING, RULED 09-10-26 (the design room) — refines the build impact above.** Read literally,
     > slice (2) would make `GET /galaxy` stop serving the seed. That would break the running client, which
@@ -332,7 +339,7 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     > **slice (2) serves the board at a NEW route, `GET /board`, and leaves `GET /galaxy` exactly as it
     > was** (the whole seed). The **`/galaxy` cutover and the leak's closure move to slice (3)**, the client
     > flip — the moment the client stops needing the seed. Until then the `/galaxy` leak stays open,
-    > knowingly. (§7's `/galaxy` note says the same.)
+    > knowingly. (§7's `/galaxy` note says the same.) *(⤳ 14-10-26: closed — slice 3c retired the route.)*
     >
     > **⤳ AS-BUILT 09-10-26 — slice (2), the L0-board engine slice (roadmap 2.5).** Engine + server; no
     > client, and nothing live reads either half yet. **No new number.**
@@ -392,7 +399,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     > config). **Out, and why:** a planet's `archetype` / `resourceNodes` / `settlementSlots` /
     > resource types (FOGGED — L1/L2, reached through `geography.known`); `terranHomeworldId` (it
     > names which planet is Terran — an L1 fact, a leak — so the home-picker reads it from the
-    > hardened `GET /starters`, not the board); `starterEligible` (only the picker needs it —
+    > hardened `GET /starters`, not the board *(⤳ 14-10-26: the picker never read it — slice 3c hardened
+    > `/starters` by dropping it, §7)*); `starterEligible` (only the picker needs it —
     > `/starters`); and the seed's `validation` block (a gen-time self-check, unread). The leak-free
     > guarantee is unchanged and widened: the served board holds none of the fogged fields AND no
     > `terranHomeworldId`, asserted on the JSON text. This is the board's TARGET shape and supersedes
@@ -405,7 +413,8 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     > expects, minus planet detail) + `known` + `claims`, drops the `/galaxy` download, closing the leak.
     > **Not built (slice (3)):** the `/galaxy` cutover and the leak's closure, `GET /starters`' hardening
     > (ruled into "the same slice" as `/galaxy`'s — so it follows `/galaxy` to slice (3); flagged on the
-    > roadmap's decision checklist), and every client change.
+    > roadmap's decision checklist), and every client change. *(⤳ 14-10-26: all built — every client change by
+    > slices 3a / 3b, the `/galaxy` cutover, the leak's closure and `/starters` by 3c.)*
     >
     > **⤳ AS-BUILT 13-10-26 — the board-widening engine slice (roadmap 2.5).** Engine + server; no client,
     > no `/galaxy` or `/starters` change, no per-guild view change, and nothing live reads `/board` yet.
@@ -867,8 +876,9 @@ stands on.
   closure are the client flip, slice 3**, because the running client still reads the seed from `/galaxy`
   until then. **The `/galaxy` leak is therefore still OPEN.** `GET /starters` is untouched too; its
   hardening was ruled into "the same slice" as `/galaxy`'s, so it follows `/galaxy` to slice 3 —
-  flagged on the roadmap's decision checklist to confirm.)*
-  *(⤳ DESIGN-AHEAD 13-10-26 — §4 ruling 12 slice 3c, the leak closure (the design room's “Option
+  flagged on the roadmap's decision checklist to confirm.)* *(⤳ 14-10-26: CLOSED by slice 3c, and
+  `/starters` moved with it — the checklist item is closed; the AS-BUILT note below.)*
+  *(⤳ DESIGN-AHEAD 13-10-26, **AS-BUILT 14-10-26** — §4 ruling 12 slice 3c, the leak closure (the design room's “Option
   1”, 13-10-26): the client flip's last slice. The dev rig has **no auth**, so the leak splits in two.
   **Closed by 3c — every path the PLAYER CLIENT uses:** **`GET /galaxy` is retired** (nothing reads it
   since the client flip moved the map to `/board`, §10 — so the full-seed route is removed, the
@@ -897,15 +907,49 @@ stands on.
   player client fetches or displays fogged-away data; the raw endpoints above (plain `/snapshot`,
   `GET /system/:id`, the `POST /action` reply envelope) still carry god's-eye / full-seed on the wire in
   the no-auth rig — received by some callers, never displayed — and wait for auth together. Built by
-  slice 3c.)*
+  slice 3c — the AS-BUILT note below; the residual it records stands.)*
   *(⤳ 13-10-26: the board at `GET /board` is now the widened object — §4 ruling 12's 13-10-26 note, AS-BUILT
   — so it carries the static, unfogged blocks the ruling found the client reading off `/galaxy` (`galaxyParams`,
   the waystations, the Citadel, each `claimRadius`, the seed number, `stats`). `GET /galaxy` and `GET /starters`
-  are still untouched: **the leak is still OPEN** until slice 3.)*
+  are still untouched: **the leak is still OPEN** until slice 3.)* *(⤳ 14-10-26: CLOSED by 3c — below.)*
   *(⤳ 13-10-26 — the client flip, slice 3a: the client **no longer reads** `GET /galaxy` — it renders only
   from the board and `geography.known` — but the route is unchanged and still serves the whole seed to anyone
   who asks, and `GET /starters` still names every starter's `terranHomeworldId`. **The leak is still OPEN**;
-  its closure is slice 3c.)*
+  its closure is slice 3c.)* *(⤳ 14-10-26: CLOSED by 3c — the next note.)*
+  *(⤳ AS-BUILT 14-10-26 — slice 3c, the leak closure (roadmap 2.5; `sim/server.js`, `client/console.html`,
+  `tools/admin.js`; no engine, state, view, board or golden change). Built exactly the split the slice-3c note
+  above records. **No new number.** **The `/galaxy` leak is CLOSED on every path the player client uses.**
+  - **`GET /galaxy` is retired.** Its handler is removed from `sim/server.js`, and with it the full-seed buffer
+    it served (`seedJsonBuffer`) — nothing else needed its bytes. The board had used that buffer only as its
+    "is there a galaxy?" flag; that is now an explicit `refreshBoard(present)` argument (handed no seed,
+    `sim/seed.js` falls back to the committed one, so the index alone cannot say "none"). The path falls
+    through to the server's unknown-route answer, **`404 { error: 'no route for GET /galaxy' }`** — not
+    `NO_GALAXY`: the route is gone, not empty. Nothing in the repo still read it; the tests that used it as
+    "the seed the server is serving" now read the seed's own file (the committed `data/seed.json`, or a created
+    galaxy's `seed.json` in the volume — the bytes the server loaded) or `/board`.
+  - **`GET /starters` returns `{ id, name, ring }`** per starter. Cut **at the route**: `getStarterSystems()`
+    still carries `terranHomeworldId` (the engine and its tests read it); the wire does not. The home picker
+    reads only those three; `tools/admin.js starters` drops its "(homeworld …)" token — an operator who needs
+    the homeworld reads `GET /system/:id`, which is part of the residual.
+  - **The embedded Production Console polls per-guild.** `client/console.html`'s GET poll goes through
+    `snapshotPath()`: embedded with a guild (`embed=1&guild=<id>`) it reads **`GET /snapshot?guild=<id>`**;
+    standalone (the operator's console) it keeps plain `/snapshot`. The guild is the one the query string
+    **pinned** (`pinnedGuildId`, beside the existing `pinnedSysId`), not the on-page guild picker's, so nothing
+    on the page can point the poll at a rival's view. `sendAction`'s render of the `POST /action` reply and the
+    operator drives (`/tick`, `/reset` — hidden when embedded) are unchanged.
+  - **The residual is unchanged and still recorded** (the slice-3c note above): plain `/snapshot`,
+    `/snapshot?guild=<any>`, `GET /system/:id`, `POST /action`'s god's-eye reply, and the client's connect-time
+    discovery read and founding's free-id pick — each closable only by Phase-2 authentication.
+  - **Proved** (`tests/server.test.js`, the closure tripwires): `GET /galaxy` is the unknown-route 404 while
+    `/board` serves; every `/starters` row is exactly `['id', 'name', 'ring']` and the served bytes hold no
+    `terranHomeworldId`; the console's own `snapshotPath()`, run, gives `?guild=<pinned id>` embedded (encoded,
+    and the picker's guild ignored) and plain `/snapshot` standalone or with no guild; `GET /` names no
+    `'/galaxy'`. Each goes red against the pre-slice server and console. Headless (Playwright against a live
+    `node sim/server.js`, the harness outside the repo as 3a's is): the embedded console's network log is
+    `/snapshot?guild=<me>` only; with one guild its markup is byte-identical to the same console fed the plain
+    poll; with a rival seated it still polls the player's view and draws only the player's system, and picking
+    the rival in its picker does not move the poll; no frame of the player client requests `/galaxy`; zero
+    console errors.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 
@@ -1017,7 +1061,8 @@ manifests, never on the map. *(⤳ AS-BUILT 13-10-26: the ownership colour by sl
 the two notes below.)*
 
 > **⤳ DESIGN-AHEAD 09-10-26 (§4 ruling 12 — the client flip, slice 3) — AS-BUILT 13-10-26 for slices 3a
-> and 3b (the two notes below this one); slice 3c is still to come.** The
+> and 3b (the two notes below this one); slice 3c AS-BUILT 14-10-26 (§7's slice-3c note — the leak closure
+> moves server routes and the embedded console's poll, not this render).** The
 > per-level render above no longer reads a full-seed download (`window.__galaxy`). Its inputs
 > become the **L0 board** (the orbital layout — which planet tabs exist, in what order, for
 > every system) and the **polled `geography.known`** (the archetype that lifts a tab to L1,
@@ -1030,7 +1075,8 @@ the two notes below.)*
 > *(⤳ 09-10-26: both inputs now exist server-side — the board at **`GET /board`** (ETag'd; slice 2) and
 > the slim per-guild view at `GET /snapshot?guild=<id>` (`geography = { known }`, controllers in `claims`).
 > Per the design room's sequencing (§4 ruling 12), the client flip is also where **`GET /galaxy` stops
-> serving the seed** — the step that closes the `/galaxy` leak.)*
+> serving the seed** — the step that closes the `/galaxy` leak.)* *(⤳ 14-10-26: done — slice 3c retired
+> `GET /galaxy`; §7's slice-3c AS-BUILT note.)*
 >
 > **⤳ AS-BUILT 13-10-26 — the client flip, slice 3a: the fog flip, read-only (roadmap 2.5; client only —
 > `client/game.html`; no engine, server, view, board or golden change).** The render above, built, with its
@@ -1084,6 +1130,9 @@ the two notes below.)*
 >   per-guild poll; the connect-time god's-eye read and `POST /action`'s god's-eye reply are the
 >   Phase-2-auth residual (with plain `/snapshot` and `/snapshot?guild=<any>`), not 3c. See the
 >   slice-3c note in §7.)*
+>   *(⤳ AS-BUILT 14-10-26: **3c is BUILT** — `GET /galaxy` retired, `GET /starters` stripped to `{ id, name,
+>   ring }`, the embedded console on the per-guild poll (§7's slice-3c AS-BUILT note). **The `/galaxy` leak is
+>   CLOSED** on every path the player client uses; the residual above waits for Phase-2 auth.)*
 > - **Proved** headless (Playwright) against a live `node sim/server.js`, the player founded through the connect
 >   screen and a rival, a bot and real Deep Scan Array surveys seated through `tools/admin.js` and `POST /action`
 >   — 56 checks: every level state (L0, L1, an L1/L2 mix lifted live on the open screen, own / rival / bot held

@@ -50,22 +50,21 @@
 //   GET  /console        -> the player-facing Production Console (client/console.html)
 //   GET  /inspect        -> the OPERATOR watch-only panel (client/inspect.html): a
 //                           live poll of the god's-eye snapshot, zero controls
-//   GET  /galaxy         -> the committed seed geometry (data/seed.json, served
-//                           verbatim) — the one full-galaxy read the client needs
 //   GET  /board          -> the galaxy's static public BOARD (sim/seed.js getBoard): the seed
 //                           with its fogged planet detail and Terran pointer taken out —
 //                           { seed, galaxyParams, citadel, outposts, stats, systems: [{ id,
 //                           name, coords, ring, claimRadius, planets: [{ id, order }] }] } —
-//                           the leak-free map the client flip will read instead of /galaxy
+//                           the leak-free map the player client reads once at connect
 //                           (docs/exploration-model.md §4 ruling 12). ETag'd: a matching
-//                           If-None-Match gets a 304
+//                           If-None-Match gets a 304. (GET /galaxy, which served the whole
+//                           seed verbatim, is RETIRED — ruling 12 slice 3c; it is a 404 now.)
 //   GET  /health         -> liveness JSON + a one-line summary + autotick status
-//   GET  /snapshot       -> buildSnapshot(state) (the debug lens' data)
-//   GET  /snapshot?guild=<id> -> buildSnapshot(state, id): that guild's FOGGED view (roadmap 2.5 (a),
-//                           docs/exploration-model.md §7) — headless proof only; the client wiring
-//                           is a later slice. 404 for a guild that does not exist.
-//   GET  /starters       -> the seed's starter-eligible systems (the home-system
-//                           picker's source; static, derived from the seed only)
+//   GET  /snapshot       -> buildSnapshot(state) (the god's-eye lens: operator + debug pages, CLI)
+//   GET  /snapshot?guild=<id> -> buildSnapshot(state, id): that guild's FOGGED view (roadmap 2.5,
+//                           docs/exploration-model.md §7) — what the player client and its embedded
+//                           Production Console poll. 404 for a guild that does not exist.
+//   GET  /starters       -> the seed's starter-eligible systems as { id, name, ring } (the
+//                           home-system picker's source; static, derived from the seed only)
 //   GET  /system/:id     -> one system's static layout: planets, each with its
 //                           resource nodes + settlement slots (seed-only; the UI
 //                           composes live occupancy from the snapshot on top)
@@ -168,27 +167,22 @@ const CONSOLE_HTML = join(__dirname, '..', 'client', 'console.html');
 // Access and real per-viewer filtering is deferred (client-wiring.md §7).
 const INSPECT_HTML = join(__dirname, '..', 'client', 'inspect.html');
 
-// The ACTIVE galaxy's geometry, served verbatim at GET /galaxy. Held as one
-// pre-serialised buffer because it is ~5.8 MB, static for the galaxy's whole life,
-// and re-encoding it per hit would be pure waste. These are the SAME bytes
-// sim/seed.js indexes, so the map and the per-system detail screens can never
-// disagree on geometry (client-wiring.md §6). Public identity data — the galaxy
-// every player sees — NOT god's-eye, so serving it openly is fine.
+// setActiveSeed(seedObj) — make `seedObj` the ACTIVE galaxy (boot restore, Create Galaxy), or none at all
+// (null: an empty volume, Delete). Swaps the engine's index and rebuilds the board from it.
 //
-// It is rebuilt whenever the active seed changes (boot restore, Create Galaxy) and
-// set to null on Delete: null IS the NO-GALAXY answer for this route.
-let seedJsonBuffer = null;
-const BAKED_SEED_PATH = join(__dirname, '..', 'data', 'seed.json');
+// ⤳ ruling 12 slice 3c (docs/exploration-model.md §7): there is no longer a full-seed buffer beside the
+// board. It existed only to serve GET /galaxy the whole seed verbatim — the Option-B leak — and that
+// route is retired, so nothing on the wire hands out the seed's planet detail in bulk any more.
 function setActiveSeed(seedObj) {
   setSeed(seedObj);                                   // swap the engine's index
-  seedJsonBuffer = seedObj ? Buffer.from(JSON.stringify(seedObj)) : null;
-  refreshBoard();
+  refreshBoard(Boolean(seedObj));
 }
 
 // The ACTIVE galaxy's BOARD, served at GET /board (docs/exploration-model.md §4 ruling 12): the static,
 // leak-free half of L0 — every system's position + orbital layout — plus the galaxy's never-fogged config
-// (seed number, galaxyParams, Citadel, waystations, stats), identical for every viewer. Pre-serialised
-// for the same reason as the seed above: it is static for the galaxy's whole life.
+// (seed number, galaxyParams, Citadel, waystations, stats), identical for every viewer. Held as one
+// pre-serialised buffer because it is static for the galaxy's whole life, so re-encoding it per hit
+// would be pure waste.
 //
 // `boardEtag` names those exact bytes, so a client that already holds them gets a 304 instead of the
 // board again. It is the galaxy's seed number (readable in a browser's network tab) plus a hash of the
@@ -196,14 +190,15 @@ function setActiveSeed(seedObj) {
 // generator stays the same, and a regenerated data/seed.json — or a galaxy re-created under a changed
 // generator — could reuse a number with a different layout. Same bytes ⇒ same tag; any change ⇒ a new one.
 //
-// refreshBoard() rebuilds the buffer and its tag from whatever seed the index now holds. It is called
-// wherever the seed buffer changes (setActiveSeed, and the no-volume boot), so a new galaxy and a delete
-// refresh the board for free — and it is null exactly when the seed buffer is, so both routes agree on
-// NO GALAXY.
+// refreshBoard(present) rebuilds the buffer and its tag from whatever seed the index now holds. It is
+// called wherever the active seed changes (setActiveSeed, and the no-volume boot), so a new galaxy and a
+// delete refresh the board for free. `present` says whether there IS a galaxy: false is NO GALAXY, and
+// the board is null with it. It has to be said, not looked up — handed no seed, sim/seed.js falls back to
+// the committed one, so the index alone cannot tell "no galaxy" from "the committed galaxy".
 let boardJsonBuffer = null;
 let boardEtag = null;
-function refreshBoard() {
-  if (!seedJsonBuffer) {
+function refreshBoard(present) {
+  if (!present) {
     boardJsonBuffer = null;
     boardEtag = null;
     return;
@@ -255,17 +250,15 @@ let liveState = null;
 function bootLiveState() {
   if (!persistDir) {
     // No volume ⇒ no lifecycle: the committed data/seed.json IS the galaxy, exactly
-    // as before. sim/seed.js falls back to it for the index; the buffer is the file's
-    // own bytes, so /galaxy still serves the committed seed verbatim.
+    // as before. sim/seed.js falls back to it for the index when handed none.
     setSeed(null);
-    seedJsonBuffer = fs.readFileSync(BAKED_SEED_PATH);
-    refreshBoard();                                   // the board of that same committed seed
+    refreshBoard(true);                               // the board of that same committed seed
     return createZeroState();
   }
   const volumeSeed = loadSeed(persistDir);
   if (!volumeSeed) {
     console.log('[galaxy] NO GALAXY — the volume holds no seed; create one at POST /admin/galaxy/new');
-    setActiveSeed(null);                              // /galaxy answers no-galaxy either way
+    setActiveSeed(null);                              // /board answers no-galaxy either way
     return null;
   }
   // ACTIVE: index this galaxy BEFORE restoring, so the restore (and every seed
@@ -574,29 +567,11 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // The committed seed geometry, verbatim. SEED data, not live state — it never
-  // moves on a tick — so it is served from the buffer read at boot, unreshaped and
-  // unfiltered. The client composes live occupancy from the snapshot on top of it,
-  // exactly as it already does for /system/:id.
-  if (method === 'GET' && path === '/galaxy') {
-    // NO GALAXY: say so, rather than hand back a stale or baked geometry the live
-    // state does not correspond to.
-    if (!seedJsonBuffer || !hasGalaxy()) { sendJson(res, 404, NO_GALAXY); return; }
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Cache-Control': NO_CACHE,
-    });
-    res.end(seedJsonBuffer);
-    return;
-  }
-
   // The galaxy's static public BOARD (docs/exploration-model.md §4 ruling 12) — position and orbital layout
   // for every system plus the galaxy's public config, nothing a guild could be fogged from. Served from the
-  // buffer refreshBoard() built.
-  // Nothing reads it yet: the client still loads /galaxy until the client flip (ruling 12, slice 3).
+  // buffer refreshBoard() built. The player client reads it once at connect for the map's whole geometry
+  // (slice 3a). It replaced GET /galaxy, the whole seed served verbatim, which slice 3c RETIRED: that path
+  // now falls through to the unknown-route 404 at the bottom of this handler.
   //
   // "Cacheable": the response carries an ETag, and a client that sends it back in If-None-Match gets a
   // 304 with no body. It still says `no-cache` (revalidate before every use) rather than a max-age, so a
@@ -652,11 +627,12 @@ async function handleRequest(req, res) {
     // A marker the client can read, not a crash and not an empty snapshot that
     // would look like a galaxy with nothing in it.
     if (!hasGalaxy()) { sendJson(res, 200, NO_GALAXY); return; }
-    // THE PER-GUILD LENS (roadmap 2.5 (a), docs/exploration-model.md §7): `?guild=<id>` asks for that
-    // guild's fogged view instead of the god's-eye one. Absent = the god's-eye lens, unchanged — the
-    // operator, /inspect and every existing caller send no query. This is the HEADLESS proof seam
-    // only: it is no auth (the dev rig already lets a client pick its own guild — the deferred
-    // backend hardening, §7, alongside the /galaxy leak), and the client wiring is a later slice.
+    // THE PER-GUILD LENS (roadmap 2.5, docs/exploration-model.md §7): `?guild=<id>` asks for that
+    // guild's fogged view instead of the god's-eye one — what the player client polls once seated, and
+    // its embedded Production Console. Absent = the god's-eye lens, unchanged — the operator pages,
+    // /inspect, the standalone console and the CLI send no query. There is NO AUTH here: any caller may
+    // name any guild, and plain /snapshot stays god's-eye. Both are the recorded Phase-2-auth residual
+    // (§7's slice-3c note) — closable only once real authentication binds a request to its guild.
     const guildId = new URL(req.url || '/', 'http://localhost').searchParams.get('guild');
     if (guildId !== null) {
       const state = getState();
@@ -677,9 +653,15 @@ async function handleRequest(req, res) {
   // fetch once on page load. It stays here (not in buildSnapshot) precisely
   // because it is state-independent: the snapshot is the moving galaxy; this is
   // the fixed menu of places a guild may start.
+  //
+  // ⤳ ruling 12 slice 3c (docs/exploration-model.md §7): each starter goes out as exactly { id, name,
+  // ring } — what the picker shows. getStarterSystems() also carries `terranHomeworldId`, but which planet
+  // is Terran is an L1 fact, and no caller needs it: a guild founds by `homeSystemId` alone and the engine
+  // resolves the homeworld itself (§6). The cut is made HERE, at the wire, because the wire was the leak;
+  // the seed selector (and its tests) keep the field.
   if (method === 'GET' && path === '/starters') {
     if (!hasGalaxy()) { sendJson(res, 404, NO_GALAXY); return; }
-    const starters = getStarterSystems();
+    const starters = getStarterSystems().map((s) => ({ id: s.id, name: s.name, ring: s.ring }));
     sendJson(res, 200, { starters, count: starters.length });
     return;
   }
@@ -929,7 +911,7 @@ async function handleRequest(req, res) {
       autotickLastError = null;
       const seedObj = generateGalaxySeed(seedNumber);    // 2. generate
       saveSeed(seedObj, persistDir);                     // 3. write it to the volume
-      setActiveSeed(seedObj);                            // 4. reload the index + /galaxy and /board buffers
+      setActiveSeed(seedObj);                            // 4. reload the index + the /board buffer
       // 5. THE ONE WALL-CLOCK READ IN THE WHOLE SYSTEM (docs/cycle-and-calendar.md §2).
       //    It happens here, at the operator seam, exactly like STARFARE_TICK_MS — never
       //    in advance/tick/resolveProduction, which read only integers already in state.

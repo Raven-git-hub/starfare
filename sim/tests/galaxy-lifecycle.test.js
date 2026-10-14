@@ -91,18 +91,19 @@ test('POST /admin/galaxy/new creates a galaxy: active, on the new seed, at tick 
     assert.equal(health.body.seed, 12345);
     assert.equal(health.body.autotick.running, true, 'the galaxy turns from creation, with no guilds');
 
-    // /galaxy now serves THIS seed's geometry.
-    const galaxy = await get(port, '/galaxy');
-    assert.equal(galaxy.status, 200);
-    assert.equal(galaxy.body.seed, 12345);
-    assert.ok(galaxy.body.systems.length > 0);
+    // /board now serves THIS seed's map. (GET /galaxy, which served the whole seed,
+    // is retired — docs/exploration-model.md §4 ruling 12, slice 3c.)
+    const board = await get(port, '/board');
+    assert.equal(board.status, 200);
+    assert.equal(board.body.seed, 12345);
+    assert.ok(board.body.systems.length > 0);
 
     // The zero-state was rebuilt on the NEW seed: the Syndicate's claims are this
     // galaxy's Citadel + one per outpost, not the previous galaxy's.
     const snap = await get(port, '/snapshot');
     assert.equal(snap.body.tick >= 0, true);
     assert.equal(snap.body.guilds.length, 0);
-    assert.equal(snap.body.claims.length, 1 + galaxy.body.outposts.length,
+    assert.equal(snap.body.claims.length, 1 + board.body.outposts.length,
       'Syndicate claims = the Citadel + one waystation per outpost of THIS seed');
     assert.ok(snap.body.claims.every((c) => c.ownerGuildId === 'syndicate'));
 
@@ -133,14 +134,20 @@ test('the same seed number makes the same galaxy (twice, in-process and over two
     try {
       await waitForHealth(port);
       await post(port, '/admin/galaxy/new', { seed: 777 });
-      runs.push(JSON.stringify((await get(port, '/galaxy')).body));
+      // The whole geometry is the seed the server wrote to its volume and loaded (no route serves
+      // it any more — GET /galaxy is retired, ruling 12 slice 3c); the map is what /board serves.
+      runs.push({
+        seed: fs.readFileSync(path.join(dir, 'seed.json'), 'utf8'),
+        board: JSON.stringify((await get(port, '/board')).body),
+      });
     } finally {
       child.kill('SIGKILL');
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
-  assert.equal(runs[0], runs[1], 'two servers, same number, byte-identical geometry');
-  assert.equal(runs[0], JSON.stringify(a), 'and it is what the generator produces');
+  assert.equal(runs[0].seed, runs[1].seed, 'two servers, same number, byte-identical geometry');
+  assert.equal(runs[0].seed, JSON.stringify(a), 'and it is what the generator produces');
+  assert.equal(runs[0].board, runs[1].board, 'and both serve the same board');
 });
 
 // --- 3. A randomised seed --------------------------------------------------
@@ -157,7 +164,7 @@ test('Create with no seed randomises one, and reports it', async () => {
     assert.ok(created.body.seed > 0);
     const health = await get(port, '/health');
     assert.equal(health.body.seed, created.body.seed, 'and /health names the same galaxy');
-    assert.equal((await get(port, '/galaxy')).body.seed, created.body.seed);
+    assert.equal((await get(port, '/board')).body.seed, created.body.seed);
     // A bad seed is refused rather than silently randomised over.
     const bad = await post(port, '/admin/galaxy/new', { seed: 'nine' });
     assert.equal(bad.status, 400);
@@ -189,9 +196,9 @@ test('POST /admin/galaxy/delete returns the server to NO GALAXY, and nothing cra
     assert.equal(health.body.autotick.running, false, 'the clock stops with the galaxy');
 
     // Every route answers the no-galaxy state; none throws a 500.
-    const galaxy = await get(port, '/galaxy');
-    assert.equal(galaxy.status, 404);
-    assert.equal(galaxy.body.state, 'no-galaxy');
+    const board = await get(port, '/board');
+    assert.equal(board.status, 404);
+    assert.equal(board.body.state, 'no-galaxy');
     const snap = await get(port, '/snapshot');
     assert.equal(snap.status, 200);
     assert.equal(snap.body.state, 'no-galaxy');
@@ -278,7 +285,7 @@ test('an empty volume boots to NO GALAXY and every endpoint stays up', async () 
       const res = await fetch(`http://127.0.0.1:${port}${p}`);
       assert.equal(res.status, 200, `${p} still serves in NO GALAXY`);
     }
-    assert.equal((await get(port, '/galaxy')).status, 404);
+    assert.equal((await get(port, '/board')).status, 404);
     assert.equal((await get(port, '/snapshot')).body.state, 'no-galaxy');
   } finally {
     child.kill('SIGKILL');
@@ -365,7 +372,7 @@ test('the admin endpoints refuse when there is no persist volume', async () => {
       assert.match(r.body.error, /persist volume/);
     }
     // …and the dev path still serves the committed galaxy, untouched.
-    const g = await get(port, '/galaxy');
+    const g = await get(port, '/board');
     assert.equal(g.status, 200);
     assert.equal(g.body.seed, 7331);
   } finally {
