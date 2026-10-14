@@ -6477,10 +6477,12 @@ document.addEventListener('keydown', function(e){
 });
 
 // The Production Console, embedded for a system the player controls. It is the
-// SAME page the server serves at /console — same origin, so it reads /snapshot and
-// POSTs setProductionProfile against this galaxy directly. The query string carries
-// the focus (which guild, which system) so the console opens on the system the
-// player drilled into rather than defaulting to their home.
+// SAME page the server serves at /console — same origin, so it reads this guild's
+// fogged /snapshot?guild=<id> and POSTs setProductionProfile against this galaxy
+// directly. The query string carries the focus (which guild, which system) so the
+// console opens on the system the player drilled into rather than defaulting to
+// their home. The guild is pinned, too: the console polls that guild's view and its
+// guild picker offers no other.
 function mountConsole(show){
   var main = document.querySelector('#detail-screen .main'); if(!main) return;
   var host = document.getElementById('consoleHost');
@@ -8029,7 +8031,8 @@ async function shellConnectInit(){
   var snap;
   try {
     // The connect-time discovery read stays on plain /snapshot: it is how the page learns
-    // whether a guild is seated, and which. (Hardening this dev-rig read is slice 3c.)
+    // whether a guild is seated, and which. (Hardening this dev-rig read waits for Phase-2
+    // auth — docs/exploration-model.md §7.)
     snap = await apiGet('/snapshot');
     // The map's geometry is the L0 BOARD (exploration-model.md §4 ruling 12): every system's
     // position and orbital layout plus the galaxy's public config, and no planet detail. The
