@@ -2444,6 +2444,36 @@ test('THE LEAK CLOSURE: the EMBEDDED console polls its own guild\'s fogged view;
   assert.equal(pathFor({ embedded: true, pinnedGuildId: null }), '/snapshot', 'no guild is known, so none can be asked for');
 });
 
+// ⤳ the slice-3c follow-up (docs/roadmap.md 2.5, the slice-3c items, item 1 — RULED). The poll was pinned,
+// but the picker still listed every guild, so choosing a rival made the console act AS that rival. The
+// embedded picker now offers the player's own guild alone. A rival creeping back onto it fails here.
+test('THE PICKER SCOPE: the EMBEDDED console offers only the player\'s own guild; standalone offers every guild', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  // The picker's options AND its fallback both read the offered list, so neither can land on a rival.
+  assert.match(html, /var offered = pickerGuilds\(guilds, STATE\);/);
+  assert.match(html, /guildSel\.innerHTML = offered\.map\(/);
+  assert.match(html, /if \(!offered\.some\(function\(g\)\{ return g\.id === STATE\.guildId; \}\)\) STATE\.guildId = offered\.length \? offered\[0\]\.id : null;/);
+  // Run the page's own pickerGuilds against each framing.
+  const src = html.match(/\nfunction pickerGuilds\(guilds, state\)\{[\s\S]*?\n\}\n/);
+  assert.ok(src, 'pickerGuilds is found');
+  const offeredIds = (guilds, state) => {
+    const page = {};
+    vm.runInNewContext(src[0], page);
+    // Array.from copies the ids into this realm, so deepEqual compares plain arrays.
+    return Array.from(page.pickerGuilds(guilds, state), (g) => g.id);
+  };
+  // The fogged poll lists every guild (names are public), the player's own among rivals.
+  const guilds = [{ id: 'rival-a', name: 'Rival A' }, { id: 'player-guild', name: 'Mine' }, { id: 'rival-b', name: 'Rival B' }];
+  assert.deepEqual(offeredIds(guilds, { embedded: true, pinnedGuildId: 'player-guild' }), ['player-guild']);
+  // Only the PINNED guild counts — a rival in STATE.guildId (the picker's focus) is not offered.
+  assert.deepEqual(offeredIds(guilds, { embedded: true, pinnedGuildId: 'player-guild', guildId: 'rival-a' }), ['player-guild']);
+  assert.deepEqual(offeredIds(guilds, { embedded: true, pinnedGuildId: 'gone' }), [], 'a pinned guild not in the snapshot offers nothing, not the rivals');
+  assert.deepEqual(offeredIds(guilds, { embedded: false, pinnedGuildId: 'player-guild' }), ['rival-a', 'player-guild', 'rival-b'], 'standalone is the operator console');
+  assert.deepEqual(offeredIds(guilds, { embedded: false, pinnedGuildId: null }), ['rival-a', 'player-guild', 'rival-b']);
+  // Gated exactly as snapshotPath(): embedded with no pinned guild polls plain /snapshot, and offers every guild.
+  assert.deepEqual(offeredIds(guilds, { embedded: true, pinnedGuildId: null }), ['rival-a', 'player-guild', 'rival-b']);
+});
+
 test('GET /inspect serves the operator watcher — and it has NO action controls', async () => {
   const res = await fetch(base + '/inspect');
   assert.equal(res.status, 200);

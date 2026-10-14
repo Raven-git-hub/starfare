@@ -976,6 +976,17 @@ function snapshotPath(){
     ? '/snapshot?guild=' + encodeURIComponent(STATE.pinnedGuildId)
     : '/snapshot';
 }
+// The guilds the guild picker OFFERS. EMBEDDED it is only the guild the query string pinned — the
+// player's own — so the player client offers no rival to view or act as: STATE.guildId, and with it
+// every action's guildId, can only ever be the player's (docs/roadmap.md 2.5, the slice-3c items, item
+// 1 — RULED). A pinned guild missing from the snapshot offers nothing, never a rival in its place.
+// Gated exactly as snapshotPath() is. STANDALONE it is the operator's console and offers every guild
+// — switching guilds is its job. (A raw POST /action naming any guild still works on the no-auth rig:
+// the Phase-2-auth residual, docs/exploration-model.md §7.)
+function pickerGuilds(guilds, state){
+  if (state.embedded && state.pinnedGuildId) return guilds.filter(function(g){ return g.id === state.pinnedGuildId; });
+  return guilds;
+}
 // GET /snapshot, POST /tick, POST /reset all return a snapshot directly.
 async function refresh(verb, label, path){
   try { var r = await api(verb, verb === 'GET' ? snapshotPath() : path); }
@@ -1296,11 +1307,13 @@ function render(snap){
   STATE.snap = snap;
   STATE.vmap = {}; (snap.ventures || []).forEach(function(v){ STATE.vmap[v.id] = v; });
 
-  // Guild picker: default the first guild; keep the selection if it still exists.
+  // Guild picker: default the first guild; keep the selection if it still exists. Both read the
+  // OFFERED list (pickerGuilds) — embedded, the player's guild alone — so the fallback can't pick a rival.
   var guilds = snap.guilds || [];
+  var offered = pickerGuilds(guilds, STATE);
   var guildSel = document.getElementById('guildSel');
-  guildSel.innerHTML = guilds.map(function(g){ return '<option value="' + esc(g.id) + '">' + esc(g.name || g.id) + '</option>'; }).join('');
-  if (!guilds.some(function(g){ return g.id === STATE.guildId; })) STATE.guildId = guilds.length ? guilds[0].id : null;
+  guildSel.innerHTML = offered.map(function(g){ return '<option value="' + esc(g.id) + '">' + esc(g.name || g.id) + '</option>'; }).join('');
+  if (!offered.some(function(g){ return g.id === STATE.guildId; })) STATE.guildId = offered.length ? offered[0].id : null;
   guildSel.value = STATE.guildId || '';
 
   if (!STATE.guildId){
