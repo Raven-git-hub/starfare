@@ -950,6 +950,11 @@ stands on.
     poll; with a rival seated it still polls the player's view and draws only the player's system, and picking
     the rival in its picker does not move the poll; no frame of the player client requests `/galaxy`; zero
     console errors.)*
+  *(⤳ AS-BUILT 14-10-26 — the CLI fog tooling (roadmap 2.5; operator only, no model change): an operator lever,
+  **`reveal`** (`docs/operator-adjust.md` §3.7), writes a guild's record through the same `sim/exploration.js`
+  primitives founding and the scan use — a testing seam for putting a guild in a known fog state, **not** a third
+  source in §3's sense (no player path reaches it) — and **`tools/admin.js snapshot --guild <id>`** reads that
+  guild's fogged view (`GET /snapshot?guild=<id>`), so the fog can be checked headlessly.)*
 
 ## 8. The claim-gate coupling — "you can't claim an unexplored system"
 

@@ -3680,6 +3680,9 @@ boundary so the later hex-map swap doesn't touch it.
   CLOSED** on every path the player client uses; the dev rig's no-auth operator/debug surface (plain
   `/snapshot`, `/snapshot?guild=<any>`, `GET /system/:id`, `POST /action`'s god's-eye reply, the client's
   connect-time and founding reads) is the recorded Phase-2-auth residual. **Ruling 12 is fully built.**)*
+  *(⤳ 14-10-26 — **the CLI fog tooling is BUILT**, the last entry below: an operator `reveal` lever writes a
+  guild's exploration record, and `tools/admin.js snapshot --guild <id>` reads its fogged view. Operator
+  tooling for testing the fog headlessly, not a mechanic change.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4061,6 +4064,32 @@ boundary so the later hex-map swap doesn't touch it.
     `/favicon.ico` probe — a 404 the server has always given — is reported, not counted.) Sim 2,163 →
     **2,165**, tools **78** (unchanged). Checklist items below. *(⤳ 14-10-26: checklist item 1 is RULED
     and built. The embedded console's guild picker offers only the player's own guild; sim **2,166**.)*
+  - **The CLI fog tooling — an operator `reveal` lever + `snapshot --guild` — ⤳ AS-BUILT 14-10-26 (operator
+    tooling, not a mechanic change: one engine action + `tools/admin.js`; no client, fog view, board, scan
+    mechanic or golden change).** `docs/operator-adjust.md` §3.7 (new) and §5; `exploration-model.md` §7 (a
+    pointer). **No new number** — the lever has no cost or duration. **(1) The engine action `reveal { guildId,
+    systemId?, planetId?, l1? }`** (`sim/actions.js`, beside `grantAsset`): exactly one target — a system at full
+    L2 (`revealSystem`, founding's primitive), a system's archetypes only with `l1: true`
+    (`revealSystemArchetypes`, the L1 scan's), or one planet at L2 (`reveal` + `revealPlanetSurface`, the L2
+    scan's) — through the `sim/exploration.js` primitives unchanged. Learn-once: a repeat is an **accepted**
+    no-op. Refused, each with its own reason: an unknown guild, both targets or neither, an id the seed lacks, a
+    bad `l1`, `l1` with a planet. **Invariant-neutral:** it writes only the record, so it moves no credits, fuel,
+    goods or supply and refreshes no cache. **(2) `tools/admin.js`:** `reveal --guild ID (--system ID [--l1] |
+    --planet ID)` posts it and prints what the guild now knows there, read from its fogged view; `snapshot
+    --guild ID` reads `GET /snapshot?guild=ID` (`--json` / `--pick` on either lens), and an unknown guild's 404
+    is a one-line error. **Tests:** `sim/tests/reveal.test.js` (new, 11): the three forms; idempotence (a
+    repeat a tick later changes not one byte; L1 widened to L2 keeps the L1 tick); nine refusals with state
+    untouched; the tick stamp; the economy no-op (the whole state less the guild's record byte-identical —
+    `galacticSupply`, the ledger and the audit named — the god's-eye snapshot byte-identical, invariants
+    clean); and a headless round-trip over the real server (POST a reveal, the guild's `GET
+    /snapshot?guild=` knows the frontier system at L2, a second guild's view does not, a bad id is a 200
+    refusal). `tools/admin.test.js` (+5): the flags, the three action bodies, the missing / conflicting-flag
+    throws, `snapshotPath`, `knownCounts`. **Proved** by driving the real CLI against a live `node
+    sim/server.js` (two guilds seated): `reveal --l1` → 4 planets, 0 nodes, 0 slots; then the full reveal → 4
+    planets, 47 nodes, 21 slots; a planet reveal → that planet alone; `snapshot --guild bot-guild` still knows
+    only its 2 systems, and its `--pick geography.known.<frontier>` is "no such path"; the god's-eye summary is
+    unchanged; `snapshot --guild nobody`, a bad planet id, both targets and an unknown guild each exit 1 with a
+    one-line reason. Sim 2,166 → **2,177**, tools 78 → **83**. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5152,6 +5181,13 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   3. **`/starters` is cut at the route, not in `getStarterSystems()`.** As the build prompt preferred: the wire is the leak, and the selector's `terranHomeworldId` is read by the engine's tests (`tests/seed.test.js`), which stay unchanged. Confirm.
   4. **`tests/galaxy-lifecycle.test.js` read `/galaxy` too** — six sites the build prompt did not name. Each asked "which galaxy is active?" (seed number, systems, waystations), "is this the no-galaxy 404?", or "is this the generator's galaxy?". The first two moved to `/board`, which carries those facts and gives the same `NO_GALAXY` 404; the last to the volume's own `seed.json` — the bytes the server loaded, which `/galaxy` used to re-serve — plus the two servers' identical boards. Confirm.
   5. **Seams — not decisions, recorded:** (a) **two stale comments in `client/game.html`**, left because the slice is ruled no `game.html` change: the connect-time read says "(Hardening this dev-rig read is slice 3c.)" — it is the Phase-2-auth residual (`exploration-model.md` §7's `⤳ 14-10-26` correction); and `mountConsole`'s says the console "reads /snapshot" (now `/snapshot?guild=`). *(⤳ 14-10-26: both rewritten with item 1's build. Comments only, no code.)* (b) **Older docs still describe `GET /galaxy` as served**, as their own as-built history: `docs/client-wiring.md` (Slice 0), `docs/galaxy-lifecycle.md`'s build notes (its two spec lines carry a `⤳ 14-10-26` marker) and `README.md` (the 24-08-26 update, and the `client/game.html` row — stale since 3a). *(⤳ 14-10-26: the README's `client/game.html` row now reads `GET /board` and the per-guild poll, updated with item 1's build. Its dated 24-08-26 update stays as history.)* Left; the authoritative docs (design.md §2, `exploration-model.md`, this file) and `sim/README.md`'s route list are updated. (c) The client proof harness still lives outside the repo (3a item 8(c)). (d) The browser's automatic `/favicon.ico` probe is a 404 (the server has never served one) and logs a console error on a page's first load; 3c's proof reports it rather than counting it. (e) An embedded console whose pinned guild vanishes (a `/reset` under it) now gets the per-guild poll's 404: it keeps its last frame and shows the server's reason in its status line, where the god's-eye poll re-defaulted it to whichever guild remained. The client around it already returns to the connect screen on the same 404 (3a item 3).
+- **The CLI fog tooling (2.5 — the operator `reveal` lever + `snapshot --guild`) — items for a ruling or a confirm** — *surfaced 14-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **`reveal` places freely.** Any real system or planet, held or not — like `grantAsset` / `grantKit`, and unlike the scan, which refuses your own system (already known) and a rival's (espionage, L3). Revealing a **rival-held** system writes it into the record, so the guild keeps that knowledge after the rival's control lapses — knowledge it could otherwise earn only by scanning the system once it was unclaimed. For a test lever, freedom seemed right. Confirm, or rule a gate (e.g. unclaimed only, as `queueScan` has).
+  2. **A repeat reveal is an accepted no-op**, while the adjust levers refuse a zero `delta` (`operator-adjust.md` §6). The build prompt asked for this, and it matches learn-once. Recorded so the difference is a choice, not an accident. Confirm.
+  3. **A planet reveal names the planet itself before its surface** (`reveal({ planetId })`, then `revealPlanetSurface`). The L2 scan doesn't need this because its L1→L2 chain means the planet is already known, but an operator reveal has no chain. On today's seed it changes nothing, because every planet has a surface (0 of 5,290 have none). It only matters for a future seed with a surface-less planet, which would then still read "known". Confirm.
+  4. **No `--all` whole-map reveal.** It would put all ~5,290 planets into one guild's view. Left as a possible later add (the build prompt's call). Rule it in if a test needs it.
+  5. **No "forget" form.** The record is known-forever (`exploration-model.md` §3), so `reveal` has no negative form. To get a fresh fog state, use a fresh guild or galaxy. Confirm.
+  6. **Seams — not decisions, recorded:** (a) `reveal` rides the no-auth `POST /action` like every operator lever: one more entry in the Phase-2-auth residual (`exploration-model.md` §7), not a new kind of exposure. (b) The CLI prints what the guild knows **from its fogged view**, where a controlled system always shows at full L2, so an `--l1` reveal of a system the guild holds prints the full surface. That is the view, not the record. (c) A reveal emits no engine event (a scan emits none either; the journal records the action). (d) The runbook's `starters` row still listed "Terran homeworld", stale since 3c; corrected in this commit (the CLI stopped printing it then).
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

@@ -47,7 +47,9 @@ const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
 const { guildHolds, heldSystemIds, systemControllers } = require('./claims.js');
-const { revealSystem, knowsPlanet } = require('./exploration.js');
+const {
+  reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet,
+} = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
@@ -1105,6 +1107,8 @@ function createCancelCommissionAction({ guildId, ventureId, commissionId }) {
 // the §15.5 tripwires stay whole. The scalar levers take a SIGNED `delta` (positive
 // grants, negative removes) so one action covers both directions. The operator
 // surface is tools/admin.js; the player client never surfaces them.
+// A seventh, `reveal` (§3.7), is the first KNOWLEDGE lever: it writes a guild's
+// exploration record, not a quantity, so it has no counter-move to make.
 
 // adjustCredits: move credits against the Syndicate ledger, exactly as founding does
 // (§3.1) — apply debits `syndicate.ledger` by the same delta it credits the guild, so
@@ -1167,6 +1171,24 @@ function createRemoveVentureAction({ guildId, ventureId, asset }) {
   if (guildId === undefined) throw new Error('createRemoveVentureAction: guildId is required');
   if (ventureId === undefined) throw new Error('createRemoveVentureAction: ventureId is required');
   return { type: 'removeVenture', guildId, ventureId, ...(asset === undefined ? {} : { asset }) };
+}
+
+// reveal: write geography straight into a guild's exploration record (§3.7) — the first
+// KNOWLEDGE lever, for putting a guild into a known fog state while testing. Exactly one
+// target: `{ systemId }` reveals the whole system (every planet's archetype and surface, as
+// founding does), `{ systemId, l1: true }` only its planets' archetypes (as an L1 scan does),
+// `{ planetId }` one planet's whole surface (as an L2 scan does). It moves no credits, fuel,
+// goods or supply, so there is no counter-move: it keeps the invariants whole by touching none
+// of their quantities. The constructor only enforces `guildId` and passes on whichever target
+// it was given; validateAction judges the exactly-one rule and that the target is real.
+function createRevealAction({ guildId, systemId, planetId, l1 }) {
+  if (guildId === undefined) throw new Error('createRevealAction: guildId is required');
+  return {
+    type: 'reveal', guildId,
+    ...(systemId !== undefined ? { systemId } : {}),
+    ...(planetId !== undefined ? { planetId } : {}),
+    ...(l1 !== undefined ? { l1 } : {}),
+  };
 }
 
 // spawnVehicle: mint one IDLE craft into a guild at any location — the operator/Storyteller
@@ -3781,6 +3803,42 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'reveal') {
+    // §3.7. Each failure is its own reason, so an operator's typo is named rather than half-applied.
+    // There is NO "already known" refusal: the reveal is learn-once, so revealing known ground is an
+    // accepted no-op (the record keeps its first ticks). And no held-or-not gate either: like
+    // grantAsset, an operator lever places freely on any real system or planet.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // Exactly one target. `== null` treats a JSON null the same as an absent key.
+    const hasSystem = action.systemId != null;
+    const hasPlanet = action.planetId != null;
+    if (hasSystem && hasPlanet) {
+      return { valid: false, reason: 'name exactly one target — systemId or planetId, not both' };
+    }
+    if (!hasSystem && !hasPlanet) {
+      return { valid: false, reason: 'name exactly one target — systemId (a whole system) or planetId (one planet)' };
+    }
+    // `l1` picks the archetypes-only form of a SYSTEM reveal. Anything but true / false / absent is a
+    // caller bug (the removeAsset `occupied` discipline), and a planet reveal has no L1 form here.
+    if (action.l1 !== undefined && action.l1 !== true && action.l1 !== false) {
+      return { valid: false, reason: `l1 must be true or false (default false), got ${JSON.stringify(action.l1)}` };
+    }
+    if (hasPlanet && action.l1 === true) {
+      return { valid: false, reason: 'l1 is for a system reveal only — a planet reveal always reveals its whole surface (L2)' };
+    }
+    // The target must be in the seed: a bad id is a refused action, never a silent no-op.
+    if (hasSystem && (typeof action.systemId !== 'string' || !getSystem(action.systemId))) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is not a system on the seed` };
+    }
+    if (hasPlanet && (typeof action.planetId !== 'string' || !getPlanet(action.planetId))) {
+      return { valid: false, reason: `planet ${JSON.stringify(action.planetId)} is not a planet on the seed` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'spawnVehicle') {
     const guild = findGuild(state, action.guildId);
     if (!guild) {
@@ -5512,6 +5570,27 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'reveal') {
+    // §3.7: through the SAME exploration primitives founding and the Deep Scan Array use, so an
+    // operator reveal can never write a shape the mechanics would not. Each primitive stamps the
+    // facts it adds with this tick (§15.2) and leaves known facts on their first tick (learn-once).
+    // Only `guild.exploration` changes — no credits, fuel, goods or supply move — so no cache
+    // needs a refresh, and POST /action's invariant check sees every conserved total unchanged.
+    const guild = findGuild(next, action.guildId);
+    if (action.planetId != null) {
+      // The planet itself first, then its surface. An L2 scan can skip that first step (its
+      // L1→L2 chain means the planet is already known), but an operator reveal has no chain: it
+      // makes "known at L2" true even of a planet with no surface to learn.
+      reveal(guild, { planetId: action.planetId }, next.tick);
+      revealPlanetSurface(guild, action.planetId, next.tick);
+    } else if (action.l1 === true) {
+      revealSystemArchetypes(guild, action.systemId, next.tick);
+    } else {
+      revealSystem(guild, action.systemId, next.tick);
+    }
+    return next;
+  }
+
   if (action.type === 'spawnVehicle') {
     // design.md §15.4 "Spawn / remove": mint one IDLE craft at the current tick, as though
     // manufactured and delivered instantly. Bump the guild's monotonic mint serial (never
@@ -6049,6 +6128,7 @@ module.exports = {
   createGrantAssetAction,
   createRemoveAssetAction,
   createRemoveVentureAction,
+  createRevealAction,
   createSpawnVehicleAction,
   createRemoveVehicleAction,
   createSpawnOutpostAction,
