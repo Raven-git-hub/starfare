@@ -3819,7 +3819,8 @@ select.field{appearance:none; cursor:pointer;}
      for, its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). An
      `outpost_packed` notice (§12) wears the same pilot but shows Show on map alone, no forks. The trade
      lane (§11): the two delivery notices wear the Trader — eyebrow, portrait and voice — with Dismiss
-     alone. So openNotice sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
+     alone. The survey lane (§13): the two scan notices wear the scout (spy.jpg, the survey popup's), with
+     Dismiss alone. So openNotice sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
 <div id="notice-overlay">
   <div class="reel-card">
     <button class="reel-close" id="noticeClose" type="button" aria-label="Close">&times;</button>
@@ -3827,7 +3828,7 @@ select.field{appearance:none; cursor:pointer;}
       <div class="reel-eyebrow" id="noticeEyebrow">Syndicate Notice</div>
       <div class="reel-title" id="noticeTitle"></div>
       <div class="reel-body">
-        <!-- One <p> per paragraph: a Syndicate notice is one line, the pilot's report two beats, the Trader's one or three lines. -->
+        <!-- One <p> per paragraph: a Syndicate notice is one line, the pilot's report two beats, the Trader's one or three lines, the scout's one or two. -->
         <div id="noticeBody"></div>
         <div class="facts" id="noticeFacts"></div>
       </div>
@@ -3844,7 +3845,8 @@ select.field{appearance:none; cursor:pointer;}
     </div>
     <!-- The uniform guild-adviser portrait — the same asset the reneg popup uses, no per-type
          accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5).
-         A deploy_failed or outpost_packed notice swaps in the pilot (§10, §12), a delivery notice the Trader (§11). -->
+         A deploy_failed or outpost_packed notice swaps in the pilot (§10, §12), a delivery notice the Trader (§11),
+         a scan notice the scout (§13). -->
     <div class="reel-art" id="noticeArt" style="background-image:url('assets/characters/advisor.jpg')"></div>
   </div>
 </div>
@@ -11611,12 +11613,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
   // "Deployment failed — Outpost" / "No room at the outpost" / "Delivery turned back" / "Outpost
-  // packed up". The two delivery titles and the packed title leave the Outpost's name to the facts
-  // block; their rows carry it (below).
+  // packed up" / "Survey complete" / "Survey voided". The two delivery titles, the packed title and the
+  // two survey titles leave the name to the body and facts; their rows carry it (below).
   function noticeTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment failed — ' + deployKindLabel(p);
     if(n.type === 'outpost_packed') return 'Outpost packed up';
+    if(n.type === 'scan_complete') return 'Survey complete';
+    if(n.type === 'scan_voided') return 'Survey voided';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost';
     if(n.type === 'delivery_turned_back') return 'Delivery turned back';
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
@@ -11626,6 +11630,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
     if(n.type === 'outpost_packed') return 'Outpost packed up &mdash; <span class="who">' + esc(packedOutpostName(p)) + '</span>';
+    if(n.type === 'scan_complete') return 'Survey complete &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
+    if(n.type === 'scan_voided') return 'Survey voided &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
     if(n.type === 'delivery_turned_back') return 'Delivery turned back &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
     var prefix = n.type === 'venture_closed' ? 'Venture closed' : 'Licence lapsed';
@@ -11801,6 +11807,56 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return facts;
   }
 
+  // --- The scan notices — the survey lane (docs/event-log.md §13) ----------------------------------
+  // A Deep Scan Array finished its job. Either it revealed the target (scan_complete, perhaps with nothing
+  // new), or a rival came to hold the target first and the job came to nothing (scan_voided). The guild's
+  // SCOUT reports both: the same scout who briefs a survey (#survey-overlay), on this card re-dressed
+  // (openNotice, below). Both are PASSIVE: Dismiss only. Every value is a payload field or the engine's
+  // whenDay; the client computes no game number (§18). Even the count of new readings is the engine's.
+
+  function isScanNotice(n){ return n.type === 'scan_complete' || n.type === 'scan_voided'; }
+
+  // "Deep Scan Array 03": the serial on the array's id (deepScanArray_<guild>_NN), the name the survey
+  // popup's picker gives the same array. A missing id reads as the bare "Deep Scan Array".
+  function scanArrayLabel(p){
+    return p.arrayId ? ('Deep Scan Array ' + String(p.arrayId).split('_').slice(-1)[0]) : 'Deep Scan Array';
+  }
+  // The target's name, as the engine wrote it: a system's name, or a planet's designation ("Nyx IV").
+  function scanTargetLabel(p){ return p.targetName || p.targetSystemId || p.targetPlanetId || 'the target'; }
+
+  // The scout's report, one <p> per line. A completion says what it learned in a second line, from the
+  // engine's newFacts: how many readings were new, or that none were (the target was already charted).
+  function scanBody(n){
+    var p = n.payload || {};
+    var lead = scanArrayLabel(p) + ' — survey of ' + scanTargetLabel(p);
+    if(n.type === 'scan_voided'){
+      return [lead + ' voided; ' + (p.byGuildName || p.byGuildId || 'another guild') + ' claimed it before it finished.'];
+    }
+    var learned = p.newFacts > 0
+      ? (fmt(p.newFacts) + (p.newFacts === 1 ? ' reading' : ' readings') + ' logged.')
+      : 'Nothing new — already charted.';
+    return [lead + ' complete.', learned];
+  }
+
+  // payload.level -> the Survey fact: the two scans, in the words the survey popup uses for them.
+  var SCAN_LEVEL_WORD = { L1:'System survey', L2:'Planet survey' };
+
+  // The facts block, in its order: the array, the target, which survey, then what came of it (the new
+  // readings, or who claimed the target) and the day.
+  function scanFacts(n){
+    var p = n.payload || {};
+    var voided = n.type === 'scan_voided';
+    var facts = [
+      ['Array', scanArrayLabel(p), false],
+      ['Target', scanTargetLabel(p), false],
+      ['Survey', SCAN_LEVEL_WORD[p.level] || '—', false],
+      voided ? ['Claimed by', p.byGuildName || p.byGuildId || '—', false]
+             : ['New readings', p.newFacts != null ? fmt(p.newFacts) : '—', false]
+    ];
+    if(n.whenDay != null){ facts.push([voided ? 'Voided' : 'Completed', 'Day ' + n.whenDay, false]); }
+    return facts;
+  }
+
   // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
   // the tab pip and the Messages badge add to the open offers. Filtered to the player's OWN guild,
   // exactly as myRenegotiations filters the offers.
@@ -11902,16 +11958,19 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // voice. Two notices are in it, with different buttons. A deploy_failed (`fleet`) offers its two forks,
     // Redeploy and Return (§10; territory-model.md §5 REVISED). An outpost_packed (`packed`) offers Show on
     // map alone (§12). So `pilot` (the speaker) and the buttons are separate flags. A delivery notice is
-    // the trade lane: the Trader's eyebrow, portrait and voice, and no button but Dismiss (§11). Every
-    // other notice is the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on
+    // the trade lane: the Trader's eyebrow, portrait and voice, and no button but Dismiss (§11). A scan
+    // notice is the survey lane: the scout's eyebrow and portrait (the survey popup's), Dismiss alone (§13).
+    // Every other notice is the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on
     // every open — a notice must not keep the last one's speaker or buttons, and no notice keeps an old note.
     var fleet = n.type === 'deploy_failed';
     var packed = n.type === 'outpost_packed';
     var pilot = fleet || packed;
     var trade = isDeliveryNotice(n);
+    var scan = isScanNotice(n);
     var eyebrow = 'Syndicate Notice', art = 'assets/characters/advisor.jpg';
     if(pilot){ eyebrow = 'Fleet — Dispatch'; art = 'assets/characters/pilot.jpg'; }
     if(trade){ eyebrow = 'Trade — Syndicate'; art = 'assets/mission/Trader.jpg'; }
+    if(scan){ eyebrow = 'Guild Scout'; art = 'assets/characters/spy.jpg'; }
     el('noticeEyebrow').textContent = eyebrow;
     el('noticeArt').style.backgroundImage = "url('" + art + "')";
     // The Trader stands at the right edge of her picture, so she is framed as the TRADE tab's hero frames
@@ -11922,12 +11981,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     el('noticeShowMap').hidden = !packed;
     el('noticeNote').textContent = '';
     el('noticeTitle').textContent = noticeTitle(n);
-    // The body, one <p> per paragraph: the pilot's two beats or one question, the Trader's lines, or a
-    // Syndicate notice's one line.
+    // The body, one <p> per paragraph: the pilot's two beats or one question, the Trader's lines, the
+    // scout's report, or a Syndicate notice's one line.
     var paras;
     if(fleet) paras = DEPLOY_FAILED_BODY;
     else if(packed) paras = OUTPOST_PACKED_BODY;
     else if(trade) paras = deliveryBody(n);
+    else if(scan) paras = scanBody(n);
     else paras = [noticeBody(n)];
     el('noticeBody').innerHTML = paras.map(function(t){ return '<p>' + esc(t) + '</p>'; }).join('');
     var facts;
@@ -11937,6 +11997,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       facts = outpostPackedFacts(n);
     } else if(trade){
       facts = deliveryFacts(n);
+    } else if(scan){
+      facts = scanFacts(n);
     } else {
       // Facts: Location (payload.ventureName); the event day (Closed / Lapsed = whenDay); and — a
       // closure carrying a lockout only — Node held until (unlockDay). The unlock row is gated on the
@@ -14729,8 +14791,8 @@ function paintInventoryHero(d){
    "Surveying · <eta>" when the popup closes.
    The client computes no game number (§18). It states no scan duration — the durations are engine
    config the snapshot does not carry — so the eta appears once the job runs, off its completeTick.
-   No completion notice either: the reveal lands silently in geography.known and shows on the next
-   poll; the notice is a later slice (it needs an engine event first).
+   The completion notice is not drawn here: the engine writes scan_complete / scan_voided to the event
+   log, and MESSAGES shows it like any other notice (the scout's card, docs/event-log.md §13).
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }

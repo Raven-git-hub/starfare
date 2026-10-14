@@ -555,6 +555,15 @@ queue depth**:
   system you are scanning becomes rival-held before the job finishes, the job **completes to
   nothing** (no partial reveal). An array **torn down or destroyed mid-job loses the job**; any
   geography already banked persists (learn-once, §3).
+- **One array per target.** *(RULED 14-10-26, the design room — roadmap 2.5 slice-3b checklist item 8.)* The
+  queue refuses a scan whose exact **(level, target)** another of the guild's **own** arrays is already running:
+  a second would learn nothing (learn-once), so it would only tie up an array. Exact means exact: two planets of
+  one system are two targets, and an L1 of a system and an L2 of one of its planets are different scans. A
+  **rival's** array on the same target is no bar — its job is private, and a refusal must not reveal it.
+- **The completion notice.** *(RULED 14-10-26, the design room — roadmap 2.5 slice-3b checklist item 9(a).)*
+  When a job finishes, its guild gets one MESSAGES notice: **`scan_complete`** on the reveal path, **always**,
+  even when nothing new was learned; **`scan_voided`** when a rival came to control the target first, naming
+  that rival. The types, payloads and the scout's card are `docs/event-log.md` §13.
 
 > **⤳ AS-BUILT 06-10-26 — Discovery, the scan (roadmap 2.5 (b2); engine + operator/headless, no client, no
 > monitoring).** Built to the bullets above. **No new number:** the two durations are the ruled
@@ -570,7 +579,9 @@ queue depth**:
 >   Refused whole, in this order: the guild is real; the array is real **and this guild's**; the array is
 >   **idle** (one job, no backlog — the throttle is building more arrays; there is no cancel); `level` is L1
 >   or L2 and the action names **exactly** that level's target, which the seed holds (an L1 a system, an L2
->   a planet); the target's system is **unclaimed** (`systemControllers` has no row for it — a rival's is
+>   a planet); *(⤳ 14-10-26: **no other of the guild's arrays is already running that exact scan** — the same
+>   level on the same target, "One array per target" above; the reason names that array and its `completeTick`,
+>   in the busy-array refusal's voice;)* the target's system is **unclaimed** (`systemControllers` has no row for it — a rival's is
 >   refused as L3 espionage, your own as ground you already know); for an L2, **the chain**:
 >   `knowsPlanet(guild, targetPlanetId)`. **No reach check** — any system in the galaxy is a target. The
 >   apply stamps the job from the current tick. A scan costs no fuel and no credits (no price is ruled).
@@ -588,7 +599,9 @@ queue depth**:
 >   no-op and keeps its first tick. The job clears either way. *(⤳ 09-10-26, the settlement-surface slice:
 >   the L2 reveal is renamed **`revealPlanetSurface`** and reveals the planet's whole surface — every
 >   resource node **and** every settlement slot (§4 ruling 10). L1 still reveals no surface: no node, no
->   slot.)*
+>   slot.)* *(⤳ 14-10-26: the step now also writes the job's **notice** — `scan_complete` with the reveal's
+>   count of new facts, or `scan_voided` naming the rival — to the owning guild's event log, `docs/event-log.md`
+>   §13. The reveal, the void and the job-clear are unchanged; proved byte for byte against main.)*
 > - **Array lost mid-job.** The operator lever **`removeDeepScanArray`** (`{ guildId, arrayId }`) mirrors
 >   `removeOutpost`: an owner-checked delete of the row, the per-guild serial untouched (ids never repeat),
 >   the list dropped when it empties. The job lives on the row, so it goes with it and its reveal never
@@ -615,7 +628,9 @@ queue depth**:
 > job off this row exactly as it is. The **completion notice** is still not built, and is **DEFERRED** (ruled
 > 13-10-26, the design room): every notice in the game is an engine event and a scan emits none yet, so it is its
 > own later slice — an engine `scan_complete` / `scan_voided` event (`sim/events.js`, `docs/event-log.md`) and
-> then the client's render of it.)*
+> then the client's render of it.)* *(⤳ **AS-BUILT 14-10-26** — the scan edges slice: the completion notice is
+> BUILT, engine and client together — `scan_complete` / `scan_voided`, `docs/event-log.md` §13 — and so is the
+> duplicate-target refusal ("One array per target" above).)*
 
 **Monitoring — the watch (DEFERRED; design-ahead, NOT built).** A continuous watch that surfaces
 dynamic activity (rival transports, anomalies) — the counter-play to "operations are private",
@@ -1048,6 +1063,9 @@ notice fires — scan-complete, or the **voided** notice if a rival claimed the 
 none yet. Until that later slice (an engine `scan_complete` / `scan_voided` event, then its client render), a
 scan reveals into `known` silently and the result appears when the manifest re-renders on the next poll; the
 "Surveying" label clears itself, so a voided scan simply returns its tag / tab to the state it now has.)*
+*(⤳ AS-BUILT 14-10-26 — the notice: a finished scan now writes `scan_complete` or `scan_voided`, and MESSAGES
+shows it on the scout's card, Dismiss alone (`docs/event-log.md` §13). The manifest still updates on the next poll
+as before.)*
 
 **Planet manifest — the surface rows (L2).** Both lists render in full. **Resource-node rows are
 inert until you control the system** (establishing a mine needs control — Gate 3, `territory-model.md`
