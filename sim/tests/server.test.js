@@ -18,6 +18,7 @@ const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 
 const { makeServer } = require('../server.js');
+const { getTerranHomeworld } = require('../seed.js');
 const { STOCKPILE_GOODS, TIER3_GOODS } = require('../resources.js');
 const { OUTPOST_CAPACITY } = require('../outposts.js');
 
@@ -67,7 +68,10 @@ test('GET / serves the PLAYER CLIENT (HTML), not the deleted testbed', async () 
   assert.match(html, /shellConnectInit/);
   assert.match(html, /id="hud-guild"/);           // identity from the snapshot, not a literal
   assert.match(html, /__setLiveTerritory/);       // territory from claims[]
-  assert.match(html, /\/galaxy/);                  // the seed comes from the endpoint
+  // The map's geometry is the leak-free L0 board (ruling 12, slice 3a) — and nothing in the page
+  // asks for the retired full-seed route (slice 3c): no '/galaxy' or "/galaxy" string anywhere.
+  assert.match(html, /apiGet\('\/board'\)/);
+  assert.doesNotMatch(html, /['"]\/galaxy['"]/);
 
   // The testbed is GONE — its file and its driver controls with it.
   assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'client', 'testbed.html')), false);
@@ -1487,11 +1491,12 @@ test('GET /starters lists the seed\'s startable home systems', async () => {
   // changes, the seed changed under us and we want to be told loudly.
   assert.equal(body.count, 335);
   assert.equal(body.starters.length, 335);
-  // Shape: each carries what the picker shows plus the homeworld a guild seats on.
+  // Shape: exactly what the picker shows. NOT the homeworld a guild seats on — which planet is Terran is
+  // an L1 fact, so the wire no longer names it (ruling 12 slice 3c); the engine resolves it at founding.
   const s0 = body.starters[0];
-  assert.deepEqual(Object.keys(s0).sort(), ['id', 'name', 'ring', 'terranHomeworldId']);
-  // Starter-eligible ⟺ it has a Terran homeworld, so none may be null.
-  assert.ok(body.starters.every((s) => typeof s.terranHomeworldId === 'string' && s.terranHomeworldId.length > 0));
+  assert.deepEqual(Object.keys(s0), ['id', 'name', 'ring']);
+  // Starter-eligible ⟺ it has a Terran homeworld — still true of every listed system, only unsaid.
+  assert.ok(body.starters.every((s) => typeof getTerranHomeworld(s.id) === 'string' && getTerranHomeworld(s.id).length > 0));
   // Deterministic, id-sorted; the endpoint's first starter matches the fixture's HOME_SYSTEM.
   assert.equal(s0.id, HOME_SYSTEM);
   for (let i = 1; i < body.starters.length; i++) {
@@ -2392,26 +2397,51 @@ test('POST /reset stops a running heartbeat', async () => {
 
 // --- client-wiring Slice 0: the seed endpoint, the watcher, the boot clock ---
 
-test('GET /galaxy serves the committed seed geometry verbatim (JSON)', async () => {
+// ⤳ ruling 12 slice 3c — THE LEAK CLOSURE (docs/exploration-model.md §7). This section's seed endpoint,
+// GET /galaxy, served the whole data/seed.json verbatim — every planet's archetype, node and slot — to any
+// caller. The client reads the leak-free board instead (l0-board.test.js), so the route is RETIRED, and
+// GET /starters stops naming each starter's Terran homeworld. These are the closure's tripwires: a route
+// that comes back, or a field that creeps back onto the wire, fails here.
+
+test('THE LEAK CLOSURE: GET /galaxy is retired — an unknown route, not a no-galaxy answer', async () => {
+  // A galaxy IS running (the board serves), so the 404 is the route being gone — not NO GALAXY.
+  assert.equal((await fetch(base + '/board')).status, 200);
   const res = await fetch(base + '/galaxy');
+  assert.equal(res.status, 404);
+  assert.deepEqual(await res.json(), { error: 'no route for GET /galaxy' });
+});
+
+test('THE LEAK CLOSURE: GET /starters is exactly { id, name, ring } per row — no Terran homeworld on the wire', async () => {
+  const res = await fetch(base + '/starters');
   assert.equal(res.status, 200);
-  assert.match(res.headers.get('content-type') || '', /application\/json/);
-  const body = await res.json();
+  const text = await res.text();
+  // On the bytes a browser receives, so the word is caught wherever it sits.
+  assert.ok(!text.includes('terranHomeworldId'), 'GET /starters names a Terran homeworld');
+  const { starters, count } = JSON.parse(text);
+  assert.equal(count, starters.length);
+  assert.ok(starters.length > 0);
+  for (const s of starters) assert.deepEqual(Object.keys(s), ['id', 'name', 'ring'], `starter ${s.id}`);
+});
 
-  // The shape the map (Slice 1) and the detail screens read: systems with
-  // coordinates + ring + planets, the outposts, and the Citadel.
-  assert.ok(Array.isArray(body.systems) && body.systems.length > 0, 'systems present');
-  const s0 = body.systems[0];
-  assert.equal(typeof s0.coords.q, 'number');
-  assert.equal(typeof s0.coords.r, 'number');
-  assert.equal(typeof s0.ring, 'string');
-  assert.ok(Array.isArray(s0.planets), 'a system carries its planets');
-  assert.ok(Array.isArray(body.outposts), 'outposts present');
-  assert.ok(body.citadel, 'the Citadel is present');
-
-  // And it is the COMMITTED seed, not a reshape: byte-for-byte the same file
-  // sim/seed.js reads, so map and detail can never disagree on geometry.
-  assert.deepEqual(body, require('../../data/seed.json'));
+test('THE LEAK CLOSURE: the EMBEDDED console polls its own guild\'s fogged view; standalone stays god\'s-eye', async () => {
+  const html = await (await fetch(base + '/console')).text();
+  // The GET poll goes through snapshotPath(), and the query string's guild is pinned for it.
+  assert.match(html, /var r = await api\(verb, verb === 'GET' \? snapshotPath\(\) : path\);/);
+  assert.match(html, /if \(g\) \{ STATE\.guildId = g; STATE\.pinnedGuildId = g; \}/);
+  // Run the page's own snapshotPath against each framing.
+  const src = html.match(/\nfunction snapshotPath\(\)\{[\s\S]*?\n\}\n/);
+  assert.ok(src, 'snapshotPath is found');
+  const pathFor = (STATE) => {
+    const page = { STATE };
+    vm.runInNewContext(src[0], page);
+    return page.snapshotPath();
+  };
+  assert.equal(pathFor({ embedded: true, pinnedGuildId: 'player-guild' }), '/snapshot?guild=player-guild');
+  assert.equal(pathFor({ embedded: true, pinnedGuildId: 'g 1&x' }), '/snapshot?guild=g%201%26x', 'the id is encoded');
+  // Only the PINNED guild counts: the guild picker moves STATE.guildId, never the poll.
+  assert.equal(pathFor({ embedded: true, pinnedGuildId: 'player-guild', guildId: 'rival' }), '/snapshot?guild=player-guild');
+  assert.equal(pathFor({ embedded: false, pinnedGuildId: 'player-guild' }), '/snapshot', 'standalone is the operator console');
+  assert.equal(pathFor({ embedded: true, pinnedGuildId: null }), '/snapshot', 'no guild is known, so none can be asked for');
 });
 
 test('GET /inspect serves the operator watcher — and it has NO action controls', async () => {
@@ -3015,10 +3045,11 @@ test('every served response carries Cache-Control: no-cache — a redeploy needs
   assert.match(asset.headers.get('cache-control') || '', /no-cache/, 'assets are served no-cache');
 
   // …and the JSON APIs, which are dynamic and should never be cached at all.
-  // /galaxy writes its own header rather than going through sendJson, so it is
+  // /board writes its own header rather than going through sendJson, so it is
   // checked separately — that is exactly the call site a refactor would miss.
+  // (It took that place from /galaxy, retired in ruling 12 slice 3c.)
   await reset();
-  for (const route of ['/health', '/snapshot', '/goods', '/starters', '/galaxy']) {
+  for (const route of ['/health', '/snapshot', '/goods', '/starters', '/board']) {
     const res = await fetch(base + route);
     assert.equal(res.status, 200, `${route} serves`);
     assert.match(res.headers.get('cache-control') || '', /no-cache/, `${route} is served no-cache`);

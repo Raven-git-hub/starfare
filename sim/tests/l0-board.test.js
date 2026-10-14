@@ -30,6 +30,10 @@
 // forbids `terranHomeworldId`, `starterEligible` and `validation`, and proves the check bites; COPY, NEVER
 // ALIAS checks the board shares no object with the seed; PINNED pins the committed seed's board bytes and the
 // ETag that names them. The per-guild view is untouched (it never reads the board's top level).
+//
+// ⤳ 14-10-26 — ruling 12 slice 3c, the leak closure: GET /galaxy is RETIRED (its 404 is pinned in
+// server.test.js). THE ROUTE's checks that read the seed off /galaxy now read it straight from its file — the
+// committed data/seed.json, or a created galaxy's own seed.json in the volume, the file the server loaded.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -322,7 +326,7 @@ async function withServer(fn) {
   }
 }
 
-test('GET /board serves the board, with an ETag and the /galaxy CORS headers; /galaxy is untouched', async (t) => {
+test('GET /board serves the board, with an ETag and the JSON routes\' CORS headers — the committed seed\'s board', async (t) => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/board`);
     assert.equal(res.status, 200);
@@ -336,14 +340,13 @@ test('GET /board serves the board, with an ETag and the /galaxy CORS headers; /g
     // The leak-free tripwire, on the bytes a browser actually receives.
     assert.deepEqual(leakedFields(text), [], 'the served board leaks');
 
-    // /galaxy still serves the committed seed verbatim (its cutover is the client flip, slice 3).
-    const galaxy = await fetch(`${base}/galaxy`);
-    const galaxyBytes = Buffer.from(await galaxy.arrayBuffer());
-    assert.equal(galaxy.status, 200);
-    assert.ok(galaxyBytes.equals(fs.readFileSync(SEED_PATH)), '/galaxy is the committed seed, unchanged');
+    // And it is the board of the COMMITTED seed: spelled straight off data/seed.json, the file itself (the
+    // seed's own route, /galaxy, is retired — ruling 12 slice 3c).
+    const seedBytes = fs.readFileSync(SEED_PATH);
+    assert.equal(text, bytes(boardFromSeed(JSON.parse(seedBytes.toString('utf8')))), 'the committed seed\'s board');
     const boardSize = Buffer.byteLength(text);
-    assert.ok(boardSize < galaxyBytes.length);
-    t.diagnostic(`/board ${boardSize} bytes vs /galaxy ${galaxyBytes.length} bytes (${((100 * boardSize) / galaxyBytes.length).toFixed(1)}%)`);
+    assert.ok(boardSize < seedBytes.length);
+    t.diagnostic(`/board ${boardSize} bytes vs the committed seed's ${seedBytes.length} bytes (${((100 * boardSize) / seedBytes.length).toFixed(1)}%)`);
   });
 });
 
@@ -398,7 +401,7 @@ test('LIFECYCLE: 404 with no galaxy; a new galaxy refreshes the board and its ET
   const child = spawn(process.execPath, [SERVER_JS], { env });
   const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   // createAndRead(seedNumber) -> create that galaxy, then { etag, text } of its board, checked against its own
-  // /galaxy (the board spelled straight off the seed the server is serving).
+  // seed: the volume's seed.json, the file the server loaded (the board spelled straight off it).
   async function createAndRead(seedNumber) {
     assert.equal((await post('/admin/galaxy/new', { seed: seedNumber })).status, 200);
     const res = await fetch(`${base}/board`);
@@ -406,7 +409,7 @@ test('LIFECYCLE: 404 with no galaxy; a new galaxy refreshes the board and its ET
     const etag = res.headers.get('etag');
     assert.match(etag, new RegExp(`^"board-${seedNumber}-[0-9a-f]{64}"$`));
     const text = await res.text();
-    const seed = await (await fetch(`${base}/galaxy`)).json();
+    const seed = JSON.parse(fs.readFileSync(path.join(dir, 'seed.json'), 'utf8'));
     assert.equal(seed.seed, seedNumber);
     assert.equal(text, bytes(boardFromSeed(seed)), `the board of galaxy ${seedNumber}, from that galaxy's own seed`);
     assert.equal(JSON.parse(text).seed, seedNumber, 'the board names its own galaxy');
@@ -417,7 +420,7 @@ test('LIFECYCLE: 404 with no galaxy; a new galaxy refreshes the board and its ET
     await waitForHealth(base);
     const none = await fetch(`${base}/board`);
     assert.equal(none.status, 404);
-    assert.equal((await none.json()).state, 'no-galaxy', 'the same no-galaxy answer /galaxy gives');
+    assert.equal((await none.json()).state, 'no-galaxy', 'the same no-galaxy answer every seed route gives');
 
     const first = await createAndRead(4242);
     assert.equal((await fetch(`${base}/board`, { headers: { 'If-None-Match': first.etag } })).status, 304);

@@ -39,7 +39,8 @@
   Served at /console. The player client embeds it as
   /console?embed=1&guild=<id>&system=<id>, which pins the focus and drops the two side
   zones (the client supplies those itself, including the industrial hero art it drives
-  from this page's venture postMessage).
+  from this page's venture postMessage). Embedded, it polls that guild's fogged view,
+  GET /snapshot?guild=<id>; standalone, the god's-eye GET /snapshot (ruling 12 slice 3c).
 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -964,9 +965,20 @@ async function api(method, path, body){
   var res = await fetch(path, { method: method, headers: body ? { 'Content-Type':'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
   return { status: res.status, data: await res.json() };
 }
+// The GET poll's path. EMBEDDED in the player client the page is pinned to the player's own guild
+// (`embed=1&guild=<id>`), so it reads that guild's FOGGED view — the same per-guild poll the client itself
+// reads (docs/exploration-model.md §7, ruling 12 slice 3c). The client mounts it only on a system the
+// player controls, where every row it shows is the player's own, so the fogged view loses it nothing. The
+// guild is the one the query string pinned, not the guild picker's, so nothing on the page can point the
+// poll at a rival's view. STANDALONE it is the operator's console and keeps the god's-eye /snapshot.
+function snapshotPath(){
+  return (STATE.embedded && STATE.pinnedGuildId)
+    ? '/snapshot?guild=' + encodeURIComponent(STATE.pinnedGuildId)
+    : '/snapshot';
+}
 // GET /snapshot, POST /tick, POST /reset all return a snapshot directly.
 async function refresh(verb, label, path){
-  try { var r = await api(verb, verb === 'GET' ? '/snapshot' : path); }
+  try { var r = await api(verb, verb === 'GET' ? snapshotPath() : path); }
   catch (err) { setStatus('network error: ' + err.message, 'error'); return; }
   if (r.status >= 400) { setStatus((r.data && r.data.error) || 'error', 'error'); return; }
   render(r.data);
@@ -1019,7 +1031,7 @@ var ARM = {
 
 // ---- live view state -------------------------------------------------------
 var STATE = { snap:null, goods:{raw:[],processed:[],tier3:[]}, guildId:null, sysId:null, tier:1, good:null, vmap:{}, recipeOut:{},
-              rightTab:'consumption', selVenture:null, pinnedSysId:null, embedded:false, heroVentureId:null,
+              rightTab:'consumption', selVenture:null, pinnedSysId:null, pinnedGuildId:null, embedded:false, heroVentureId:null,
               sysInfo:null,
               // The Tier-4 asset-bill catalog from GET /asset-recipes (static RULES): { bills,
               // buildTicks, maxQueue, buildable }. Read by the dockyard tab to size the donut
@@ -1044,7 +1056,8 @@ var STATE = { snap:null, goods:{raw:[],processed:[],tier3:[]}, guildId:null, sys
   var q = new URLSearchParams(location.search);
   var g = q.get('guild'), sys = q.get('system');
   // `guild` / `system` set the FOCUS — they say nothing about how the page is framed.
-  if (g) STATE.guildId = g;
+  // The guild is pinned as well as focused: embedded, the GET poll reads that guild's view (snapshotPath).
+  if (g) { STATE.guildId = g; STATE.pinnedGuildId = g; }
   if (sys) { STATE.sysId = sys; STATE.pinnedSysId = sys; }
   // `embed=1` is the only thing that says "inside the client": drop the two side
   // zones (the client supplies them) and hide the operator drives. Standalone with a
