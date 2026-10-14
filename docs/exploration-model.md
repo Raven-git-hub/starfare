@@ -817,6 +817,10 @@ stands on.
   systems }`, whose `systems` are the rows above, each gaining its `claimRadius`; still no fogged planet
   detail and no `terranHomeworldId` (§4 ruling 12's 13-10-26 note has the details). The view is untouched,
   and a planet id in `known` now joins onto `board.systems[].planets`.)*
+  *(⤳ 14-10-26 — superseding the "Still god's-eye, and slice 3c's" line of the 3a note
+  above, per §4 ruling 12 slice 3c ("Option 1"): of those three, slice 3c moves only the embedded
+  Production Console to the per-guild poll; the connect-time discovery read and `POST /action`'s reply
+  stay god's-eye as the recorded Phase-2-auth residual, not 3c. See the slice-3c note below.)*
 - **One source-agnostic reveal.** A single `reveal` writes geography into a guild's record,
   whatever the source — a scan completing, a craft visit, a claim, founding, and (later) a
   Prefecture scan. Ruling 1 already forces this (a scan and a rival's licensed venture both
@@ -887,7 +891,7 @@ stands on.
   it would break the operator CLI (`tools/admin.js` reads the reply as the god's-eye lens: `poolOf`,
   cross-guild rows), while the player client reads only its OWN rows from it (the TRADE receipt's own
   credits / fuel / shipment; the embedded console's own system — its one fogged read, `occupancy`'s
-  "worked" count, covers only ground the player holds, where every venture is its own), so no rival fact
+  “worked” count, covers only ground the player holds, where every venture is its own), so no rival fact
   is ever displayed; the god's-eye data merely rides in the envelope. That residual is the “no-auth,
   client-picks-its-own-guild dev rig” §7 has flagged from the start — 3c closes every path by which the
   player client fetches or displays fogged-away data; the raw endpoints above (plain `/snapshot`,
@@ -1038,6 +1042,9 @@ the two notes below.)*
 >   entering the game — is **`GET /snapshot?guild=<id>`**, and `applySnapshot` keeps its `geography.known`
 >   beside `claims`. Plain `/snapshot` remains for the connect-time discovery read and founding's free-id pick
 >   (3c hardens both); the home picker before founding is unchanged (`/starters` + the board).
+>   *(⤳ 14-10-26: correction — "3c hardens both" above is wrong; the connect-time discovery
+>   read and founding's free-id pick (plain `/snapshot`) are the Phase-2-auth residual, not 3c.
+>   §4 ruling 12 slice 3c, §7.)*
 > - **The levels, read off `known`, never worked out.** `adaptSeedSystem` → **`adaptBoardSystem`**: the board
 >   row gives the planets (`id`, `order` — the numeral), `known[systemId]` the per-planet detail, `claims` the
 >   controller. **No entry = L0; an archetype with empty `nodes` and `slots` = L1; any node or slot = L2.** Node
@@ -1072,6 +1079,11 @@ the two notes below.)*
 >   cutover and the leak's closure, `GET /starters`' hardening, the connect-time god's-eye read, the embedded
 >   console's plain `/snapshot` poll, `POST /action`'s god's-eye reply). **The `/galaxy` leak is still OPEN.**
 >   *(⤳ 13-10-26: 3b is BUILT — the next note — bar the scan notices, which are deferred.)*
+>   *(⤳ 14-10-26: slice 3c's scope was re-split by §4 ruling 12's "Option 1" ruling — 3c
+>   retires `GET /galaxy`, strips `GET /starters`, and flips ONLY the embedded console to the
+>   per-guild poll; the connect-time god's-eye read and `POST /action`'s god's-eye reply are the
+>   Phase-2-auth residual (with plain `/snapshot` and `/snapshot?guild=<any>`), not 3c. See the
+>   slice-3c note in §7.)*
 > - **Proved** headless (Playwright) against a live `node sim/server.js`, the player founded through the connect
 >   screen and a rival, a bot and real Deep Scan Array surveys seated through `tools/admin.js` and `POST /action`
 >   — 56 checks: every level state (L0, L1, an L1/L2 mix lifted live on the open screen, own / rival / bot held
