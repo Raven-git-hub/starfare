@@ -58,7 +58,9 @@ test('findNodesByResource returns only that good, sorted, and includes a known n
 
 test('getStarterSystems enumerates every starter, id-sorted, each with a real homeworld', () => {
   const starters = getStarterSystems();
-  assert.equal(starters.length, 335); // seed 7331; pinned so a seed change is loud
+  // seed 7331; pinned so a seed change is loud. 335 → 319 in roadmap 2.5 slice 17: the
+  // starter-spacing repair demoted 16 starters that sat too close to an earlier one.
+  assert.equal(starters.length, 319);
   // id-sorted and consistent with the single-system helpers it was missing.
   for (let i = 1; i < starters.length; i++) {
     assert.ok(starters[i - 1].id < starters[i].id, 'id-sorted');

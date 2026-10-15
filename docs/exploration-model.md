@@ -514,6 +514,13 @@ footprint and changes no territory.
   hold home disks that reach each other's centres TODAY, and "refused for both" then refuses each guild its own
   centre (where the own-centre override would award it), and a target can become a rival's control in flight by
   a founding next door (tested). Built as it stands; on the decision checklist.)*
+  *(⤳ 15-10-26, slice 17 — **the premise holds again for every NEW galaxy and for the committed seed.**
+  `territory-model.md` §6's de-cluster repair is built in the seed generator: no two starters' disks share a hex,
+  `data/seed.json` is regenerated (335 → 319 starters), and a founding beside a held home is refused ("not a
+  starter-eligible system") — so on such a galaxy no two home disks overlap and no target becomes a rival's control
+  in flight. A galaxy created BEFORE slice 17 keeps its persisted seed (never regenerated), side-by-side starters
+  and all, so "refused for both" is still live engine code there until the seniority control map lands; it stays
+  tested on a hand-edited seed (`sim/tests/deep-scan-centre.test.js`).)*
 - **Map visibility — RULED 15-10-26.** A guild's OWN Deep Scan Arrays are drawn on its galaxy map.
   A rival's array is **never drawn**. Seeing one is a detection matter, deferred with transport
   detection (L3), exactly as a rival's transport is. Today a rival's array is already absent from a
@@ -658,7 +665,9 @@ footprint and changes no territory.
 >   craft is berthed at, 0 hexes away — "that close or closer" — so it lands AT S, i.e. stays where it is, the kit
 >   aboard, flagged, with the `deploy_failed` notice (its `targetHex` the centre). Reachable two ways: a second array
 >   planted on the centre while the craft flew (`occupied`), and — on the committed seed, where some starters are
->   adjacent — a rival founding on the starter next door, whose disk then covers the centre (`rival-territory`). The
+>   adjacent — a rival founding on the starter next door, whose disk then covers the centre (`rival-territory`).
+>   *(⤳ slice 17: only on a galaxy created before the starter-spacing repair now; the committed seed and every new
+>   galaxy have no adjacent starters, and that case is tested on a hand-edited seed.)* The
 >   notice's target hex is now read from the craft's resolved coordinates (it read the bare hex's own `q, r`).
 > - **One structure per hex.** A second array on the same centre is `occupied`, by hand, at dispatch and on arrival.
 >   `checkDeepScanArrayIntegrity` is widened to exactly this case: an array may share its hex with ONE seed landmark,

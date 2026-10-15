@@ -121,7 +121,10 @@ granted and loaded kit above (on the seed-42 galaxy the home system is at `104,5
 > at `104,55`. They are not `data/seed.json`'s: the committed reference seed is 7331, and there `sys_0006` is a
 > different system at `54,127`. *(⤳ 15-10-26, roadmap 2.5 slice 16: re-derived from a live `seat-demo --seed 42`
 > and every command below run once against it — they work as written. Slice 15's checklist had read these hexes
-> against `data/seed.json`.)*
+> against `data/seed.json`.)* *(⤳ 15-10-26, roadmap 2.5 slice 17: unchanged by the starter-spacing repair — on seed 42
+> it demotes 17 starters, none of them `sys_0006` or `sys_0012`, and moves no coordinate; the deploy, retreat, unload,
+> Deep Scan (ring and centre) and scan steps below were re-run live against a fresh `seat-demo --seed 42` and work
+> as written.)*
 
     node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "101,55@deploy:outpost" $B
     node tools/admin.js tick N $B                                 # N = firstLegArrivalTick minus now

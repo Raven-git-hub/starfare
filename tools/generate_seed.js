@@ -189,11 +189,17 @@ function archetypeWeight(key, def, ring) {
 // the per-ring re-weighting of the rare tiers; everything else is unchanged.
 // One rand() call per planet regardless of ring, so the draw *count* is stable —
 // only the resulting archetype distribution shifts.
-function pickArchetype(rand, ring) {
+// `skip` (optional) leaves one archetype out of the table: the starter-spacing
+// repair passes 'terran', so a demoted planet can never be drawn Terran again.
+// With no `skip`, the weights, the roll and the result are exactly as before.
+function pickArchetype(rand, ring, skip = null) {
   let totalWeight = 0;
-  for (const [key, def] of Object.entries(ARCHETYPES)) totalWeight += archetypeWeight(key, def, ring);
+  for (const [key, def] of Object.entries(ARCHETYPES)) {
+    if (key !== skip) totalWeight += archetypeWeight(key, def, ring);
+  }
   let roll = rand() * totalWeight;
   for (const [key, def] of Object.entries(ARCHETYPES)) {
+    if (key === skip) continue;
     roll -= archetypeWeight(key, def, ring);
     if (roll <= 0) return key;
   }
@@ -279,6 +285,53 @@ function isStarterEligible(system) {
   return system.planets.some(p => p.archetype === 'terran');
 }
 
+// ---------- starter spacing (territory-model.md §6, RULED 15-10-26) ----------
+// Two starters are "too close" when their claim footprints would share a hex. A
+// footprint is the centre plus every hex within its claimRadius, so two footprints
+// meet exactly when the centres are within the SUM of the two radii. Every system
+// has claimRadius 1, so this is §6's "not within 2" (the ruled ≥ 3-hex spacing,
+// 2 × claimRadius + 1) — read from the seed's own claimRadius, not a new number.
+function startersTooClose(a, b) {
+  return hexDist(a.coords, b.coords) <= a.claimRadius + b.claimRadius;
+}
+
+// The starter-spacing repair (pipeline step 8b). Walk the starter systems in the
+// generator's own system order and KEEP one only if no starter already kept is too
+// close to it; otherwise DEMOTE it — it is "the junior". Only kept starters block:
+// a demoted system no longer counts. Deterministic, and the fewest demotions this
+// one greedy order can make.
+//
+// Demotion converts EVERY Terran planet of the junior to a non-Terran archetype,
+// re-drawn from the system's own ring-weighted table with Terran left out, and
+// regenerates its resource nodes — the same convert-in-place repairRareTierGuarantee
+// does. The system's starterEligible is then re-derived from its planets (so false).
+// Nothing is ever converted TO Terran.
+//
+// `rand` must be the repair's OWN side stream (see generateGalaxySeed), never the
+// main one. Returns the demoted system ids (in walk order) and the ids of the
+// converted planets — the settlement-slot pass draws theirs from the same stream.
+function repairStarterSpacing(systems, rand) {
+  const kept = [];
+  const demoted = [];
+  const convertedPlanetIds = new Set();
+  for (const sys of systems) {
+    if (!sys.starterEligible) continue;
+    if (!kept.some(k => startersTooClose(k, sys))) {
+      kept.push(sys);
+      continue;
+    }
+    for (const planet of sys.planets) {
+      if (planet.archetype !== 'terran') continue;
+      planet.archetype = pickArchetype(rand, sys.ring, 'terran');
+      planet.resourceNodes = generateResourceNodes(planet.archetype, rand, planet.id);
+      convertedPlanetIds.add(planet.id);
+    }
+    sys.starterEligible = isStarterEligible(sys);
+    demoted.push(sys.id);
+  }
+  return { demoted, convertedPlanetIds };
+}
+
 // ---------- rare-tier guarantee (shared by the repair pass and validation) ----------
 // Count rare-tier planets within `search` world-units of the system at index i.
 // Distance is measured system-to-system (all of a system's planets share its
@@ -340,8 +393,10 @@ function repairRareTierGuarantee(systems, rand, hexSize, radius, min) {
 
 // Validation (pipeline step 10): every resourceType appears somewhere; the
 // starter pool is non-empty and spread across every sector (not just healthy in
-// aggregate); and — post-repair — every starter system still meets the >=min
-// rare-tier-within-1/3-radius guarantee.
+// aggregate); no two starters are too close (territory-model.md §6); and —
+// post-repair — every starter system still meets the >=min
+// rare-tier-within-1/3-radius guarantee. If the spacing repair ever empties a
+// sector, the sector check below says so: the repair never quietly un-demotes.
 function validateGalaxy(systems, hexSize, radius, min) {
   const issues = [];
   const resourceTypeCounts = {};
@@ -363,6 +418,15 @@ function validateGalaxy(systems, hexSize, radius, min) {
   const missingSectors = SECTOR_PREFIXES.filter(pfx => !sectorsCovered.has(pfx));
   if (missingSectors.length > 0) issues.push(`starter-eligible systems missing from sectors: ${missingSectors.join(', ')}`);
 
+  // starter spacing: every pair of starters checked, the first offender named
+  const tooClose = [];
+  for (let i = 0; i < starterSystems.length; i++) {
+    for (let j = i + 1; j < starterSystems.length; j++) {
+      if (startersTooClose(starterSystems[i], starterSystems[j])) tooClose.push(`${starterSystems[i].id}/${starterSystems[j].id}`);
+    }
+  }
+  if (tooClose.length > 0) issues.push(`${tooClose.length} starter pair(s) within each other's claim footprint (territory-model.md §6), first ${tooClose[0]}`);
+
   // rare-tier guarantee, post-repair
   const search = radius / 3;
   const sysPix = systems.map(s => hexToPixel(s.coords.q, s.coords.r, hexSize));
@@ -377,6 +441,13 @@ function validateGalaxy(systems, hexSize, radius, min) {
 }
 
 // ---------- main generation ----------
+// The label of the starter-spacing repair's SIDE stream. A stream id, not a game
+// number: XOR-ing any fixed non-zero value into the seed gives the same galaxy a
+// second, separate mulberry32 stream, so the repair's draws never move the main
+// stream's. (These are the ASCII bytes of "SPAC", for spacing; any non-zero value
+// would do, and changing it would change only the demoted planets' rolls.)
+const STARTER_SPACING_STREAM = 0x53504143;
+
 function generateGalaxySeed(seed, opts = {}) {
   const rand = mulberry32(seed);
   const { radius, hexSize, citadelRadius, arms, spiralTwist, targetSystems, outpostMinSeparation, planetCountMin, planetCountMax, systemClaimRadius } = PARAMS;
@@ -502,6 +573,23 @@ function generateGalaxySeed(seed, opts = {}) {
     sys.starterEligible = isStarterEligible(sys);
   }
 
+  // --- pipeline step 8b: the starter-spacing repair (territory-model.md §6) ---
+  // Right AFTER starter tagging, because it reads starterEligible; and BEFORE the
+  // rare-tier repair, which reads starterEligible too, so that guarantee is checked
+  // only for the starters that survive. The rare-tier repair converts planets only
+  // TO a rare tier, never to Terran, so it cannot make a demoted system a starter
+  // again and re-break the spacing (generate_seed.test.js checks the final tags).
+  //
+  // Its draws come from a SIDE stream, not `rand`: the later passes (the rare-tier
+  // repair, then the settlement slots) read the main stream exactly where they
+  // would have, so every planet the repair does not convert stays byte-identical.
+  // `opts.skipStarterSpacingRepair` is a TEST seam only (the blast-radius test
+  // compares against the un-repaired galaxy); nothing in play passes it.
+  const spacingRand = mulberry32(seed ^ STARTER_SPACING_STREAM);
+  const spacing = opts.skipStarterSpacingRepair
+    ? { demoted: [], convertedPlanetIds: new Set() }
+    : repairStarterSpacing(systems, spacingRand);
+
   // --- pipeline step 9: rare-tier repair pass (after starter tagging) ---
   const repairs = repairRareTierGuarantee(systems, rand, hexSize, radius, rareTierMin);
   // node total may have shifted if any planet was converted
@@ -515,7 +603,12 @@ function generateGalaxySeed(seed, opts = {}) {
   let totalSettlementSlots = 0;
   for (const sys of systems) {
     for (const planet of sys.planets) {
-      planet.settlementSlots = generateSettlementSlots(planet.archetype, rand, planet.id);
+      // A planet the spacing repair converted draws its slots from the side
+      // stream: as a Terran it took NO main-stream draw here (a fixed 15), so this
+      // keeps the main stream's draw count — and every later planet's slots — as
+      // they were.
+      const slotRand = spacing.convertedPlanetIds.has(planet.id) ? spacingRand : rand;
+      planet.settlementSlots = generateSettlementSlots(planet.archetype, slotRand, planet.id);
       totalSettlementSlots += planet.settlementSlots.length;
     }
   }
@@ -543,6 +636,7 @@ function generateGalaxySeed(seed, opts = {}) {
       totalSettlementSlots,
       totalOutposts: outposts.length,
       starterSystems: validation.starterSystemCount,
+      starterSpacingDemotions: spacing.demoted.length,
       rareTierRepairs: repairs,
       armEligibleHexesConsidered: armEligible.length,
     },
@@ -570,6 +664,7 @@ module.exports = {
   mulberry32, hexToPixel, hexDist, classifyRing,
   pickArchetype, pickRareTier, generateResourceNodes,
   generateSettlementSlots, SETTLEMENT_SLOTS,
+  isStarterEligible, startersTooClose, repairStarterSpacing,
   countRareTierWithin, repairRareTierGuarantee, validateGalaxy,
   generateGalaxySeed, countTotalHexes,
 };
@@ -592,6 +687,7 @@ if (require.main === module) {
   console.log(`  resource nodes:  ${galaxy.stats.totalResourceNodes.toLocaleString()}`);
   console.log(`  settlement slots:${galaxy.stats.totalSettlementSlots.toLocaleString()}`);
   console.log(`  starter systems: ${galaxy.stats.starterSystems}`);
+  console.log(`  starter spacing demotions: ${galaxy.stats.starterSpacingDemotions}`);
   console.log(`  rare-tier repairs: ${galaxy.stats.rareTierRepairs}`);
   console.log(`  validation:      ${galaxy.validation.passed ? 'PASSED' : 'FAILED -- ' + galaxy.validation.issues.join('; ')}`);
   console.log(`  outposts:        ${galaxy.stats.totalOutposts}`);

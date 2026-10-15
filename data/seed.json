@@ -49343,116 +49343,62 @@
         },
         {
           "id": "pl_00695",
-          "archetype": "terran",
+          "archetype": "gasGiant",
           "resourceNodes": [
             {
               "id": "pl_00695_n01",
-              "resourceType": "titanium"
+              "resourceType": "helium"
             },
             {
               "id": "pl_00695_n02",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_00695_n03",
-              "resourceType": "copper"
-            },
-            {
-              "id": "pl_00695_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_00695_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_00695_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_00695_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_00695_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_00695_n09",
               "resourceType": "nitrogen"
             },
             {
+              "id": "pl_00695_n03",
+              "resourceType": "helium"
+            },
+            {
+              "id": "pl_00695_n04",
+              "resourceType": "nitrogen"
+            },
+            {
+              "id": "pl_00695_n05",
+              "resourceType": "nitrogen"
+            },
+            {
+              "id": "pl_00695_n06",
+              "resourceType": "helium"
+            },
+            {
+              "id": "pl_00695_n07",
+              "resourceType": "nitrogen"
+            },
+            {
+              "id": "pl_00695_n08",
+              "resourceType": "xenon"
+            },
+            {
+              "id": "pl_00695_n09",
+              "resourceType": "helium"
+            },
+            {
               "id": "pl_00695_n10",
-              "resourceType": "gold"
+              "resourceType": "helium"
             },
             {
               "id": "pl_00695_n11",
-              "resourceType": "silver"
+              "resourceType": "xenon"
             },
             {
               "id": "pl_00695_n12",
-              "resourceType": "tungsten"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_00695_n13",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_00695_n14",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_00695_n15",
-              "resourceType": "lithium"
+              "resourceType": "helium"
             }
           ],
-          "settlementSlots": [
-            {
-              "id": "pl_00695_s01"
-            },
-            {
-              "id": "pl_00695_s02"
-            },
-            {
-              "id": "pl_00695_s03"
-            },
-            {
-              "id": "pl_00695_s04"
-            },
-            {
-              "id": "pl_00695_s05"
-            },
-            {
-              "id": "pl_00695_s06"
-            },
-            {
-              "id": "pl_00695_s07"
-            },
-            {
-              "id": "pl_00695_s08"
-            },
-            {
-              "id": "pl_00695_s09"
-            },
-            {
-              "id": "pl_00695_s10"
-            },
-            {
-              "id": "pl_00695_s11"
-            },
-            {
-              "id": "pl_00695_s12"
-            },
-            {
-              "id": "pl_00695_s13"
-            },
-            {
-              "id": "pl_00695_s14"
-            },
-            {
-              "id": "pl_00695_s15"
-            }
-          ]
+          "settlementSlots": []
         },
         {
           "id": "pl_00696",
@@ -49635,7 +49581,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0211",
@@ -110132,7 +110078,7 @@
         },
         {
           "id": "pl_01580",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_01580_n01",
@@ -110148,51 +110094,31 @@
             },
             {
               "id": "pl_01580_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_01580_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01580_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01580_n07",
-              "resourceType": "polymers"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01580_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "copper"
             },
             {
               "id": "pl_01580_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01580_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_01580_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_01580_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_01580_n13",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_01580_n14",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_01580_n15",
-              "resourceType": "polymers"
+              "resourceType": "copper"
             }
           ],
           "settlementSlots": [
@@ -110222,29 +110148,11 @@
             },
             {
               "id": "pl_01580_s09"
-            },
-            {
-              "id": "pl_01580_s10"
-            },
-            {
-              "id": "pl_01580_s11"
-            },
-            {
-              "id": "pl_01580_s12"
-            },
-            {
-              "id": "pl_01580_s13"
-            },
-            {
-              "id": "pl_01580_s14"
-            },
-            {
-              "id": "pl_01580_s15"
             }
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0458",
@@ -111164,116 +111072,34 @@
         },
         {
           "id": "pl_01594",
-          "archetype": "terran",
+          "archetype": "irradiated",
           "resourceNodes": [
             {
               "id": "pl_01594_n01",
-              "resourceType": "titanium"
+              "resourceType": "neodymium"
             },
             {
               "id": "pl_01594_n02",
-              "resourceType": "titanium"
+              "resourceType": "neodymium"
             },
             {
               "id": "pl_01594_n03",
-              "resourceType": "copper"
+              "resourceType": "neodymium"
             },
             {
               "id": "pl_01594_n04",
-              "resourceType": "lead"
+              "resourceType": "neodymium"
             },
             {
               "id": "pl_01594_n05",
-              "resourceType": "silica"
+              "resourceType": "palladium"
             },
             {
               "id": "pl_01594_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_01594_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_01594_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_01594_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_01594_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_01594_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_01594_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_01594_n13",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_01594_n14",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_01594_n15",
-              "resourceType": "nitrogen"
+              "resourceType": "neodymium"
             }
           ],
-          "settlementSlots": [
-            {
-              "id": "pl_01594_s01"
-            },
-            {
-              "id": "pl_01594_s02"
-            },
-            {
-              "id": "pl_01594_s03"
-            },
-            {
-              "id": "pl_01594_s04"
-            },
-            {
-              "id": "pl_01594_s05"
-            },
-            {
-              "id": "pl_01594_s06"
-            },
-            {
-              "id": "pl_01594_s07"
-            },
-            {
-              "id": "pl_01594_s08"
-            },
-            {
-              "id": "pl_01594_s09"
-            },
-            {
-              "id": "pl_01594_s10"
-            },
-            {
-              "id": "pl_01594_s11"
-            },
-            {
-              "id": "pl_01594_s12"
-            },
-            {
-              "id": "pl_01594_s13"
-            },
-            {
-              "id": "pl_01594_s14"
-            },
-            {
-              "id": "pl_01594_s15"
-            }
-          ]
+          "settlementSlots": []
         },
         {
           "id": "pl_01595",
@@ -111373,7 +111199,7 @@
         },
         {
           "id": "pl_01597",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_01597_n01",
@@ -111389,51 +111215,43 @@
             },
             {
               "id": "pl_01597_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_01597_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01597_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01597_n07",
-              "resourceType": "polymers"
+              "resourceType": "silica"
             },
             {
               "id": "pl_01597_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_01597_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "copper"
             },
             {
               "id": "pl_01597_n10",
-              "resourceType": "gold"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_01597_n11",
-              "resourceType": "silver"
+              "resourceType": "copper"
             },
             {
               "id": "pl_01597_n12",
-              "resourceType": "tungsten"
+              "resourceType": "lead"
             },
             {
               "id": "pl_01597_n13",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_01597_n14",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_01597_n15",
-              "resourceType": "polymers"
+              "resourceType": "copper"
             }
           ],
           "settlementSlots": [
@@ -111466,26 +111284,11 @@
             },
             {
               "id": "pl_01597_s10"
-            },
-            {
-              "id": "pl_01597_s11"
-            },
-            {
-              "id": "pl_01597_s12"
-            },
-            {
-              "id": "pl_01597_s13"
-            },
-            {
-              "id": "pl_01597_s14"
-            },
-            {
-              "id": "pl_01597_s15"
             }
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0461",
@@ -156672,7 +156475,7 @@
         },
         {
           "id": "pl_02267",
-          "archetype": "terran",
+          "archetype": "desert",
           "resourceNodes": [
             {
               "id": "pl_02267_n01",
@@ -156680,15 +156483,15 @@
             },
             {
               "id": "pl_02267_n02",
-              "resourceType": "titanium"
+              "resourceType": "silica"
             },
             {
               "id": "pl_02267_n03",
-              "resourceType": "copper"
+              "resourceType": "silica"
             },
             {
               "id": "pl_02267_n04",
-              "resourceType": "lead"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_02267_n05",
@@ -156696,43 +156499,7 @@
             },
             {
               "id": "pl_02267_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_02267_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_02267_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_02267_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_02267_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_02267_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_02267_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_02267_n13",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_02267_n14",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_02267_n15",
-              "resourceType": "lead"
+              "resourceType": "silica"
             }
           ],
           "settlementSlots": [
@@ -156765,21 +156532,6 @@
             },
             {
               "id": "pl_02267_s10"
-            },
-            {
-              "id": "pl_02267_s11"
-            },
-            {
-              "id": "pl_02267_s12"
-            },
-            {
-              "id": "pl_02267_s13"
-            },
-            {
-              "id": "pl_02267_s14"
-            },
-            {
-              "id": "pl_02267_s15"
             }
           ]
         },
@@ -156933,7 +156685,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0654",
@@ -178498,67 +178250,31 @@
         },
         {
           "id": "pl_02597",
-          "archetype": "terran",
+          "archetype": "oceanic",
           "resourceNodes": [
             {
               "id": "pl_02597_n01",
-              "resourceType": "titanium"
+              "resourceType": "deuterium"
             },
             {
               "id": "pl_02597_n02",
-              "resourceType": "titanium"
+              "resourceType": "deuterium"
             },
             {
               "id": "pl_02597_n03",
-              "resourceType": "copper"
-            },
-            {
-              "id": "pl_02597_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_02597_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_02597_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_02597_n07",
               "resourceType": "polymers"
             },
             {
-              "id": "pl_02597_n08",
-              "resourceType": "carbon_products"
+              "id": "pl_02597_n04",
+              "resourceType": "deuterium"
             },
             {
-              "id": "pl_02597_n09",
-              "resourceType": "nitrogen"
+              "id": "pl_02597_n05",
+              "resourceType": "deuterium"
             },
             {
-              "id": "pl_02597_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_02597_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_02597_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_02597_n13",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_02597_n14",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_02597_n15",
-              "resourceType": "copper"
+              "id": "pl_02597_n06",
+              "resourceType": "polymers"
             }
           ],
           "settlementSlots": [
@@ -178570,47 +178286,11 @@
             },
             {
               "id": "pl_02597_s03"
-            },
-            {
-              "id": "pl_02597_s04"
-            },
-            {
-              "id": "pl_02597_s05"
-            },
-            {
-              "id": "pl_02597_s06"
-            },
-            {
-              "id": "pl_02597_s07"
-            },
-            {
-              "id": "pl_02597_s08"
-            },
-            {
-              "id": "pl_02597_s09"
-            },
-            {
-              "id": "pl_02597_s10"
-            },
-            {
-              "id": "pl_02597_s11"
-            },
-            {
-              "id": "pl_02597_s12"
-            },
-            {
-              "id": "pl_02597_s13"
-            },
-            {
-              "id": "pl_02597_s14"
-            },
-            {
-              "id": "pl_02597_s15"
             }
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0742",
@@ -185047,39 +184727,39 @@
       "planets": [
         {
           "id": "pl_02693",
-          "archetype": "terran",
+          "archetype": "ice",
           "resourceNodes": [
             {
               "id": "pl_02693_n01",
-              "resourceType": "titanium"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_02693_n02",
-              "resourceType": "titanium"
+              "resourceType": "helium"
             },
             {
               "id": "pl_02693_n03",
-              "resourceType": "copper"
+              "resourceType": "ammonia"
             },
             {
               "id": "pl_02693_n04",
-              "resourceType": "lead"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_02693_n05",
-              "resourceType": "silica"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_02693_n06",
-              "resourceType": "lithium"
+              "resourceType": "ammonia"
             },
             {
               "id": "pl_02693_n07",
-              "resourceType": "polymers"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_02693_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_02693_n09",
@@ -185087,27 +184767,7 @@
             },
             {
               "id": "pl_02693_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_02693_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_02693_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_02693_n13",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_02693_n14",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_02693_n15",
-              "resourceType": "carbon_products"
+              "resourceType": "ammonia"
             }
           ],
           "settlementSlots": [
@@ -185122,39 +184782,6 @@
             },
             {
               "id": "pl_02693_s04"
-            },
-            {
-              "id": "pl_02693_s05"
-            },
-            {
-              "id": "pl_02693_s06"
-            },
-            {
-              "id": "pl_02693_s07"
-            },
-            {
-              "id": "pl_02693_s08"
-            },
-            {
-              "id": "pl_02693_s09"
-            },
-            {
-              "id": "pl_02693_s10"
-            },
-            {
-              "id": "pl_02693_s11"
-            },
-            {
-              "id": "pl_02693_s12"
-            },
-            {
-              "id": "pl_02693_s13"
-            },
-            {
-              "id": "pl_02693_s14"
-            },
-            {
-              "id": "pl_02693_s15"
             }
           ]
         },
@@ -185411,7 +185038,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0769",
@@ -190438,116 +190065,26 @@
       "planets": [
         {
           "id": "pl_02775",
-          "archetype": "terran",
+          "archetype": "irradiated",
           "resourceNodes": [
             {
               "id": "pl_02775_n01",
-              "resourceType": "titanium"
+              "resourceType": "palladium"
             },
             {
               "id": "pl_02775_n02",
-              "resourceType": "titanium"
+              "resourceType": "neodymium"
             },
             {
               "id": "pl_02775_n03",
-              "resourceType": "copper"
+              "resourceType": "palladium"
             },
             {
               "id": "pl_02775_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_02775_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_02775_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_02775_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_02775_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_02775_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_02775_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_02775_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_02775_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_02775_n13",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_02775_n14",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_02775_n15",
-              "resourceType": "silver"
+              "resourceType": "neodymium"
             }
           ],
-          "settlementSlots": [
-            {
-              "id": "pl_02775_s01"
-            },
-            {
-              "id": "pl_02775_s02"
-            },
-            {
-              "id": "pl_02775_s03"
-            },
-            {
-              "id": "pl_02775_s04"
-            },
-            {
-              "id": "pl_02775_s05"
-            },
-            {
-              "id": "pl_02775_s06"
-            },
-            {
-              "id": "pl_02775_s07"
-            },
-            {
-              "id": "pl_02775_s08"
-            },
-            {
-              "id": "pl_02775_s09"
-            },
-            {
-              "id": "pl_02775_s10"
-            },
-            {
-              "id": "pl_02775_s11"
-            },
-            {
-              "id": "pl_02775_s12"
-            },
-            {
-              "id": "pl_02775_s13"
-            },
-            {
-              "id": "pl_02775_s14"
-            },
-            {
-              "id": "pl_02775_s15"
-            }
-          ]
+          "settlementSlots": []
         },
         {
           "id": "pl_02776",
@@ -190774,7 +190311,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0792",
@@ -211431,7 +210968,7 @@
         },
         {
           "id": "pl_03076",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_03076_n01",
@@ -211447,51 +210984,51 @@
             },
             {
               "id": "pl_03076_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03076_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03076_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03076_n07",
-              "resourceType": "polymers"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03076_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03076_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03076_n10",
-              "resourceType": "gold"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03076_n11",
-              "resourceType": "silver"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03076_n12",
-              "resourceType": "tungsten"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_03076_n13",
-              "resourceType": "nitrogen"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_03076_n14",
-              "resourceType": "silica"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_03076_n15",
-              "resourceType": "nitrogen"
+              "resourceType": "lead"
             }
           ],
           "settlementSlots": [
@@ -211521,29 +211058,11 @@
             },
             {
               "id": "pl_03076_s09"
-            },
-            {
-              "id": "pl_03076_s10"
-            },
-            {
-              "id": "pl_03076_s11"
-            },
-            {
-              "id": "pl_03076_s12"
-            },
-            {
-              "id": "pl_03076_s13"
-            },
-            {
-              "id": "pl_03076_s14"
-            },
-            {
-              "id": "pl_03076_s15"
             }
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0879",
@@ -227453,7 +226972,7 @@
         },
         {
           "id": "pl_03310",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_03310_n01",
@@ -227469,51 +226988,31 @@
             },
             {
               "id": "pl_03310_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03310_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03310_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03310_n07",
-              "resourceType": "polymers"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03310_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_03310_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03310_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_03310_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_03310_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_03310_n13",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_03310_n14",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_03310_n15",
-              "resourceType": "nitrogen"
+              "resourceType": "silica"
             }
           ],
           "settlementSlots": [
@@ -227540,27 +227039,6 @@
             },
             {
               "id": "pl_03310_s08"
-            },
-            {
-              "id": "pl_03310_s09"
-            },
-            {
-              "id": "pl_03310_s10"
-            },
-            {
-              "id": "pl_03310_s11"
-            },
-            {
-              "id": "pl_03310_s12"
-            },
-            {
-              "id": "pl_03310_s13"
-            },
-            {
-              "id": "pl_03310_s14"
-            },
-            {
-              "id": "pl_03310_s15"
             }
           ]
         },
@@ -227684,7 +227162,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_0950",
@@ -240893,7 +240371,7 @@
         },
         {
           "id": "pl_03504",
-          "archetype": "terran",
+          "archetype": "desert",
           "resourceNodes": [
             {
               "id": "pl_03504_n01",
@@ -240905,11 +240383,11 @@
             },
             {
               "id": "pl_03504_n03",
-              "resourceType": "copper"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_03504_n04",
-              "resourceType": "lead"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_03504_n05",
@@ -240917,43 +240395,7 @@
             },
             {
               "id": "pl_03504_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_03504_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_03504_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_03504_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_03504_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_03504_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_03504_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_03504_n13",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_03504_n14",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_03504_n15",
-              "resourceType": "lithium"
+              "resourceType": "silica"
             }
           ],
           "settlementSlots": [
@@ -240977,35 +240419,11 @@
             },
             {
               "id": "pl_03504_s07"
-            },
-            {
-              "id": "pl_03504_s08"
-            },
-            {
-              "id": "pl_03504_s09"
-            },
-            {
-              "id": "pl_03504_s10"
-            },
-            {
-              "id": "pl_03504_s11"
-            },
-            {
-              "id": "pl_03504_s12"
-            },
-            {
-              "id": "pl_03504_s13"
-            },
-            {
-              "id": "pl_03504_s14"
-            },
-            {
-              "id": "pl_03504_s15"
             }
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1003",
@@ -249823,7 +249241,7 @@
       "planets": [
         {
           "id": "pl_03636",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_03636_n01",
@@ -249839,51 +249257,51 @@
             },
             {
               "id": "pl_03636_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03636_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03636_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03636_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_03636_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_03636_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_03636_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_03636_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_03636_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_03636_n13",
               "resourceType": "titanium"
             },
             {
-              "id": "pl_03636_n14",
+              "id": "pl_03636_n08",
+              "resourceType": "titanium"
+            },
+            {
+              "id": "pl_03636_n09",
+              "resourceType": "copper"
+            },
+            {
+              "id": "pl_03636_n10",
+              "resourceType": "copper"
+            },
+            {
+              "id": "pl_03636_n11",
+              "resourceType": "lead"
+            },
+            {
+              "id": "pl_03636_n12",
+              "resourceType": "lead"
+            },
+            {
+              "id": "pl_03636_n13",
               "resourceType": "silica"
             },
             {
-              "id": "pl_03636_n15",
+              "id": "pl_03636_n14",
               "resourceType": "copper"
+            },
+            {
+              "id": "pl_03636_n15",
+              "resourceType": "lead"
             }
           ],
           "settlementSlots": [
@@ -249910,27 +249328,6 @@
             },
             {
               "id": "pl_03636_s08"
-            },
-            {
-              "id": "pl_03636_s09"
-            },
-            {
-              "id": "pl_03636_s10"
-            },
-            {
-              "id": "pl_03636_s11"
-            },
-            {
-              "id": "pl_03636_s12"
-            },
-            {
-              "id": "pl_03636_s13"
-            },
-            {
-              "id": "pl_03636_s14"
-            },
-            {
-              "id": "pl_03636_s15"
             }
           ]
         },
@@ -249962,7 +249359,7 @@
           "settlementSlots": []
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1038",
@@ -266524,7 +265921,7 @@
       "planets": [
         {
           "id": "pl_03880",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_03880_n01",
@@ -266540,51 +265937,31 @@
             },
             {
               "id": "pl_03880_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_03880_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03880_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_03880_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_03880_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_03880_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_03880_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_03880_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_03880_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_03880_n13",
               "resourceType": "titanium"
             },
             {
-              "id": "pl_03880_n14",
-              "resourceType": "nitrogen"
+              "id": "pl_03880_n08",
+              "resourceType": "lead"
             },
             {
-              "id": "pl_03880_n15",
-              "resourceType": "silver"
+              "id": "pl_03880_n09",
+              "resourceType": "lead"
+            },
+            {
+              "id": "pl_03880_n10",
+              "resourceType": "lead"
             }
           ],
           "settlementSlots": [
@@ -266617,21 +265994,6 @@
             },
             {
               "id": "pl_03880_s10"
-            },
-            {
-              "id": "pl_03880_s11"
-            },
-            {
-              "id": "pl_03880_s12"
-            },
-            {
-              "id": "pl_03880_s13"
-            },
-            {
-              "id": "pl_03880_s14"
-            },
-            {
-              "id": "pl_03880_s15"
             }
           ]
         },
@@ -266818,7 +266180,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1115",
@@ -291251,116 +290613,46 @@
         },
         {
           "id": "pl_04237",
-          "archetype": "terran",
+          "archetype": "molten",
           "resourceNodes": [
             {
               "id": "pl_04237_n01",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04237_n02",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04237_n03",
-              "resourceType": "copper"
-            },
-            {
-              "id": "pl_04237_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_04237_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_04237_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_04237_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_04237_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_04237_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_04237_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_04237_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_04237_n12",
               "resourceType": "tungsten"
             },
             {
-              "id": "pl_04237_n13",
-              "resourceType": "titanium"
+              "id": "pl_04237_n02",
+              "resourceType": "silver"
             },
             {
-              "id": "pl_04237_n14",
-              "resourceType": "polymers"
+              "id": "pl_04237_n03",
+              "resourceType": "tungsten"
             },
             {
-              "id": "pl_04237_n15",
+              "id": "pl_04237_n04",
+              "resourceType": "silver"
+            },
+            {
+              "id": "pl_04237_n05",
+              "resourceType": "gold"
+            },
+            {
+              "id": "pl_04237_n06",
+              "resourceType": "gold"
+            },
+            {
+              "id": "pl_04237_n07",
+              "resourceType": "silver"
+            },
+            {
+              "id": "pl_04237_n08",
+              "resourceType": "gold"
+            },
+            {
+              "id": "pl_04237_n09",
               "resourceType": "silver"
             }
           ],
-          "settlementSlots": [
-            {
-              "id": "pl_04237_s01"
-            },
-            {
-              "id": "pl_04237_s02"
-            },
-            {
-              "id": "pl_04237_s03"
-            },
-            {
-              "id": "pl_04237_s04"
-            },
-            {
-              "id": "pl_04237_s05"
-            },
-            {
-              "id": "pl_04237_s06"
-            },
-            {
-              "id": "pl_04237_s07"
-            },
-            {
-              "id": "pl_04237_s08"
-            },
-            {
-              "id": "pl_04237_s09"
-            },
-            {
-              "id": "pl_04237_s10"
-            },
-            {
-              "id": "pl_04237_s11"
-            },
-            {
-              "id": "pl_04237_s12"
-            },
-            {
-              "id": "pl_04237_s13"
-            },
-            {
-              "id": "pl_04237_s14"
-            },
-            {
-              "id": "pl_04237_s15"
-            }
-          ]
+          "settlementSlots": []
         },
         {
           "id": "pl_04238",
@@ -291505,7 +290797,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1219",
@@ -300872,229 +300164,97 @@
         },
         {
           "id": "pl_04372",
-          "archetype": "terran",
+          "archetype": "gasGiant",
           "resourceNodes": [
             {
               "id": "pl_04372_n01",
-              "resourceType": "titanium"
+              "resourceType": "xenon"
             },
             {
               "id": "pl_04372_n02",
-              "resourceType": "titanium"
+              "resourceType": "helium"
             },
             {
               "id": "pl_04372_n03",
-              "resourceType": "copper"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_04372_n04",
-              "resourceType": "lead"
+              "resourceType": "xenon"
             },
             {
               "id": "pl_04372_n05",
-              "resourceType": "silica"
+              "resourceType": "nitrogen"
             },
             {
               "id": "pl_04372_n06",
-              "resourceType": "lithium"
+              "resourceType": "helium"
             },
             {
               "id": "pl_04372_n07",
-              "resourceType": "polymers"
+              "resourceType": "xenon"
             },
             {
               "id": "pl_04372_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "xenon"
             },
             {
               "id": "pl_04372_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "helium"
             },
             {
               "id": "pl_04372_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_04372_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_04372_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_04372_n13",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04372_n14",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_04372_n15",
-              "resourceType": "titanium"
-            }
-          ],
-          "settlementSlots": [
-            {
-              "id": "pl_04372_s01"
-            },
-            {
-              "id": "pl_04372_s02"
-            },
-            {
-              "id": "pl_04372_s03"
-            },
-            {
-              "id": "pl_04372_s04"
-            },
-            {
-              "id": "pl_04372_s05"
-            },
-            {
-              "id": "pl_04372_s06"
-            },
-            {
-              "id": "pl_04372_s07"
-            },
-            {
-              "id": "pl_04372_s08"
-            },
-            {
-              "id": "pl_04372_s09"
-            },
-            {
-              "id": "pl_04372_s10"
-            },
-            {
-              "id": "pl_04372_s11"
-            },
-            {
-              "id": "pl_04372_s12"
-            },
-            {
-              "id": "pl_04372_s13"
-            },
-            {
-              "id": "pl_04372_s14"
-            },
-            {
-              "id": "pl_04372_s15"
-            }
-          ]
-        },
-        {
-          "id": "pl_04373",
-          "archetype": "terran",
-          "resourceNodes": [
-            {
-              "id": "pl_04373_n01",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04373_n02",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04373_n03",
-              "resourceType": "copper"
-            },
-            {
-              "id": "pl_04373_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_04373_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_04373_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_04373_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_04373_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_04373_n09",
               "resourceType": "nitrogen"
             },
             {
-              "id": "pl_04373_n10",
+              "id": "pl_04372_n11",
+              "resourceType": "xenon"
+            },
+            {
+              "id": "pl_04372_n12",
+              "resourceType": "helium"
+            }
+          ],
+          "settlementSlots": []
+        },
+        {
+          "id": "pl_04373",
+          "archetype": "molten",
+          "resourceNodes": [
+            {
+              "id": "pl_04373_n01",
               "resourceType": "gold"
             },
             {
-              "id": "pl_04373_n11",
+              "id": "pl_04373_n02",
               "resourceType": "silver"
             },
             {
-              "id": "pl_04373_n12",
+              "id": "pl_04373_n03",
+              "resourceType": "gold"
+            },
+            {
+              "id": "pl_04373_n04",
               "resourceType": "tungsten"
             },
             {
-              "id": "pl_04373_n13",
-              "resourceType": "carbon_products"
+              "id": "pl_04373_n05",
+              "resourceType": "tungsten"
             },
             {
-              "id": "pl_04373_n14",
-              "resourceType": "carbon_products"
+              "id": "pl_04373_n06",
+              "resourceType": "gold"
             },
             {
-              "id": "pl_04373_n15",
-              "resourceType": "polymers"
+              "id": "pl_04373_n07",
+              "resourceType": "tungsten"
+            },
+            {
+              "id": "pl_04373_n08",
+              "resourceType": "tungsten"
             }
           ],
-          "settlementSlots": [
-            {
-              "id": "pl_04373_s01"
-            },
-            {
-              "id": "pl_04373_s02"
-            },
-            {
-              "id": "pl_04373_s03"
-            },
-            {
-              "id": "pl_04373_s04"
-            },
-            {
-              "id": "pl_04373_s05"
-            },
-            {
-              "id": "pl_04373_s06"
-            },
-            {
-              "id": "pl_04373_s07"
-            },
-            {
-              "id": "pl_04373_s08"
-            },
-            {
-              "id": "pl_04373_s09"
-            },
-            {
-              "id": "pl_04373_s10"
-            },
-            {
-              "id": "pl_04373_s11"
-            },
-            {
-              "id": "pl_04373_s12"
-            },
-            {
-              "id": "pl_04373_s13"
-            },
-            {
-              "id": "pl_04373_s14"
-            },
-            {
-              "id": "pl_04373_s15"
-            }
-          ]
+          "settlementSlots": []
         },
         {
           "id": "pl_04374",
@@ -301162,7 +300322,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1257",
@@ -320824,7 +319984,7 @@
         },
         {
           "id": "pl_04673",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_04673_n01",
@@ -320840,51 +320000,39 @@
             },
             {
               "id": "pl_04673_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_04673_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04673_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04673_n07",
-              "resourceType": "polymers"
+              "resourceType": "copper"
             },
             {
               "id": "pl_04673_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "silica"
             },
             {
               "id": "pl_04673_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_04673_n10",
-              "resourceType": "gold"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_04673_n11",
-              "resourceType": "silver"
+              "resourceType": "silica"
             },
             {
               "id": "pl_04673_n12",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_04673_n13",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_04673_n14",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_04673_n15",
-              "resourceType": "nitrogen"
+              "resourceType": "silica"
             }
           ],
           "settlementSlots": [
@@ -320917,21 +320065,6 @@
             },
             {
               "id": "pl_04673_s10"
-            },
-            {
-              "id": "pl_04673_s11"
-            },
-            {
-              "id": "pl_04673_s12"
-            },
-            {
-              "id": "pl_04673_s13"
-            },
-            {
-              "id": "pl_04673_s14"
-            },
-            {
-              "id": "pl_04673_s15"
             }
           ]
         },
@@ -321077,7 +320210,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1337",
@@ -330115,67 +329248,43 @@
       "planets": [
         {
           "id": "pl_04810",
-          "archetype": "terran",
+          "archetype": "ice",
           "resourceNodes": [
             {
               "id": "pl_04810_n01",
-              "resourceType": "titanium"
+              "resourceType": "ammonia"
             },
             {
               "id": "pl_04810_n02",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04810_n03",
-              "resourceType": "copper"
-            },
-            {
-              "id": "pl_04810_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_04810_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_04810_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_04810_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_04810_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_04810_n09",
               "resourceType": "nitrogen"
             },
             {
-              "id": "pl_04810_n10",
-              "resourceType": "gold"
+              "id": "pl_04810_n03",
+              "resourceType": "ammonia"
             },
             {
-              "id": "pl_04810_n11",
-              "resourceType": "silver"
+              "id": "pl_04810_n04",
+              "resourceType": "helium"
             },
             {
-              "id": "pl_04810_n12",
-              "resourceType": "tungsten"
+              "id": "pl_04810_n05",
+              "resourceType": "helium"
             },
             {
-              "id": "pl_04810_n13",
-              "resourceType": "tungsten"
+              "id": "pl_04810_n06",
+              "resourceType": "nitrogen"
             },
             {
-              "id": "pl_04810_n14",
-              "resourceType": "carbon_products"
+              "id": "pl_04810_n07",
+              "resourceType": "nitrogen"
             },
             {
-              "id": "pl_04810_n15",
-              "resourceType": "lithium"
+              "id": "pl_04810_n08",
+              "resourceType": "ammonia"
+            },
+            {
+              "id": "pl_04810_n09",
+              "resourceType": "ammonia"
             }
           ],
           "settlementSlots": [
@@ -330199,30 +329308,6 @@
             },
             {
               "id": "pl_04810_s07"
-            },
-            {
-              "id": "pl_04810_s08"
-            },
-            {
-              "id": "pl_04810_s09"
-            },
-            {
-              "id": "pl_04810_s10"
-            },
-            {
-              "id": "pl_04810_s11"
-            },
-            {
-              "id": "pl_04810_s12"
-            },
-            {
-              "id": "pl_04810_s13"
-            },
-            {
-              "id": "pl_04810_s14"
-            },
-            {
-              "id": "pl_04810_s15"
             }
           ]
         },
@@ -330328,7 +329413,7 @@
         },
         {
           "id": "pl_04813",
-          "archetype": "terran",
+          "archetype": "rocky",
           "resourceNodes": [
             {
               "id": "pl_04813_n01",
@@ -330344,51 +329429,43 @@
             },
             {
               "id": "pl_04813_n04",
-              "resourceType": "lead"
+              "resourceType": "copper"
             },
             {
               "id": "pl_04813_n05",
-              "resourceType": "silica"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04813_n06",
-              "resourceType": "lithium"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04813_n07",
-              "resourceType": "polymers"
+              "resourceType": "silica"
             },
             {
               "id": "pl_04813_n08",
-              "resourceType": "carbon_products"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04813_n09",
-              "resourceType": "nitrogen"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_04813_n10",
-              "resourceType": "gold"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04813_n11",
-              "resourceType": "silver"
+              "resourceType": "lead"
             },
             {
               "id": "pl_04813_n12",
-              "resourceType": "tungsten"
+              "resourceType": "titanium"
             },
             {
               "id": "pl_04813_n13",
-              "resourceType": "tungsten"
-            },
-            {
-              "id": "pl_04813_n14",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_04813_n15",
-              "resourceType": "polymers"
+              "resourceType": "silica"
             }
           ],
           "settlementSlots": [
@@ -330415,142 +329492,47 @@
             },
             {
               "id": "pl_04813_s08"
-            },
-            {
-              "id": "pl_04813_s09"
-            },
-            {
-              "id": "pl_04813_s10"
-            },
-            {
-              "id": "pl_04813_s11"
-            },
-            {
-              "id": "pl_04813_s12"
-            },
-            {
-              "id": "pl_04813_s13"
-            },
-            {
-              "id": "pl_04813_s14"
-            },
-            {
-              "id": "pl_04813_s15"
             }
           ]
         },
         {
           "id": "pl_04814",
-          "archetype": "terran",
+          "archetype": "molten",
           "resourceNodes": [
             {
               "id": "pl_04814_n01",
-              "resourceType": "titanium"
+              "resourceType": "gold"
             },
             {
               "id": "pl_04814_n02",
-              "resourceType": "titanium"
-            },
-            {
-              "id": "pl_04814_n03",
-              "resourceType": "copper"
-            },
-            {
-              "id": "pl_04814_n04",
-              "resourceType": "lead"
-            },
-            {
-              "id": "pl_04814_n05",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_04814_n06",
-              "resourceType": "lithium"
-            },
-            {
-              "id": "pl_04814_n07",
-              "resourceType": "polymers"
-            },
-            {
-              "id": "pl_04814_n08",
-              "resourceType": "carbon_products"
-            },
-            {
-              "id": "pl_04814_n09",
-              "resourceType": "nitrogen"
-            },
-            {
-              "id": "pl_04814_n10",
-              "resourceType": "gold"
-            },
-            {
-              "id": "pl_04814_n11",
-              "resourceType": "silver"
-            },
-            {
-              "id": "pl_04814_n12",
               "resourceType": "tungsten"
             },
             {
-              "id": "pl_04814_n13",
-              "resourceType": "silica"
-            },
-            {
-              "id": "pl_04814_n14",
+              "id": "pl_04814_n03",
               "resourceType": "silver"
             },
             {
-              "id": "pl_04814_n15",
+              "id": "pl_04814_n04",
               "resourceType": "gold"
+            },
+            {
+              "id": "pl_04814_n05",
+              "resourceType": "tungsten"
+            },
+            {
+              "id": "pl_04814_n06",
+              "resourceType": "gold"
+            },
+            {
+              "id": "pl_04814_n07",
+              "resourceType": "tungsten"
+            },
+            {
+              "id": "pl_04814_n08",
+              "resourceType": "silver"
             }
           ],
-          "settlementSlots": [
-            {
-              "id": "pl_04814_s01"
-            },
-            {
-              "id": "pl_04814_s02"
-            },
-            {
-              "id": "pl_04814_s03"
-            },
-            {
-              "id": "pl_04814_s04"
-            },
-            {
-              "id": "pl_04814_s05"
-            },
-            {
-              "id": "pl_04814_s06"
-            },
-            {
-              "id": "pl_04814_s07"
-            },
-            {
-              "id": "pl_04814_s08"
-            },
-            {
-              "id": "pl_04814_s09"
-            },
-            {
-              "id": "pl_04814_s10"
-            },
-            {
-              "id": "pl_04814_s11"
-            },
-            {
-              "id": "pl_04814_s12"
-            },
-            {
-              "id": "pl_04814_s13"
-            },
-            {
-              "id": "pl_04814_s14"
-            },
-            {
-              "id": "pl_04814_s15"
-            }
-          ]
+          "settlementSlots": []
         },
         {
           "id": "pl_04815",
@@ -330631,7 +329613,7 @@
           ]
         }
       ],
-      "starterEligible": true
+      "starterEligible": false
     },
     {
       "id": "sys_1376",
@@ -364837,10 +363819,11 @@
     "totalHexesInGalaxy": 101287,
     "totalSystems": 1500,
     "totalPlanets": 5290,
-    "totalResourceNodes": 51273,
-    "totalSettlementSlots": 32706,
+    "totalResourceNodes": 51168,
+    "totalSettlementSlots": 32509,
     "totalOutposts": 96,
-    "starterSystems": 335,
+    "starterSystems": 319,
+    "starterSpacingDemotions": 16,
     "rareTierRepairs": 0,
     "armEligibleHexesConsidered": 50232
   }
