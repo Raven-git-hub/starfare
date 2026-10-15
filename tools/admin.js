@@ -16,8 +16,12 @@
 // Dependency-free on purpose (plain Node + global `fetch`), so it runs in the
 // stock node:22-alpine image with nothing installed:
 //
-//   docker exec starfare node tools/admin.js verify-cycle
+//   docker exec starfare node tools/admin.js health
 //   node tools/admin.js snapshot --pick calendar --base http://localhost:7331
+//
+// `health` is the post-redeploy check: it reads and changes nothing. `verify-cycle`
+// is NOT — it creates a new galaxy, which REPLACES the active one (docs/deployment-runbook.md
+// §9 and §12), so it belongs on a scratch rig only.
 //
 // Exit 0 on success, 1 on failure — including a refused action ({accepted:false})
 // — so it is scriptable and CI-able.
@@ -1032,9 +1036,11 @@ async function cmdSeatDemo(base, flags) {
 }
 
 async function cmdVerifyCycle(base, flags) {
-  // The post-redeploy self-check: build a galaxy from scratch, found a HUMAN guild
-  // (so it receives the starter package), license one mine at 100%, read the
-  // result back, and judge it.
+  // A DESTRUCTIVE self-check, for a scratch rig only: it creates a new galaxy, which
+  // REPLACES the active one — so it is never the post-redeploy check on a live world
+  // (that is `health`, which reads and changes nothing; docs/deployment-runbook.md §9).
+  // It builds a galaxy from scratch, founds a HUMAN guild (so it receives the starter
+  // package), licenses one mine at 100%, reads the result back, and judges it.
   await cmdNewGalaxy(base, flags);
   const snap = await liveSnapshot(base);
   const { starter, nodes } = await scanStarters(base, snap, DEMO_GOOD, 1);
@@ -1467,7 +1473,7 @@ const USAGE = `starfare operator CLI — a thin client over the running server's
   docker exec starfare node tools/admin.js <command> [flags]
 
 Commands
-  health                      GET  /health
+  health                      GET  /health  — read-only; the post-redeploy check
   snapshot [--guild ID] [--json] [--pick a.b.c]
                               GET  /snapshot (default: a compact summary); with --guild,
                               GET  /snapshot?guild=ID — that guild's FOGGED view
@@ -1475,7 +1481,9 @@ Commands
   new-galaxy [--seed N] [--utc-offset H]
                               POST /admin/galaxy/new  — REPLACES the active galaxy
   seat-demo [--window N]      the two-mine 100%-licence demo (see the runbook)
-  verify-cycle [--seed N]     the post-redeploy self-check; exit 0 only if every check passes
+  verify-cycle [--seed N]     a self-check for a SCRATCH rig — REPLACES the active galaxy;
+                              exit 0 only if every check passes. Not a post-redeploy
+                              check on a live world: use health for that
   tick [n]                    POST /tick, n times (default 1)
 
 Operator adjust levers (docs/operator-adjust.md — dev/steward, exit 1 on a refused action)
