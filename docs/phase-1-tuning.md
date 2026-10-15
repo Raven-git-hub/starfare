@@ -168,7 +168,9 @@ The space-asset deploy ranges: how far from a system the guild **holds** a struc
   number**: "attached" is geometry — a bare hex exactly `claimRadius + 1` from a held system's centre
   (`claimRadius` is seed data, `data/seed.json`, 1 for every system today), or 1 from an Outpost the guild
   owns (`sim/actions.js` `attachedPlacement`). The scan timers above are not built — slice (b2).)* *(⤳ The
-  scan timers are BUILT 06-10-26, roadmap 2.5 (b2) — see the entry above.)*
+  scan timers are BUILT 06-10-26, roadmap 2.5 (b2) — see the entry above.)* *(⤳ REVISED 15-10-26, slice 15, still
+  **no number**: inside the guild's own control disk is legal too, and any hex inside a rival's control is refused —
+  geometry over the same `claimRadius` (`exploration-model.md` §5).)*
 
 ### Production flow *(10-08-26)*
 - **Starved-line warn threshold** `[FIRST-CUT]` — a consuming line is flagged "starved" (the §5 pulsing box / future Plant-Manager cue) only when its effective rate is below this fraction of its own throttle, so a rounding wobble near 100% doesn't cry wolf. **95%** — pure first-cut, tune in play.

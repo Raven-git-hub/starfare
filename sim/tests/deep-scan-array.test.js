@@ -7,10 +7,12 @@
 //   1. VOCABULARY: 'deepScan' is a kit kind whose good is `deep_scan_array_kit` — off-market, a whole heavy
 //      hold, and built or bought only under its BILL kind `deep_scan_array` (⤳ 15-10-26); every kit kind has a
 //      deploy rule of its own.
-//   2. ATTACHED: a bare hex exactly claimRadius + 1 from a held system's centre, or 1 from an owned
-//      Outpost, deploys; every other hex is refused — the centre as 'not-bare-hex', a hex inside the disk
-//      or further out as 'not-attached', and a rival's territory never counts. The anchor: a held system
-//      first (lowest id), else the lowest-id owned Outpost's own anchor system.
+//   2. PLACEMENT (REVISED 15-10-26, slice 15): a bare hex inside a held system's disk (1 ≤ d ≤ claimRadius), on
+//      the ring just outside it (claimRadius + 1), or 1 from an owned Outpost, deploys; the centre is refused
+//      as 'not-bare-hex', a hex further out as 'not-attached', and a hex inside a RIVAL's control as
+//      'rival-territory'. The anchor: a held system first (lowest id), else the lowest-id owned Outpost's own
+//      anchor system. (The slice-15 failure modes — the rival ring, arrival, not retroactive — are in
+//      deep-scan-placement.test.js.)
 //   3. ONE STRUCTURE PER HEX across both kinds, and the waypoint's kind must match the kit aboard.
 //   4. ON ARRIVAL: a route ending in an array deploy plants it on the arrival tick; a route whose
 //      attachment is lost in flight retreats, the kit aboard, flagged 'not-attached', with a notice; an
@@ -175,7 +177,7 @@ test('every kit kind has a deploy rule of its own — none throws, and each judg
   }
   assert.deepEqual(answers.outpost, { valid: true });
   assert.equal(answers.deepScan.valid, false);
-  assert.match(answers.deepScan.reason, /touches no footprint guild "g1" holds — a Deep Scan Array deploys attached/);
+  assert.match(answers.deepScan.reason, /in or beside no territory guild "g1" holds — a Deep Scan Array deploys inside its guild's territory, or on open space beside it/);
 });
 
 test('seed: every system carries a whole-number claimRadius — the footprint the attached rule measures', () => {
@@ -209,9 +211,10 @@ test('ATTACHED to a held system: an array kit on a bare hex claimRadius + 1 from
   assert.deepEqual(checkInvariants(after, after.tick), []);
 });
 
-test('ATTACHED, swept: around home, ONLY the bare claimRadius + 1 ring deploys; the centre, the disk and beyond refuse', () => {
+test('PLACEMENT, swept: around home, the bare disk AND the claimRadius + 1 ring deploy; the centre and beyond refuse', () => {
   const base = withArrayKit(arrayState());
   let ring = 0;
+  let inside = 0;
   for (const hex of hexesAround(HOME_HEX, TOUCHING + 2)) {
     const s = placeCraft(JSON.parse(JSON.stringify(base)), 'g1', craftOf(base).id, hex);
     const d = hexDistance(hex, HOME_HEX);
@@ -223,37 +226,41 @@ test('ATTACHED, swept: around home, ONLY the bare claimRadius + 1 ring deploys; 
       assert.match(reason, /already occupied by system/, where);
     } else if (seedLandmarkAtHex(hex.q, hex.r)) {
       assert.match(reason, /already occupied by/, where);
-    } else if (d === TOUCHING) {
+    } else if (d <= TOUCHING) {
+      // INSIDE the disk (REVISED 15-10-26 — legal now) or on the ring just outside it.
       assert.equal(valid, true, `${where}: ${reason}`);
-      ring += 1;
+      if (d === TOUCHING) ring += 1; else inside += 1;
     } else {
-      // INSIDE the disk (d ≤ claimRadius) or beyond the ring: refused by the attached rule itself.
-      assert.match(reason, /touches no footprint guild "g1" holds/, where);
+      // Beyond the ring: refused by the placement rule itself.
+      assert.match(reason, /in or beside no territory guild "g1" holds/, where);
     }
   }
   assert.ok(ring >= 6, 'the ring has bare hexes to deploy on');
+  assert.ok(inside >= 1, 'and so does the inside of the disk');
 });
 
-test('NOT ATTACHED: two hexes outside the footprint, inside it, at the system, or touching only RIVAL ground', () => {
+test('REFUSED: two hexes outside the footprint, at the system, beside only RIVAL ground, or INSIDE a rival\'s disk', () => {
   const dir = freeDirection(HOME_HEX, [1, TOUCHING + 1]);
-  // Two hexes outside the footprint (one beyond the touching ring) — the attached rule refuses.
+  // Two hexes outside the footprint (one beyond the touching ring) — the placement rule refuses.
   const far = arrayKitAt(along(HOME_HEX, dir, TOUCHING + 1));
-  assert.match(refuse(far, deploy(far)), /touches no footprint guild "g1" holds — a Deep Scan Array deploys attached to its guild's territory/);
-  // Inside the footprint, on a bare hex of the disk — refused by the attached rule (it is IN the
-  // footprint, not touching it), NOT by an existing check: the hex is bare and free.
-  const inside = arrayKitAt(along(HOME_HEX, dir, 1));
-  assert.match(refuse(inside, deploy(inside)), /touches no footprint guild "g1" holds/);
+  assert.match(refuse(far, deploy(far)), /in or beside no territory guild "g1" holds — a Deep Scan Array deploys inside its guild's territory, or on open space beside it/);
+  // (Inside the guild's OWN disk was refused here before 15-10-26; it deploys now — the sweep above.)
   // At the system itself — berthed at the landmark: the existing 'not-bare-hex' check, naming the array.
   const atHome = withArrayKit(arrayState());
   assert.match(refuse(atHome, deploy(atHome)), /berthed at a landmark .* — a Deep Scan Array deploys on a bare hex/);
-  // Rival ground never counts: the ring around g2's system, and the hex beside g2's Outpost.
+  // Rival ground never counts: the ring around g2's system, and the hex beside g2's Outpost, are nobody's
+  // control and touch none of g1's — 'not-attached'.
   const rivalHex = getSystem(RIVAL).coords;
-  const besideRival = arrayKitAt(along(rivalHex, freeDirection(rivalHex, [TOUCHING]), TOUCHING));
-  assert.match(refuse(besideRival, deploy(besideRival)), /touches no footprint guild "g1" holds/);
+  const rivalDir = freeDirection(rivalHex, [1, TOUCHING]);
+  const besideRival = arrayKitAt(along(rivalHex, rivalDir, TOUCHING));
+  assert.match(refuse(besideRival, deploy(besideRival)), /in or beside no territory guild "g1" holds/);
   const rDir = freeDirection(rivalHex, [5, 6]);
   let nearRivalOutpost = arrayKitAt(along(rivalHex, rDir, 6));
   nearRivalOutpost = spawnOutpost(nearRivalOutpost, 'g2', RIVAL, along(rivalHex, rDir, 5));
-  assert.match(refuse(nearRivalOutpost, deploy(nearRivalOutpost)), /touches no footprint guild "g1" holds/);
+  assert.match(refuse(nearRivalOutpost, deploy(nearRivalOutpost)), /in or beside no territory guild "g1" holds/);
+  // INSIDE g2's disk is g2's control — 'rival-territory', naming whose (REVISED 15-10-26).
+  const inRival = arrayKitAt(along(rivalHex, rivalDir, 1));
+  assert.match(refuse(inRival, deploy(inRival)), new RegExp(`is inside guild "g2"'s territory \\(its system "${RIVAL}"\\) — a Deep Scan Array never deploys inside a rival's control`));
 });
 
 test('ATTACHED to an owned Outpost: a hex beside it deploys, and the array takes THAT Outpost\'s anchor system', () => {
@@ -263,7 +270,7 @@ test('ATTACHED to an owned Outpost: a hex beside it deploys, and the array takes
   const outpostHex = along(HOME_HEX, dir, 8);
   const besideOutpost = along(HOME_HEX, dir, 9);
   let s = arrayKitAt(besideOutpost);
-  assert.match(refuse(s, deploy(s)), /touches no footprint/, 'nothing to attach to yet');
+  assert.match(refuse(s, deploy(s)), /in or beside no territory/, 'nothing to attach to yet');
   s = spawnOutpost(s, 'g1', RIVAL, outpostHex);
   s = accept(s, deploy(s));
   assert.equal(s.deepScanArrays[0].anchorSystemId, RIVAL);
@@ -347,7 +354,7 @@ test('ON ARRIVAL: a route ending in an array deploy plants it on the arrival tic
   const s0 = withArrayKit(arrayState({ fuelHoard: 10_000 }));
   // Doomed: one hex past the ring. Refused whole, up front — no fuel burns.
   const reason = refuse(s0, dispatch(s0, [{ anchor: along(HOME_HEX, dir, TOUCHING + 1), action: DEPLOY_ARRAY }]));
-  assert.match(reason, /the deploy at waypoint 0 would fail now — .*touches no footprint/);
+  assert.match(reason, /the deploy at waypoint 0 would fail now — .*in or beside no territory/);
   // Attached: flies, and deploys the moment it lands.
   const target = along(HOME_HEX, dir, TOUCHING);
   const flying = accept(s0, dispatch(s0, [{ anchor: target, action: DEPLOY_ARRAY }]));

@@ -68,6 +68,8 @@
   .swatch { width: 12px; height: 12px; flex-shrink: 0; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
   /* the guild-outpost key uses a diamond, matching its map marker (a coloured hex carries a diamond) */
   .swatch.diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+  /* the Deep Scan Array key is a hollow triangle (an inline SVG), matching its map marker — so no clip */
+  .swatch.tri { clip-path: none; }
 
   #controls { position: absolute; right: 22px; bottom: 22px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
   #zoomreadout { font-size: 11px; color: var(--text-dim); background: rgba(8,10,16,0.85); border: 1px solid var(--line-bright); padding: 6px 10px; border-radius: 2px; letter-spacing: 1px; display: none; }
@@ -3171,6 +3173,7 @@ select.field{appearance:none; cursor:pointer;}
     <div class="legend-row"><div class="swatch" style="background:var(--rival)"></div> Rival Guild</div>
     <div class="legend-row"><div class="swatch" style="background:var(--outpost)"></div> Waystation</div>
     <div class="legend-row"><div class="swatch diamond" style="background:var(--accent)"></div> Guild Outpost</div>
+    <div class="legend-row"><svg class="swatch tri" viewBox="0 0 12 12"><polygon points="6,1.5 11,10.5 1,10.5" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg> Your Deep Scan Array</div>
     <div class="legend-row"><div class="swatch" style="background:var(--citadel)"></div> The Citadel</div>
   </div>
 
@@ -3665,7 +3668,7 @@ select.field{appearance:none; cursor:pointer;}
         <div class="dp-actions" id="kdActions"></div>
       </div>
       <div class="est-side">
-        <!-- the kit's portrait, set per kind on open; a kind with no art yet leaves the panel plain -->
+        <!-- the kit's portrait, set per kind on open from its kit-kinds row -->
         <div class="art" id="kdArt"></div>
         <div class="dp-foot">
           <div class="stitle" id="kdStitle">—</div>
@@ -3923,9 +3926,12 @@ select.field{appearance:none; cursor:pointer;}
      bill      — the kind a commission or a buy names (KIT_KIND_FOR_BILL), so those screens can label it;
      label     — what the player reads for the kit itself;
      structure — what it deploys as, for the deploy popup and the planner banner;
-     art       — the deploy popup's portrait, or null where none has been drawn yet (the array has none);
+     art       — the deploy popup's portrait (2.5 slice 15: the array has its own, deepscan.jpg);
      target    — the deploy map's hint for where the route must end;
-     outside   — the deploy map's reason for refusing a hex outside the kind's painted lane.
+     outside   — the deploy map's reason for refusing a hex outside the kind's painted lane;
+     rival     — (a kind whose rule refuses a rival's control, the array alone) the deploy map's reason for
+                 refusing a hex inside a rival's territory, instead of `outside`. Words only: which hexes are
+                 legal is still the kind's painted lane.
    (client/console.html, a separate page, keeps its own two labels for the dockyard picker.)
    ============================================================================ */
 (function(){
@@ -3935,8 +3941,9 @@ select.field{appearance:none; cursor:pointer;}
                 art: 'assets/units/outpost.jpg',
                 target: 'a bare hex inside the dashed ring', outside: 'Outside the deploy range' }),
     deepScan: Object.freeze({ good: 'deep_scan_array_kit', bill: 'deep_scan_array', label: 'Deep Scan Array kit', structure: 'Deep Scan Array',
-                art: null,
-                target: 'a dashed hex touching your territory', outside: 'Not attached to your territory' })
+                art: 'assets/units/deepscan.jpg',
+                target: 'a dashed hex in or beside your territory', outside: 'Not in or beside your territory',
+                rival: 'Inside rival territory' })
   });
   // __kitKind(kind) -> the row for a kit kind ('outpost' | 'deepScan'), or null for anything else (a miner).
   // An own-property read, so an inherited name ('toString') is never a kit — the engine's kitGoodFor discipline.
@@ -4604,7 +4611,9 @@ select.field{appearance:none; cursor:pointer;}
   //    per hex (design.md §4);
   //  - on the galaxy: a hex off the disc is not one a craft can be sent to (the engine's bounds check);
   //  - in the lane: one of the hexes the kind's lane paints (deployReach) — inside the dashed line. The refusal
-  //    names the kind's own rule (the kit-kinds table): "Outside the deploy range", "Not attached to your territory".
+  //    names the kind's own rule (the kit-kinds table): "Outside the deploy range", "Not in or beside your
+  //    territory" — or, for a kind whose rule refuses a rival's control (the array, 2.5 slice 15), "Inside rival
+  //    territory" when the hex is in a rival's painted disk. Which words, only: the lane decides the hex.
   function deployRefusal(a) {
     if (!a || typeof a.q !== 'number' || typeof a.r !== 'number') return 'Not a bare hex';
     if (guildOutpostByKey.has(a.q + ',' + a.r) || sameHex(a, galaxy.citadel.coords)) return 'Not a bare hex';
@@ -4614,15 +4623,33 @@ select.field{appearance:none; cursor:pointer;}
     const p = hexToPixel(a.q, a.r, galaxy.galaxyParams.hexSize);
     if (Math.hypot(p.x, p.y) > galaxy.galaxyParams.radius) return 'Off the galaxy';
     const reach = deployReach(PLAN.deploy);
-    if (!reach || !reach.has(a.q + ',' + a.r)) return deployWords().outside;
+    if (!reach || !reach.has(a.q + ',' + a.r)) {
+      const words = deployWords();
+      return words.rival && inRivalTerritory(a) ? words.rival : words.outside;
+    }
     return '';
+  }
+
+  // inRivalTerritory(a) -> true when the hex lies inside a system disk a RIVAL holds, as the territory layer paints
+  // it (the system's seed claimRadius — the disk computeTerritoryMap fills). WORDS ONLY: deployRefusal asks it to
+  // choose the refusal for a hex ALREADY outside the painted lane; it decides nothing. A rival's Outpost hex never
+  // reaches it — that is refused first, as not a bare hex.
+  function inRivalTerritory(a) {
+    for (const [systemId, guildId] of systemToGuild) {
+      if (guildId === PLAYER_GUILD.guildId) continue;
+      const sys = systemById.get(systemId);
+      if (sys && hexDistAxial(a, sys.coords) <= (sys.claimRadius || 1)) return true;
+    }
+    return false;
   }
 
   // drawDeployRing(inside) — the legal hexes (deployReach) drawn as a dashed OUTER BORDER, not filled hexes
   // (§5): only the edges whose neighbour is outside the set. For the Outpost's disks that is one ring; for the
-  // Deep Scan Array's ring of attached hexes it is a band, an inner and an outer line, with the legal hexes
-  // between. Drawn in the player teal with the toll path's dash, on the same hex geometry as every other
-  // layer. A few hundred hexes per anchor, so it is simply recomputed each frame (as the territory map is).
+  // Deep Scan Array's hexes it is the outer edge of the disk-plus-ring (2.5 slice 15 — it was a band round the
+  // ring), with a small inner line round the system's own hex, which is a landmark and never in the lane, and
+  // the edge pulled in wherever a rival's territory takes hexes out. Drawn in the player teal with the toll
+  // path's dash, on the same hex geometry as every other layer. A few hundred hexes per anchor, so it is simply
+  // recomputed each frame (as the territory map is).
   function drawDeployRing(inside) {
     const hs = galaxy.galaxyParams.hexSize;
     ctx.save();
@@ -4922,6 +4949,10 @@ select.field{appearance:none; cursor:pointer;}
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
       .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
+
+  // arrayMapName(a) -> "Deep Scan Array 01": an array's player name, the number its id ends on — the words the
+  // survey popup and the survey notices use (2.5 slice 15). Display only (§18).
+  function arrayMapName(a) { return 'Deep Scan Array ' + String(a.id).split('_').slice(-1)[0]; }
 
   // ticks -> a compact ETA string ("12m" / "11h 58m" / "1d 04h"), the same tick->time
   // transform the trade/clock UI already does (1 tick = 1 minute, N=1440 = 24h). This is
@@ -5232,6 +5263,29 @@ select.field{appearance:none; cursor:pointer;}
         ctx.fill();
       });
     }
+
+    // the player's OWN Deep Scan Arrays (exploration-model.md §5 "Map visibility", RULED 15-10-26; roadmap 2.5
+    // slice 15) — a HOLLOW TRIANGLE in the player accent on each array's hex, so it reads as neither an Outpost
+    // (a filled diamond) nor an idle craft (a smaller filled diamond, which the triangle frames when the craft that
+    // deployed it is still parked there). It is a MARKER ONLY: an array creates no control and changes no
+    // territory, so it never joins computeTerritoryMap. The rows are the view's own `deepScanArrays`, as the shell
+    // keeps them (LIVE.myArrays) — the engine's per-guild view carries no rival's array (sim/fog.js), and nothing
+    // here filters, so a leak would show rather than hide. The label pass below names each one.
+    const myArraysOnMap = (window.__myArrays && window.__myArrays()) || [];
+    myArraysOnMap.forEach((a) => {
+      const p = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
+      const scr = worldToScreen(p.x, p.y);
+      if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
+      const t = Math.min(9, 5 + zoom * 0.06);   // look, not a game number: the triangle's half-height in px
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(scr.x, scr.y - t); ctx.lineTo(scr.x + t, scr.y + t * 0.8); ctx.lineTo(scr.x - t, scr.y + t * 0.8);
+      ctx.closePath();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = col('player', 0.95);
+      ctx.stroke();
+      ctx.restore();
+    });
 
     // in-flight Syndicate deliveries — the player's own, drawn after the systems/outposts
     // markers and with the label layer (mirrors the mockup's ordering). Each is one dashed
@@ -5604,6 +5658,19 @@ select.field{appearance:none; cursor:pointer;}
         const scr = worldToScreen(p.x, p.y);
         if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
         drawLabelBox(scr, [o.name.toUpperCase(), 'GUILD OUTPOST'], 'player');
+      });
+    }
+
+    // The player's own Deep Scan Arrays label at the same threshold, named as the survey notices name them
+    // ("Deep Scan Array 01"). The tag hangs DOWN-LEFT, so it does not sit on the up-right tag of the craft that
+    // may still be parked on the array's hex. No click target: a click on the hex resolves as it did before
+    // this marker existed.
+    if (zoom >= WAYSTATION_LABEL_ZOOM) {
+      myArraysOnMap.forEach((a) => {
+        const p = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        drawLabelBox(scr, [arrayMapName(a).toUpperCase()], 'player', true);
       });
     }
 
@@ -9445,7 +9512,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     mediumTransport: 'assets/units/mediumtransport.jpg',
     heavyTransport: 'assets/units/heavytransport.jpg',
     spycraft: 'assets/units/spycraft.jpg',
-    outpost: 'assets/units/outpost.jpg'   // (2.5 slice 14b) the Deep Scan Array has no art yet: the fallback
+    outpost: 'assets/units/outpost.jpg',
+    deep_scan_array: 'assets/units/deepscan.jpg'   // (2.5 slice 15) the array's own portrait
   };
   var CN_BUILD_ART_FALLBACK = 'assets/industrial/factoryConstruction.jpg';
   // cnLabel(kind) -> what the Constructed view calls a kind: an installation kit's player label ("Deep Scan
@@ -11768,12 +11836,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return good ? (good + ' ' + kind) : kind;
   }
   // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
-  // "Deployment failed — Outpost" / "No room at the outpost" / "Delivery turned back" / "Outpost
+  // "Deployment Failed — Outpost" / "No room at the outpost" / "Delivery turned back" / "Outpost
   // packed up" / "Survey complete" / "Survey voided". The two delivery titles, the packed title and the
   // two survey titles leave the name to the body and facts; their rows carry it (below).
   function noticeTitle(n){
     var p = (n && n.payload) || {};
-    if(n.type === 'deploy_failed') return 'Deployment failed — ' + deployKindLabel(p);
+    if(n.type === 'deploy_failed') return 'Deployment Failed — ' + deployKindLabel(p);
     if(n.type === 'outpost_packed') return 'Outpost packed up';
     if(n.type === 'scan_complete') return 'Survey complete';
     if(n.type === 'scan_voided') return 'Survey voided';
@@ -11784,7 +11852,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The subject-line row title: the same prefix, with the label in the muted `.who` span.
   function noticeRowTitle(n){
     var p = (n && n.payload) || {};
-    if(n.type === 'deploy_failed') return 'Deployment failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
+    if(n.type === 'deploy_failed') return 'Deployment Failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
     if(n.type === 'outpost_packed') return 'Outpost packed up &mdash; <span class="who">' + esc(packedOutpostName(p)) + '</span>';
     if(n.type === 'scan_complete') return 'Survey complete &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'scan_voided') return 'Survey voided &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
@@ -11823,7 +11891,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // payload field or the engine's whenDay — the client types none and computes no game number (§18).
 
   // The title's {Kind} — the structure the kit was to become, from the kit-kinds table: "Outpost" from
-  // payload.kind 'outpost', "Deep Scan Array" from 'deepScan' (2.5 slice 14b — it read the raw "DeepScan"). A
+  // payload.kind 'outpost', "Deep Scan Array" from 'deepScan' (2.5 slice 14b — it read the raw "DeepScan"), in
+  // the title "Deployment Failed — Deep Scan Array" (title case, the structure named: RULED 15-10-26). A
   // kind the table does not know reads as itself; a missing one degrades to "Kit", the engine's own word for
   // what was hauled, so the title never reads "null" or ends on a dash.
   function deployKindLabel(p){
@@ -11839,9 +11908,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   ];
 
   // payload.cause -> the Reason fact: the reasons a deploy retreats on (§10) — the Outpost's two, and the Deep
-  // Scan Array's 'not-attached' (2.5 (b1); labelled in slice 14b — it read "—"): the hex no longer touches the
-  // guild's territory.
-  var DEPLOY_FAILED_REASON = { 'occupied':'Hex taken', 'out-of-range':'Out of range', 'not-attached':'Not attached' };
+  // Scan Array's two: 'not-attached' (2.5 (b1); labelled in slice 14b — it read "—"), the hex is no longer in or
+  // beside the guild's territory; and 'rival-territory' (slice 15), the hex is inside a rival's control now.
+  var DEPLOY_FAILED_REASON = { 'occupied':'Hex taken', 'out-of-range':'Out of range', 'not-attached':'Not attached',
+    'rival-territory':'Rival territory' };
 
   // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
   // only (§18) — a local copy, the Dispatch popup's prettyClass is out of this IIFE's scope.
@@ -13540,7 +13610,7 @@ function paintInventoryHero(d){
     $('kdSechead').textContent = spec.structure;
     $('kdKind').textContent = spec.structure;
     $('kdStitle').textContent = spec.label;
-    $('kdArt').style.backgroundImage = spec.art ? "url('" + spec.art + "')" : 'none';
+    $('kdArt').style.backgroundImage = "url('" + spec.art + "')";
     $('kdStored').textContent = (window.__systemName && window.__systemName(kit.systemId)) || kit.systemId;
     renderPrePlan();
     $('deploy-overlay').classList.add('open');

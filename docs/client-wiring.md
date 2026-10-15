@@ -1442,3 +1442,20 @@ The full as-built is `docs/territory-model.md` §5, "AS-BUILT — the `deepScan`
   its Reason reading "Not attached"; and OPERATIONS → Deployed listing the guild's Outposts and arrays. Every duration and
   price is the catalog's or the quote's as sent.
 - **Proved** headless against a live server — 58 checks, zero console errors (`docs/roadmap.md`, slice 14b).
+
+## Revision — the array's placement words, art and map marker *(15-10-26, roadmap 2.5 slice 15, engine + client)*
+
+The rule itself is the engine's (`docs/exploration-model.md` §5, REVISED 15-10-26); the client reads it, as before, only
+through `deployRange.deepScan.hexes`, which now spans the inside of each held disk and never a rival's control.
+
+- **No new snapshot read.** The galaxy map now also draws the view's own `deepScanArrays` rows (`LIVE.myArrays`, the
+  survey popup's list): a hollow player-teal triangle on each array's hex and a "DEEP SCAN ARRAY 01" tag. It is a marker,
+  never part of the territory paint, with no click panel; the map pass adds no owner filter of its own, so the per-guild
+  view (`sim/fog.js`) is what keeps a rival's array off the map.
+- **Words, not rules:** the deploy map says "in or beside your territory", and for a hex off the lane inside a rival's
+  painted disk "Inside rival territory" — chosen from the territory the map already paints; the lane decides the hex.
+  The failed-deploy title is "Deployment Failed — <structure>" and the new reason reads "Rival territory".
+- **Art:** `client/assets/units/deepscan.jpg` in the kit-kinds row, the deploy popup, and both "Building" heroes
+  (`game.html` TRADE → Constructed, `console.html` dockyard); the array's plain-panel and construction-image fallbacks
+  are gone.
+- **Proved** headless against a live server — 27 checks, zero console errors (`docs/roadmap.md`, slice 15).

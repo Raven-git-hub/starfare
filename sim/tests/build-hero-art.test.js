@@ -61,3 +61,20 @@ test('console.html: the current-build hero resolves its art from DKC_ART (regres
   // The hero div interpolates that variable, not a hardcoded factory URL.
   assert.match(consoleHtml, /background-image:url\(\\'' \+ buildingArt \+ '\\'\)/);
 });
+
+// The two installation kits a dockyard builds and the Syndicate sells (2.5 slice 14a), keyed by their BILL kind —
+// the kind a commission or a buy names. The array had no art until slice 15 and fell back to the construction
+// image; it has its own portrait now, in both pages.
+const INSTALLATION_ART = [
+  ['outpost', 'assets/units/outpost.jpg'],
+  ['deep_scan_array', 'assets/units/deepscan.jpg'],
+];
+
+test('both pages: each installation kit\'s "Building" hero has its own portrait, and the file exists', () => {
+  for (const [kind, art] of INSTALLATION_ART) {
+    const entry = new RegExp(kind + ": '" + art.replace(/[/.]/g, '\\$&') + "'");
+    assert.match(gameHtml, entry, `game.html CN_BUILD_ART has no ${kind} portrait`);
+    assert.match(consoleHtml, entry, `console.html DKC_ART has no ${kind} portrait`);
+    assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'client', art)), `${art} is missing`);
+  }
+});

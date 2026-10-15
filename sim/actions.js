@@ -4,7 +4,7 @@ const {
   createGuild, createVenture, createAsset, createVehicle, createOutpost, createDeepScanArray, createSavedRoute,
 } = require('./state.js');
 const {
-  isStarterSystem, getTerranHomeworld, getSite, getSystem, getPlanet, getClaimRadius, isHexInBounds, seedLandmarkAtHex,
+  isStarterSystem, getTerranHomeworld, getSite, getSystem, getPlanet, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
 const { getRecipe } = require('./recipes.js');
 const {
@@ -46,7 +46,7 @@ const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
-const { guildHolds, heldSystemIds, systemControllers } = require('./claims.js');
+const { guildHolds, heldSystemIds, systemControllers, controlNear } = require('./claims.js');
 const {
   reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet,
 } = require('./exploration.js');
@@ -487,12 +487,12 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
     return;
   }
   if (!DEPLOY_FAILED_REASONS.includes(check.failure)) {
-    // Only the hex ('occupied') or the placement ('out-of-range' for an Outpost, 'not-attached' for a Deep
-    // Scan Array) can change while a craft flies. The dispatch proved the target is a bare hex (an anchor
-    // never moves) and the hold exactly one kit of this kind (a kit is never manifested); and a guild never
-    // loses its home system, so it always holds one ('no-held-system'). Any of those failing here means the
-    // state is corrupt — HALT with the tick and the values rather than guess where to put the craft (§15.5:
-    // a silent violation is worse than a crash).
+    // Only the hex ('occupied') or the placement ('out-of-range' for an Outpost, 'not-attached' or
+    // 'rival-territory' for a Deep Scan Array) can change while a craft flies. The dispatch proved the target
+    // is a bare hex (an anchor never moves) and the hold exactly one kit of this kind (a kit is never
+    // manifested); and a guild never loses its home system, so it always holds one ('no-held-system'). Any of
+    // those failing here means the state is corrupt — HALT with the tick and the values rather than guess where
+    // to put the craft (§15.5: a silent violation is worse than a crash).
     throw new Error(`deploy on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check, which the dispatch gate rules out — ${check.reason}`);
   }
   // Read what the notice needs BEFORE the snap moves the craft. The craft still sits on the target, which
@@ -515,7 +515,8 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
   craft.updatedAtTick = thisTick; // §15.2: the retreat is a mutation of the craft — record its tick
   // The notice, on the same guild at the same tick as the flag. Its payload is SELF-CONTAINED (§10) — the
   // craft may have been re-dispatched (its flag cleared) by the time the player reads it.
-  //   - `cause`  — the same reason the flag carries ('occupied' | 'out-of-range' | 'not-attached');
+  //   - `cause`  — the same reason the flag carries ('occupied' | 'out-of-range' | 'not-attached' |
+  //                'rival-territory');
   //   - `kind`   — what was being deployed (the deploy waypoint's kind, read above);
   //   - `retreatSystemName` — the system's SEED name, falling back to its id, the way the licence notices
   //                resolve a venture's site name (sim/licence.js `ventureName`).
@@ -1909,8 +1910,9 @@ function nearestHeldSystem(state, guildId, coords) {
 //   PLACEMENT        — where this KIND may go: the one check that differs by kind (DEPLOYABLE_STRUCTURES below):
 //       an Outpost      → 'no-held-system' / 'out-of-range': within OUTPOST_DEPLOY_RANGE hexes (inclusive)
 //                         of a system the guild HOLDS (territory-model.md §5 "Deploy ranges");
-//       a Deep Scan Array (2.5 (b1)) → 'not-attached': touching a footprint the guild holds
-//                         (exploration-model.md §5 "Deploy placement = attached").
+//       a Deep Scan Array (2.5 (b1); REVISED slice 15) → 'rival-territory' / 'not-attached': never inside a
+//                         rival's control, and in or beside the guild's own (exploration-model.md §5 "Deploy
+//                         placement", REVISED 15-10-26).
 // `kind` is what the trigger is placing: a dispatch and an arrival read it off the deploy waypoint
 // (`{ type: 'deploy', kind }`); the manual deployAsset, whose action names only the craft, reads it off
 // the kit aboard (kitKindAboard) — null when there is none, which the 'kit' check refuses.
@@ -1966,36 +1968,33 @@ function outpostPlacement(state, guildId, coords) {
 }
 
 // attachedPlacement(state, guildId, coords) -> { ok: true, anchorSystemId } | { ok: false, failure, reason }
-// WHERE A DEEP SCAN ARRAY MAY GO — "attached" (docs/exploration-model.md §5; roadmap 2.5 (b1)): on a hex
-// directly adjacent to (touching, not inside) a footprint the guild holds. It is GEOMETRY, not a tunable —
-// there is no range number, and no scan reach here (the scan is galaxy-wide, slice (b2)):
-//   - a SYSTEM the guild holds: its footprint is its control disk, every hex within its seed `claimRadius`
-//     of the centre, so the hexes touching it are exactly those `claimRadius + 1` from the centre;
-//   - an OUTPOST the guild owns: an Outpost has no aura this slice, so its footprint is its own hex, and
-//     the hexes touching it are exactly those 1 away.
-// THE ANCHOR, when the hex touches more than one footprint: a held SYSTEM first, the lowest id
-// (`heldSystemIds` is sorted); else an owned Outpost, the lowest id, and the array takes THAT Outpost's
-// own `anchorSystemId` — so an array, like an Outpost, always hangs off a system. The lower-id tie-break
-// is the outpost rule's (nearestHeldSystem), so the pick is stable (invariant 9).
-// A hex INSIDE a footprint is not attached to it: a system's centre is a landmark ('not-bare-hex' refused
-// it already), and a bare hex within `claimRadius` fails here unless it also touches another footprint.
+// WHERE A DEEP SCAN ARRAY MAY GO (docs/exploration-model.md §5 "Deploy placement", REVISED 15-10-26; roadmap
+// 2.5 slice 15). GEOMETRY over the seed's `claimRadius`, not a tunable — there is no range number here, and no
+// scan reach (the scan is galaxy-wide). The array's hex must be EITHER
+//   1. INSIDE the guild's own control (a held system's disk; an Outpost's own hex is in it too, but the
+//      earlier 'occupied' check has already refused that, as 'not-bare-hex' refuses a system's centre); OR
+//   2. in NO guild's control, but sharing an edge with the guild's own control (one hex outside a held
+//      system's disk, or beside one of its Outposts).
+// And it is NEVER inside a RIVAL's control — not even a hex that also touches the guild's own territory.
+// Both questions go to `controlNear` (sim/claims.js), the one "who controls this hex?" helper, so this rule
+// holds no distance check of its own:
+//   - `within` 0 — any rival footprint ON the hex → 'rival-territory';
+//   - `within` 1 — the guild's own footprints the hex is IN OR BESIDE. Once no rival controls the hex, these
+//     are exactly cases 1 and 2: if the guild controls it, case 1; if nobody does, case 2. None → 'not-attached'.
+// THE ANCHOR is the first of those own footprints: a held SYSTEM first (lowest id), else an Outpost (lowest
+// id), whose own `anchorSystemId` the array takes — so an array, like an Outpost, always hangs off a system.
+// controlNear lists footprints in exactly that order, so the pick is stable (invariant 9).
 function attachedPlacement(state, guildId, coords) {
-  for (const systemId of heldSystemIds(state, guildId)) {
-    const claimRadius = getClaimRadius(systemId);
-    if (claimRadius === null) {
-      // A held system with no footprint radius is a broken seed, not a hex that "happens not to touch" —
-      // HALT rather than quietly refuse (§15.5: a silent violation is worse than a crash).
-      throw new Error(`deploy rule: guild ${JSON.stringify(guildId)} holds system ${JSON.stringify(systemId)}, whose seed row carries no whole-number claimRadius`);
-    }
-    if (hexDistance(coords, getSystem(systemId).coords) === claimRadius + 1) {
-      return { ok: true, anchorSystemId: systemId };
-    }
+  const where = `hex { q: ${coords.q}, r: ${coords.r} }`;
+  const rival = controlNear(state, coords, 0).find((f) => f.guildId !== guildId);
+  if (rival) {
+    return { ok: false, failure: 'rival-territory', reason: `${where} is inside guild ${JSON.stringify(rival.guildId)}'s territory (its ${rival.kind} ${JSON.stringify(rival.id)}) — a Deep Scan Array never deploys inside a rival's control` };
   }
-  const touching = (state.outposts || [])
-    .filter((o) => o.ownerGuildId === guildId && hexDistance(coords, o.coords) === 1)
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  if (touching.length > 0) return { ok: true, anchorSystemId: touching[0].anchorSystemId };
-  return { ok: false, failure: 'not-attached', reason: `hex { q: ${coords.q}, r: ${coords.r} } touches no footprint guild ${JSON.stringify(guildId)} holds — a Deep Scan Array deploys attached to its guild's territory: one hex outside a held system's control disk, or beside one of its Outposts` };
+  const own = controlNear(state, coords, 1).filter((f) => f.guildId === guildId);
+  if (own.length === 0) {
+    return { ok: false, failure: 'not-attached', reason: `${where} is in or beside no territory guild ${JSON.stringify(guildId)} holds — a Deep Scan Array deploys inside its guild's territory, or on open space beside it: within one hex of a held system's control disk, or beside one of its Outposts` };
+  }
+  return { ok: true, anchorSystemId: own[0].anchorSystemId };
 }
 
 // DEPLOYABLE_STRUCTURES — what each kit kind deploys AS, one row per kind, keyed like DEPLOYABLE_KITS

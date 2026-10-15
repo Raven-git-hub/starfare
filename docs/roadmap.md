@@ -18,7 +18,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,242 tests, deterministic) |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,262 tests, deterministic) |
 | 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries (engine; the client half is next); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
@@ -3694,6 +3694,9 @@ boundary so the later hex-map swap doesn't touch it.
   client a guild commissions or buys an array or outpost kit, sees it idle, deploys it on a map that paints the engine's
   own `deployRange.deepScan` hexes, and sees it under OPERATIONS → Deployed; a failed array deploy is recoverable from the
   pilot's notice. The Deep Scan Array loop is closed for a player.)*
+  *(⤳ 15-10-26 — **slice 15, the array's placement REVISED + own arrays on the map, is BUILT**, the last entry below: an
+  array may go inside the guild's own control as well as beside it, never inside a rival's (`rival-territory`); the
+  guild's own arrays are drawn on its galaxy map; the 14b review's art, title and wording are wired.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4213,6 +4216,52 @@ boundary so the later hex-map swap doesn't touch it.
     Return → unload mode → home → the kit back in IDLE — **58 checks, zero console errors**. The same walk with `main`'s
     client against this engine fails at its first client check (the dockyard labels). The harness lives outside the
     repo, as 3a's and 3b's do. Sim 2,226 → **2,242**, tools **83** (unchanged). Checklist items below.
+  - **Slice 15 — the Deep Scan Array's placement REVISED + the guild's own arrays on its map — ⤳ AS-BUILT 15-10-26
+    (engine + client).** Built to `exploration-model.md` §5 "Deploy placement" (REVISED 15-10-26) and "Map visibility —
+    RULED 15-10-26", and the 14b checklist's ANSWERED note; as-built detail in §5's "AS-BUILT 15-10-26 — placement
+    REVISED" note and `territory-model.md` §5's matching note. **No new number** (geometry over `claimRadius`).
+    **(1) One control helper,** `controlNear(state, coords, within)` (`sim/claims.js`): every guild footprint (a held
+    system's disk; an Outpost's own hex, no aura yet) within `within` of a hex — 0 is "who controls it", 1 is "whose
+    control is it in or beside". Holding is read through the claims module's own `isSystemClaim`. **(2) The rule**
+    (`attachedPlacement`, now with no distance check of its own): a rival footprint on the hex → **`rival-territory`**
+    (new, retreatable, in `DEPLOY_FAILED_REASONS`); no own footprint within 1 → `not-attached`; else legal, anchored to
+    the first own footprint (system first, lowest id; else the Outpost's anchor — unchanged). Check order unchanged, so a
+    rival Outpost's hex reads `occupied`. **Not retroactive:** `checkDeepScanArrayIntegrity` never checked placement and
+    still does not. **(3) The lane** followed with no change to its net (it already covered the whole disk): it gains the
+    inside of each held disk and the guild's own Outpost hexes, and loses every hex in a rival's control. **(4) Client:**
+    the array's portrait in the kit-kinds row, the deploy popup and both "Building" heroes (`game.html` TRADE,
+    `console.html` dockyard); the deploy map's "in or beside your territory" words and an "Inside rival territory"
+    refusal (words only); "Deployment Failed — Deep Scan Array / — Outpost" and Reason "Rival territory"; and the
+    guild's own arrays on the galaxy map — a hollow teal triangle on the hex plus a "DEEP SCAN ARRAY 01" tag from the
+    waystation-label zoom, from the view's own rows with no client filter, not part of the territory paint, no click
+    panel. **Snapshot hashes:** no serialized byte moved (every state and persist golden unchanged — a galaxy with no
+    array and no array kit in flight serializes byte-identically). The `deepScan` lane widened on every guild row that
+    holds a system (the deploy-range fixture's home: 11 hexes → 16), so the raw god's-eye and own-view bytes moved by
+    exactly that lane; every pinned snapshot golden asserts through the 14b strip (`tests/deep-scan-lane-strip.js`), so
+    not one pinned hash changed (checked: the stripped god's-eye hash is identical on `main` and this branch).
+    **Re-pointed:** `deep-scan-array` (the sweep: the disk AND the ring deploy; a rival's disk is `rival-territory`),
+    `deploy-range-deep-scan` (the lane's new extent; the guidance test now uses the guild's own Outpost, and a new one
+    pins that a rival's Outpost hex leaves the lane), `deploy-on-arrival` (the reasons list), and the oracle
+    (`tests/attached-hexes-oracle.js`), which now writes the ruling out independently instead of calling the rule.
+    **Tripwires:** `sim/tests/deep-scan-placement.test.js` (+12: every inside-disk hex deploys; the centre and own
+    structures still refused; one-ring-apart disks share a legal hex; touching disks refuse A as `rival-territory`;
+    overlapping disks refuse both; a rival Outpost reads `occupied`; arrival → `rival-territory` retreat with the
+    notice, and → `occupied` for an Outpost planted on the target; not retroactive over ticks; the lane equals the oracle
+    for both guilds with no hex in a rival disk; `controlNear` order and halt), `deploy-failed-notice-client.test.js`
+    (+4: the title, every engine reason labelled, the popup, the map pass unfiltered and off the territory paint),
+    `kit-kinds-client` (+2) and `build-hero-art` (+1), `deploy-range-deep-scan` (+1). **Checked to fail** (the three placement / lane / array
+    files): the rival check removed (8 red), the inside of the own disk refused again (15 red). **Proved headless** (Playwright, preinstalled
+    Chromium, a live in-memory `node sim/server.js`, the guild founded through the connect screen; the operator surface
+    for setup and ticks only): the array kit's Deploy popup shows `deepscan.jpg` (served 200); the deploy map hint "in or
+    beside your territory"; a hex in a rival's disk refused "inside rival territory", one past the lane "not in or beside
+    your territory"; a hex INSIDE the home disk accepted, finalised, deployed and landed, anchored home; the marker's
+    stroke sampled on the canvas at the array's hex and absent on a bare disk hex; the tag "DEEP SCAN ARRAY 01" drawn;
+    the map key row; an in-flight `rival-territory` failure (a guild founded on the target's system) read as the row and
+    title "Deployment Failed — Deep Scan Array" with Reason "Rival territory" and the Redeploy fork; the TRADE
+    "Building" hero and the Console's art map on `deepscan.jpg`; and a rival's array present in the operator lens but
+    absent from the player's view — **27 checks, zero console errors**. The same walk with `main`'s client against this
+    engine fails 13 checks, every client one. The harness lives outside the repo, as 14b's does. Sim 2,242 →
+    **2,262**, tools **83** (unchanged). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5254,7 +5303,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   3. **Attachment is judged at deploy only.** An array stays when the Outpost it touched is later packed up or removed (no invariant demands it stay attached). Confirm, or rule what happens to it.
   4. **No way to remove an array.** No existing operator remove lever generalises (`removeOutpost` is Outpost-only) and a reclaim flow was out of scope, so an array is permanent this slice. Needed when ruled: an operator remove lever and/or the reclaim. **⤳ 06-10-26, (b2): the OPERATOR lever is BUILT — `removeDeepScanArray`, mirroring `removeOutpost` (it is how a scan job is lost). Still open: a player teardown / reclaim of an array.**
   5. **Two spellings of one installation.** The kit kind is `deepScan` (the deploy-range lane key, as the build prompt named it), but the installation bill's kind is `deep_scan_array` (`sim/asset-recipes.js` `INSTALLATION_BILLS`). The slice that gives installations a dockyard build path must map one to the other, or rule a rename. **⤳ RULED 06-10-26 — CLOSED:** keep the kit kind **`deepScan`** (it matches the deploy-lane convention `tollGate` / `deepScan`); the `deepScan` ↔ `deep_scan_array` correspondence is a **deliberate seam** that the future installation dockyard-build slice bridges, for the array and the toll gate together. No rename. (Noted at the bill kinds in `sim/asset-recipes.js`.) **⤳ AMENDED 15-10-26:** bridged for the array (and the outpost) now, with the toll gate following when its entity exists (`asset-purchase.md` §"Installation kits").
-  6. **Client seams for (c) / the deploy map — not decisions, recorded so they are not lost:** `deployRange.deepScan` is not published (adding it moves every held-system guild row of the god's-eye lens, so it should land with the client that paints it); the `deploy_failed` Reason fact has no label for `not-attached` (reads "—") and the inbox title prints the raw kind ("Deployment failed — deepScan"-ish via `prettyGood`); the client's `KIT_GOOD` knows only the outpost, so the notice's Redeploy / Return forks cannot reach a retreated array kit (operator-recoverable: `unload-kit`); an idle array kit has no Deploy button; arrays are not drawn on the map. **⤳ 15-10-26, slice 14b — CLOSED except the last:** `deployRange.deepScan` is published (with the client that paints it, as this item asked); the Reason reads "Not attached"; the title and row name the structure ("Deployment failed — Deep Scan Array"); the forks find an array kit through the client's kit-kinds table (`KIT_GOOD` retired); an idle array kit has a Deploy button. **Still open:** arrays are not drawn on the galaxy map — not trivially the same as an Outpost (an Outpost feeds the territory paint, which an array must not; it has its own info panel and OPEN DETAILS), so it is its own slice (14b item 3 below).
+  6. **Client seams for (c) / the deploy map — not decisions, recorded so they are not lost:** `deployRange.deepScan` is not published (adding it moves every held-system guild row of the god's-eye lens, so it should land with the client that paints it); the `deploy_failed` Reason fact has no label for `not-attached` (reads "—") and the inbox title prints the raw kind ("Deployment failed — deepScan"-ish via `prettyGood`); the client's `KIT_GOOD` knows only the outpost, so the notice's Redeploy / Return forks cannot reach a retreated array kit (operator-recoverable: `unload-kit`); an idle array kit has no Deploy button; arrays are not drawn on the map. **⤳ 15-10-26, slice 14b — CLOSED except the last:** `deployRange.deepScan` is published (with the client that paints it, as this item asked); the Reason reads "Not attached"; the title and row name the structure ("Deployment failed — Deep Scan Array"); the forks find an array kit through the client's kit-kinds table (`KIT_GOOD` retired); an idle array kit has a Deploy button. **Still open:** arrays are not drawn on the galaxy map — not trivially the same as an Outpost (an Outpost feeds the territory paint, which an array must not; it has its own info panel and OPEN DETAILS), so it is its own slice (14b item 3 below). **⤳ 15-10-26, slice 15 — CLOSED:** the guild's own arrays are drawn (a marker, not territory; no panel).
 - **Deep Scan Array slice (b2) (2.5, the discovery scan) — items for a ruling or a confirm** — *surfaced 06-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
   1. **A scan costs nothing but time.** §5 rules "no fuel and no craft travel"; no credit price is ruled, so `queueScan` charges nothing. Confirm, or rule a price.
   2. **A redundant scan is accepted.** An L1 of a system whose archetypes the guild already knows, or an L2 of a planet whose nodes it already knows (e.g. from a rival's lapsed venture *— ⤳ no longer possible since 08-10-26: the record never learns from a rival*), is not refused — it runs its full time and completes as a learn-once no-op. Confirm, or rule a refusal (the gate would be "the target holds at least one unknown fact").
@@ -5358,6 +5407,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   Failed — Deep Scan Array"** / **"Deployment Failed — Outpost"** (title case, the structure named); the other words
   are confirmed. (7) The Deployed card is confirmed read-only for now; the Manage wiring is a later slice. (8)
   Confirmed. The build is slice 15 (`claude/cc-prompt-exploration-15-array-placement-and-map.md`).
+  *(⤳ BUILT 15-10-26, slice 15 — the entry above: (1) the lane follows the revised rule, (3) the guild's own arrays are
+  drawn, (4) the art is wired, (6) the title reads "Deployment Failed — <structure>".)*
   1. **The `deepScan` lane enumerates its hexes.** The outpost lane's "thin shape by ruling — no enumerated hex set, no
      bounds filtering" (deploy slice 3) is kept for the outpost; the array's lane lists the hexes, in-bounds and off seed
      landmarks, because "attached" is not a radius (as this slice's prompt directed). Confirm, and confirm the lane stays
@@ -5388,6 +5439,45 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      sends); a destination picker is unchanged and still absent. (c) In the walk the outpost kit's Syndicate delivery leg
      to that home system lasted about one tick, so the in-transit label was checked inside that window (the clock was
      stopped while the client read it).
+- **The Deep Scan Array placement revision + map, slice 15 (2.5) — items for a ruling or a confirm** — *surfaced 15-10-26
+  by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **The reason's name and label.** The new retreatable failure is `rival-territory`, labelled **"Rival territory"**
+     in the notice's Reason fact (slice-local choices, as the build prompt said). Confirm or rename.
+  2. **Overlapping disks.** Where the guild's disk and a rival's overlap, the hex is refused for BOTH guilds: the ruling's
+     "a hex inside a rival's control … is always refused", read literally, because the seniority rule that would award an
+     overlapped hex to one guild (`territory-model.md` §2) is design-ahead and not built. `controlNear` returns every
+     footprint and decides nothing, so a later ruling changes only the rule. Confirm, or rule that seniority decides once
+     the control map is built.
+  3. **An own Outpost's hex counts as "inside own control".** Built with the ONE helper for both tests, so the guild's own
+     Outpost hex is "own control", and the occupancy-blind lane now paints it (and its six neighbours, as before);
+     `deployCheck` refuses it as `occupied`. The ruling's case 1 names only held disks, but its next sentence ("an
+     Outpost's hex is occupied, so the existing … checks still refuse") reads the same way. Only the lane's paint
+     differs between the two readings. Confirm.
+  4. **Which reason wins on a rival's Outpost hex: `occupied`.** The order is unchanged (`not-bare-hex` → `kit` →
+     `occupied` → placement), so a rival Outpost on a hex beside the guild's territory is refused as occupied, though the
+     placement alone says `rival-territory`; a rival Outpost planted ON a target in flight retreats as `occupied`.
+     Reported as the prompt asked. Confirm.
+  5. **The deploy map's rival words.** "Inside rival territory" shows for a hex off the lane that lies in a rival-held
+     system's painted disk — computed from the seed `claimRadius` the territory layer already paints, for the WORDS only
+     (the lane decides the hex). A rival Outpost's hex never reaches it ("Not a bare hex" first). The Outpost kind has no
+     rival words (its rule does not refuse a rival's control). Confirm the words.
+  6. **The map marker is look, not ruled:** a hollow player-teal triangle (half-height `min(9, 5 + zoom·0.06)` px — a look
+     constant, like `RADAR_PERIOD_MS`), a one-line tag "DEEP SCAN ARRAY 01" hanging down-left from the waystation-label
+     zoom (1.5×), and a map-key row "Your Deep Scan Array". **A click does nothing new:** the hex resolves as it did (the
+     territory panel inside a held disk, the empty-hex panel outside). Confirm or restyle.
+  7. **14b's owner filter on `LIVE.myArrays`** (`client/game.html`, "the owner filter just says so here as well") is a
+     client filter that would HIDE a leak — from the survey picker, the Deployed card and now the map, which reads that
+     list. This slice added no filter of its own (the map pass is pinned unfiltered) and left 14b's in place. Remove it,
+     so the view is the only gate and a leak would show, or keep it. Rule.
+  8. **The inbox row is title-cased too.** The ruling named the title; the Messages row ("Deployment Failed — <span>Deep
+     Scan Array</span>") was changed to match so the two never read differently. Confirm.
+  9. **Where the helper lives.** `controlNear` is in `sim/claims.js` (beside `guildHolds` / `heldSystemIds`, reading the
+     same claim rows), and so reads `state.outposts` and seed geometry there too. Confirm, or name a territory module.
+  10. **Seams — not decisions, recorded:** (a) the walk harness lives outside the repo, as 14b's does (3a item 8(c)).
+      (b) `docs/cli-runbook.md`'s seat-demo example places home `sys_0006` at `104,55`; the committed seed has it at
+      `54,127` — pre-existing, left as it was. (c) No operator lever claims a system for a guild, so "a hex becomes a
+      rival's control in flight" is driven by a guild FOUNDING on the covering system — the one claim writer today — in
+      both the tests and the walk.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

@@ -176,7 +176,9 @@ engine is authoritative at apply). Lane-keyed so `tollGate` and `deepScan` slot 
 when their lanes are built (their anchors add outposts) — no reshape. *(⤳ 15-10-26, roadmap 2.5 slice 14b: the
 **`deepScan` lane is BUILT** as a sibling key, but in a different SHAPE — `deepScan: { hexes: [ { q, r } ] }`, the
 hexes themselves rather than a radius and anchors — because the array's placement is "attached", not a range: one
-hex outside a held system's control disk, or beside one of the guild's Outposts. Each lane is omitted when empty, and
+hex outside a held system's control disk, or beside one of the guild's Outposts. *(⤳ REVISED 15-10-26, slice 15: the
+hexes are those in or beside the guild's OWN control — inside a held system's disk, one hex outside it, or beside one
+of its Outposts — and never inside a rival's control (`exploration-model.md` §5, REVISED). The shape is unchanged.)* Each lane is omitted when empty, and
 `deployRange` when both are. The outpost lane keeps its thin shape unchanged. "AS-BUILT — the `deepScan` paint lane"
 at the end of this section.)*
 
@@ -305,7 +307,8 @@ hexDistance(T, S)` of the way along the line, so integer, deterministic and repl
 system. The **kit stays aboard** and the craft is **idle** there. It is a forced repositioning, **not
 travel** — no fuel, no time, no toll or fine, no supply move — so nothing is lost but the trip and its
 non-refundable fuel (`transport-model.md` §11.3). The craft is flagged **`deployFailed = { reason,
-tick }`** (`occupied` / `out-of-range`), the `laneEnded` pattern, so the player can see why; the next
+tick }`** (`occupied` / `out-of-range`; *⤳ and for a Deep Scan Array `not-attached`, 2.5 (b1), and
+`rival-territory`, slice 15 — `DEPLOY_FAILED_REASONS`, `sim/outposts.js`*), the `laneEnded` pattern, so the player can see why; the next
 dispatch clears it. *(⤳ 02-10-26: so does unloading the kit — `unloadKit`, "AS-BUILT — asset-initiated slice 1"
 below.)* *(Deferred, not built: guaranteeing the landing hex is not itself rival or contested
 space. Pulling toward the nearest held system is the ruled behaviour; refining the landing needs the
@@ -601,7 +604,7 @@ generalised from the Outpost to every kit kind. **No new number:** "attached" is
   disk within `claimRadius + 1` of each held system's centre and within 1 of each Outpost the guild owns — and puts
   every hex in it to `attachedPlacement` (now exported from `sim/actions.js`, read-only). The net holds every hex the rule
   can accept today, and would still hold them if the rule were widened to the inside of the disk (decision checklist,
-  2.5 (b1) item 1). Asking all ~100,000 hexes of the galaxy on every poll would be too slow; a test asks all of them
+  2.5 (b1) item 1). *(⤳ It was widened, slice 15, and the net needed no change — the next note.)* Asking all ~100,000 hexes of the galaxy on every poll would be too slow; a test asks all of them
   instead and requires the two lists to be equal (`tests/attached-hexes-oracle.js`). Like the outpost lane it is
   **GUIDANCE**: guild structures (Outposts, arrays) are not filtered out, and `deployCheck` stays the authority. **Omit
   per lane:** `outpost` when the guild holds no system, `deepScan` when no hex is attached (holding nothing), and
@@ -617,21 +620,45 @@ generalised from the Outpost to every kit kind. **No new number:** "attached" is
 - **The client's kit vocabulary.** The engine's `DEPLOYABLE_KITS` and `KIT_KIND_FOR_BILL` are not published, so
   `client/game.html` keeps ONE copy, the `kit-kinds` script (`window.__kitKind(kind)`, `window.__kitLabelForBill(bill)`):
   per kit kind its good, its bill kind, the player label ("Deep Scan Array kit" / "Outpost kit"), the structure name,
-  the popup art (none drawn yet for the array) and the deploy map's two phrases. A test (`tests/kit-kinds-client.test.js`)
+  the popup art (none drawn yet for the array — *⤳ slice 15: `deepscan.jpg`*) and the deploy map's two phrases
+  (*⤳ slice 15: three for the array — a `rival` refusal joins*). A test (`tests/kit-kinds-client.test.js`)
   runs that script and checks it row for row against the engine's tables, and checks `client/console.html`'s two dockyard
   labels against it.
 - **The deploy.** OPERATIONS → IDLE gives every kit kind a **Deploy** button (`machineHtml` asks the table). The deploy
   popup (formerly "Deploy Outpost") names the kind in its eyebrow, title, summary and footer. The deploy map follows the
   lane's SHAPE, not its kind: `deployReach` turns `{ radius, anchors }` into the union of disks and `{ hexes }` into
   those hexes, and the dashed-border paint and the refusal read that one set. For an array the border is a band around
-  the ring of attached hexes. A hex outside it is flagged "can't deploy here — not attached to your territory"; the
+  the ring of attached hexes. A hex outside it is flagged "can't deploy here — not attached to your territory" (*⤳ slice
+  15: "not in or beside your territory", or "inside rival territory" in a rival's disk*); the
   banner and the empty-route hint name the kind. The map also refuses a hex one of the guild's own arrays stands on. The
   plan list's action reads "deploy · deep scan array".
 - **The failed deploy.** The `deploy_failed` forks find the kit aboard through the table's `good`, so Redeploy and Return
   reach a retreated array kit. The Reason fact labels `not-attached` "Not attached", and the title and inbox row name the
-  structure ("Deployment failed — Deep Scan Array"; it read the raw kind).
+  structure ("Deployment failed — Deep Scan Array"; it read the raw kind). *(⤳ slice 15: "Deployment Failed — Deep Scan
+  Array", title case, as ruled 15-10-26.)*
 - **Proved** headless (Playwright, preinstalled Chromium) against a live `node sim/server.js`, the guild founded through
   the connect screen: 58 checks, zero console errors (`docs/roadmap.md`, slice 14b). Not built: an array on the galaxy map.
+  *(⤳ built, slice 15 — the next note.)*
+
+**AS-BUILT — the array's placement REVISED, and its map marker (15-10-26; roadmap 2.5 slice 15 — engine + client).**
+Built to `exploration-model.md` §5 "Deploy placement" (REVISED 15-10-26) and "Map visibility"; the detail is §5's
+AS-BUILT note there. What this section's pipeline gained:
+- **A fourth retreatable reason, `rival-territory`** (`DEPLOY_FAILED_REASONS`, `sim/outposts.js`, beside `occupied` /
+  `out-of-range` / `not-attached`): the array's target became a RIVAL's control while the craft flew — today, only a
+  guild founding on the system whose disk covers it. It retreats by `retreatLanding`, unchanged, the kit aboard, with
+  the `deploy_failed` notice (`cause: 'rival-territory'`), and the per-craft flag invariant accepts it through the same
+  list. A rival Outpost planted ON the target still reads `occupied`: deployCheck's order is unchanged.
+- **The lane contract, revised.** `deployRange.deepScan.hexes` is every in-bounds, landmark-free hex the REVISED rule
+  accepts: in or beside the guild's own control (a held system's disk and the ring past it; an owned Outpost's hex and
+  its six neighbours), never inside a rival's (a rival-held disk, a rival Outpost's hex). It stays occupancy-blind for
+  the guild's own structures. The net (`attachedHexes`) is unchanged: it already covered the whole disk. Both lanes are
+  still guidance; `deployCheck` is the authority.
+- **What moved.** No serialized byte (`hashState` goldens unchanged). The `deepScan` lane widened on every guild row that
+  holds a system (on the deploy-range fixture's home, 11 hexes → 16), so the raw bytes of every god's-eye snapshot and
+  every own view moved by exactly that lane — and every pinned snapshot golden already asserts its hash through the 14b
+  strip (`tests/deep-scan-lane-strip.js`), which removes the lane, so not one pinned hash changed.
+- **The oracle** (`tests/attached-hexes-oracle.js`) no longer calls `attachedPlacement`: it writes the ruling out on its
+  own, over every hex of the galaxy, so the lane, the rule and the helper are all checked against it.
 
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 
