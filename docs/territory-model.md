@@ -141,7 +141,9 @@ built earlier at the dockyard).
 **Two lanes.**
 
 - **Space infrastructure** — outpost, toll gate, deep-scan array. Deploy to a **bare hex**
-  within range; **instant, usable** on arrival.
+  within range; **instant, usable** on arrival. *(⤳ AMENDED 15-10-26, `exploration-model.md` §5: ONE exception —
+  a deep-scan array may also go on the centre hex of a system its guild holds, the craft berthed AT that system.
+  BUILT 15-10-26, roadmap 2.5 slice 16 — "AS-BUILT — the centre-hex leg" at the end of this section.)*
 - **Ground assets** — miner, factory, **and the Prefecture**. Haul to a **system**; the
   asset lands in that **system's idle list**; a **second step** deploys it onto a node (the
   existing establish flow). For the Prefecture, that second step onto a settlement slot **is
@@ -178,7 +180,9 @@ when their lanes are built (their anchors add outposts) — no reshape. *(⤳ 15
 hexes themselves rather than a radius and anchors — because the array's placement is "attached", not a range: one
 hex outside a held system's control disk, or beside one of the guild's Outposts. *(⤳ REVISED 15-10-26, slice 15: the
 hexes are those in or beside the guild's OWN control — inside a held system's disk, one hex outside it, or beside one
-of its Outposts — and never inside a rival's control (`exploration-model.md` §5, REVISED). The shape is unchanged.)* Each lane is omitted when empty, and
+of its Outposts — and never inside a rival's control (`exploration-model.md` §5, REVISED). The shape is unchanged.)*
+*(⤳ slice 16: and the centre hex of each system the guild holds — the one landmark hex a lane ever lists; a deploy
+there ends berthed AT the system.)* Each lane is omitted when empty, and
 `deployRange` when both are. The outpost lane keeps its thin shape unchanged. "AS-BUILT — the `deepScan` paint lane"
 at the end of this section.)*
 
@@ -660,6 +664,28 @@ AS-BUILT note there. What this section's pipeline gained:
 - **The oracle** (`tests/attached-hexes-oracle.js`) no longer calls `attachedPlacement`: it writes the ruling out on its
   own, over every hex of the galaxy, so the lane, the rule and the helper are all checked against it.
 
+**AS-BUILT — the centre-hex leg: an array on its own system's centre (15-10-26; roadmap 2.5 slice 16 — engine +
+client).** Built to `exploration-model.md` §5 "AMENDED 15-10-26 — the centre hex too"; the detail is §5's AS-BUILT note
+there. What this section's pipeline gained:
+- **The leg.** A deploy waypoint may name a SYSTEM — for a Deep Scan Array only (`CENTRE_KIND`) — and the leg to it is
+  an ordinary one that ends berthed AT the system (a landmark location), as a dock route's does; nothing in the leg
+  changed. The array's `coords` are the system's centre and its `anchorSystemId` that system. The dispatch's up-front
+  "a landmark, not a bare hex" refusal is now asked of `deployCheck`'s first check (so the exception lives in one
+  place), with its words unchanged for an Outpost. A heavy already berthed at the system acts in place (§11.9 of
+  `transport-model.md`): planted on the dispatch tick, no fuel.
+- **Arrival** re-runs the same rule. A failed deploy at a centre retreats by `retreatLanding`, unchanged: the nearest
+  held system is the one the craft is berthed at, 0 hexes away, so it lands AT it — it stays put, kit aboard, flagged,
+  with the `deploy_failed` notice (`targetHex` the centre, now read from the craft's resolved coordinates). Reachable
+  as `occupied` (a second array planted there first) and, on the committed seed, as `rival-territory` (a guild
+  founding on an adjacent starter — §6's spacing is not built). Losing the system in flight (no play path) would
+  fail `not-bare-hex`, which is not retreatable: the arrival HALTS, naming the tick.
+- **The lane contract, extended.** `deployRange.deepScan.hexes` also lists the centre of each system the guild holds —
+  the net already held it; `attachedHexes` now keeps a landmark hex when the deploy rule's own ground question,
+  `claimedCentreAt`, calls it a held centre, and asks `attachedPlacement` as for any hex. Still occupancy-blind; still
+  guidance. The client takes a system click as the target only where the lane lists its centre.
+- **The invariants**, widened to exactly this case: the route rule lets a `CENTRE_KIND` deploy stop at a system; the
+  array rule lets an array share its hex with the one seed landmark it is anchored to.
+
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 
 ## 6. Generation — starter spacing
@@ -678,7 +704,11 @@ times per galaxy (starter pairs within 2 hexes; 4-6 directly adjacent), so it is
 starter-eligibility is decided *after* placement (from the rolled planets), the rule is a
 **post-generation de-cluster repair**: for each too-close starter pair, demote the junior by
 converting its Terran planet, exactly as `repairRareTierGuarantee` already converts planets
-to meet a guarantee. *(Rule ruled; the repair is a generator build detail.)*
+to meet a guarantee. *(Rule ruled; the repair is a generator build detail.)* *(⤳ 15-10-26, measured in roadmap 2.5
+slice 16: **the repair is not built.** `tools/generate_seed.js` has no de-cluster step, and `data/seed.json` (7331)
+still has 6 directly adjacent starter pairs and 18 within 2 hexes; `foundGuild` has no spacing gate either. So two
+home disks CAN overlap today — `exploration-model.md` §5 "Overlapping disks" assumed they cannot. On the decision
+checklist.)*
 
 ## 7. The founding grant
 

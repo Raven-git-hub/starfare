@@ -508,6 +508,12 @@ footprint and changes no territory.
   own centre (the own-centre override). The array rule follows that control: legal for the senior
   guild, `rival-territory` for the junior. Until the seniority control map is built (with the
   Prefecture/claims work), the as-built "refused for both" stands, because it cannot arise.)*
+  *(⤳ 15-10-26, slice 16 — **the premise does not hold on the committed seed.** `territory-model.md` §6's
+  starter spacing (≥ 3 hexes) is ruled but its de-cluster repair was never built: `data/seed.json` has **6
+  directly adjacent starter pairs** and 18 within 2 hexes, and founding has no spacing gate. So two guilds can
+  hold home disks that reach each other's centres TODAY, and "refused for both" then refuses each guild its own
+  centre (where the own-centre override would award it), and a target can become a rival's control in flight by
+  a founding next door (tested). Built as it stands; on the decision checklist.)*
 - **Map visibility — RULED 15-10-26.** A guild's OWN Deep Scan Arrays are drawn on its galaxy map.
   A rival's array is **never drawn**. Seeing one is a detection matter, deferred with transport
   detection (L3), exactly as a rival's transport is. Today a rival's array is already absent from a
@@ -547,7 +553,8 @@ footprint and changes no territory.
 >   attached: the system's centre is a landmark (`not-bare-hex`), and a bare hex within `claimRadius` is
 >   refused by the predicate itself (`not-attached`). A rival's territory never counts. *(⤳ REVISED
 >   15-10-26, slice 15: the inside of the guild's own disk is legal now, and a hex inside a rival's control is
->   refused as `rival-territory` — "AS-BUILT 15-10-26 — placement REVISED" below.)*
+>   refused as `rival-territory` — "AS-BUILT 15-10-26 — placement REVISED" below.)* *(⤳ slice 16: and the centre of
+>   a system the guild holds — "AS-BUILT 15-10-26 — the centre hex" below.)*
 > - **The anchor.** A held **system** first (the lowest id); else the lowest-id owned **Outpost**, and the
 >   array takes *that Outpost's* `anchorSystemId` — so `anchorSystemId` always names a system (a seed id
 >   that can never dangle), with the meaning it has on an Outpost.
@@ -617,7 +624,70 @@ footprint and changes no territory.
 > hex from the client, its marker and tag on the map, the deploy map's three phrasings, and an in-flight
 > `rival-territory` failure read as "Deployment Failed — Deep Scan Array" / "Rival territory" — 27 checks, zero
 > console errors. **Not built** (out of scope): Outpost auras and semi-control, detection of a rival's array, a map
-> click panel for an array, the Deployed card's Manage wiring, monitoring.
+> click panel for an array, the Deployed card's Manage wiring, monitoring. *(⤳ slice 16: an array on its own held
+> centre — the next note.)*
+
+> **⤳ AS-BUILT 15-10-26 — the centre hex (roadmap 2.5 slice 16; engine + client).** Built to "AMENDED 15-10-26 — the
+> centre hex too" above. **No new number.**
+> - **The exception, in one place.** `deployCheck` (`sim/actions.js`) gains ONE value, `centre`: the system's id when
+>   the deploy is a Deep Scan Array (`CENTRE_KIND`, `sim/deep-scan-arrays.js` — the one kind it covers) and the craft
+>   is berthed AT a system some guild holds (`claimedCentreAt`: the seed landmark on the hex is a system whose OWN
+>   footprint `controlNear` returns at `within` 0). Three lines read it, and nothing else: the ground check lets that
+>   berth past `not-bare-hex`; the occupancy check asks only for another STRUCTURE on the hex (`guildStructureAt` —
+>   the system itself is the landmark the array stands on); and the anchor is that system. Whose centre it is stays
+>   the placement rule's, as for any hex: the guild's own centre is inside its own control (legal); a rival's is
+>   inside the rival's (`rival-territory`). The check order is unchanged. An Outpost still refuses every system
+>   (`not-bare-hex`, its words byte-identical); a waystation berth is `not-bare-hex`; the Citadel is no berth at all
+>   (a route cannot name it) and its hex, as a bare hex, is `occupied`; a bare `{ q, r }` on a held system's
+>   coordinates is not a berth there and stays `occupied`.
+> - **An unheld system's centre refuses as `not-bare-hex` (decided — the slice asked).** The ruling calls it "neither
+>   controlled nor deep space", so it is outside the exception and gets the reason every other landmark gets — even
+>   one inside the guild's own disk, which the placement rule alone would take (tested). `not-attached` would
+>   misname it (it names open space too far from the guild's territory, and an unheld centre can sit right beside
+>   it). `not-bare-hex` is not a retreatable reason, so if a held centre ever became unheld in flight the arrival
+>   would HALT, naming the tick — no play path does that today (no claim is ever removed); the slice that un-settles
+>   a system decides whether it should retreat instead (decision checklist).
+> - **The flight.** No change to the leg: a route waypoint was already able to name a system, so a deploy waypoint
+>   naming one (`sys:<id>@deploy:deepScan`) flies an ordinary leg that ends berthed AT the system. The dispatch's
+>   up-front landmark gate now asks `deployCheck` itself (its first check) rather than holding a copy of the
+>   exception, keeping its own words for a refused landmark. Arrival re-runs the same check; the heavy is left idle,
+>   berthed at the system. From a heavy already there the route acts in place (§11.9 of `transport-model.md`): the
+>   array is planted on the dispatch tick, no fuel burns — the client's usual case, the kit having been loaded at
+>   home. The manual `deployAsset` from a craft berthed at its own held system does the same.
+> - **A failed deploy at a centre** uses the retreat rule unchanged: S, the nearest held system, is the system the
+>   craft is berthed at, 0 hexes away — "that close or closer" — so it lands AT S, i.e. stays where it is, the kit
+>   aboard, flagged, with the `deploy_failed` notice (its `targetHex` the centre). Reachable two ways: a second array
+>   planted on the centre while the craft flew (`occupied`), and — on the committed seed, where some starters are
+>   adjacent — a rival founding on the starter next door, whose disk then covers the centre (`rival-territory`). The
+>   notice's target hex is now read from the craft's resolved coordinates (it read the bare hex's own `q, r`).
+> - **One structure per hex.** A second array on the same centre is `occupied`, by hand, at dispatch and on arrival.
+>   `checkDeepScanArrayIntegrity` is widened to exactly this case: an array may share its hex with ONE seed landmark,
+>   the system it is anchored to (it stands on that system's centre); on a waystation, on the Citadel, or on a centre
+>   it does not hang off is still a violation, and two arrays on one centre trip `deepScanArray-hex-unique`. Holding is
+>   not re-asked (placement is not retroactive). The route invariant (`deployActionViolation`) lets a deploy waypoint
+>   be a system for `CENTRE_KIND` only.
+> - **The lane.** `attachedHexes` keeps a landmark hex from its net only when `claimedCentreAt` calls it a held centre,
+>   then asks `attachedPlacement` as for any hex — so `deployRange.deepScan.hexes` now lists the centre of each system
+>   the guild holds, and never an unheld, rival, waystation or Citadel hex. The net needed no change (each disk's own
+>   middle was already in it). The oracle (`tests/attached-hexes-oracle.js`) writes the amendment out on its own —
+>   a landmark hex is legal only as the centre of a system the guild itself holds, read off its own claim rows — and
+>   the whole-galaxy equality holds.
+> - **What moved.** No serialized byte: a galaxy with no array on a centre hashes exactly as on `main` (pinned in
+>   `tests/deep-scan-centre.test.js`, recorded on 8795070). The lane grew by one hex per held system, so the raw bytes
+>   of every god's-eye lens and own view holding a system moved by exactly that (the same test strips the centres and
+>   gets `main`'s lens hash back); every pinned snapshot golden already asserts through the 14b strip, which removes
+>   the whole lane, so none moved.
+> - **The client.** A click on a system makes a landmark anchor; the deploy map now takes it as the target where the
+>   kind's lane LISTS that system's centre (`centreRefusal`) and none of the guild's own arrays stands there — the
+>   engine chose the centre; an Outpost's radius lane lists nothing, so it never makes a system a target. The plan
+>   list no longer shows the "idle at berth" cue on a kit route's target (the kit action rides it), and the popup reads
+>   the stop "you are here — acts in place". A rival's system — or the guild's own where a rival's disk reaches it —
+>   reads "Inside rival territory"; a system nobody holds, "Not a bare hex". **The marker** (look, not rule): every
+>   array's triangle gains a dark under-stroke so its teal edge reads against the teal territory fill, and on a
+>   system's centre it is drawn half as big again, so the star's own teal dot sits clear inside it at every zoom.
+> **Proved** headless against a live server (`docs/roadmap.md`, slice 16). **Not built** (out of scope): the seniority
+> control map, Outposts on centres, auras, rival-array detection, a click panel for the marker, the Deployed card's
+> Manage wiring.
 
 **Discovery — the scan (IN SCOPE).** *(⤳ BUILT 06-10-26, roadmap 2.5 (b2) — the AS-BUILT note
 follows the bullets.)* The throttle, now that distance is removed, is **time +

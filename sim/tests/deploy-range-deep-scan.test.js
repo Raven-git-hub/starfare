@@ -5,8 +5,9 @@
 //
 // A Deep Scan Array is not placed within a radius: it goes on a hex in or beside the guild's territory — inside a
 // held system's control disk, one hex outside it, or beside one of its Outposts — and never inside a rival's
-// control (sim/actions.js `attachedPlacement`; REVISED 15-10-26, slice 15). So the snapshot publishes the HEXES,
-// on each guild row:
+// control (sim/actions.js `attachedPlacement`; REVISED 15-10-26, slice 15). The disk's own centre counts too: an
+// array may stand on the centre of a system its guild holds (AMENDED 15-10-26, slice 16), reached by a craft
+// berthed AT that system. So the snapshot publishes the HEXES, on each guild row:
 //
 //     deployRange: { outpost?: { radius, anchors }, deepScan?: { hexes: [ { q, r } ] } }
 //
@@ -106,10 +107,11 @@ test('EXACT on a held system: the lane is every hex the deploy rule accepts — 
   assert.deepEqual(Object.keys(lane), ['hexes'], 'the lane is { hexes } and nothing else');
   assert.deepEqual(lane.hexes, attachedByRule(s, 'g1'));
   // Not vacuous: a held system's lane is the free hexes of its control disk plus the ring just outside it
-  // (REVISED 15-10-26 — it was the ring alone).
+  // (REVISED 15-10-26 — it was the ring alone), and the system's own centre (AMENDED 15-10-26, slice 16).
   assert.ok(lane.hexes.length > 0);
-  assert.ok(lane.hexes.every((h) => hexDistance(h, HOME_HEX) >= 1 && hexDistance(h, HOME_HEX) <= TOUCHING),
+  assert.ok(lane.hexes.every((h) => hexDistance(h, HOME_HEX) <= TOUCHING),
     'today, every hex is inside home\'s disk or on the ring around it');
+  assert.ok(lane.hexes.some((h) => keyOf(h) === keyOf(HOME_HEX)), 'home\'s own centre is in the lane');
   assert.ok(lane.hexes.some((h) => hexDistance(h, HOME_HEX) < TOUCHING), 'the inside of the disk is in the lane');
   assert.ok(lane.hexes.some((h) => hexDistance(h, HOME_HEX) === TOUCHING), 'and so is the ring');
   // The outpost lane beside it is unchanged by this slice.
@@ -211,10 +213,14 @@ test('PURE: building the lane moves no state, and the published hexes do not ali
 
 // verdictAt(state, hex) -> deployAsset's answer for g1's heavy, carrying an array kit, sitting on `hex`. The
 // kit is granted and loaded at home and the heavy placed on the hex (kit-fixtures.js — the stand-in for a flight).
+// A system's centre is reached berthed AT the system (slice 16 — a bare hex on a system's coordinates is not a
+// berth there), so the craft is placed at the system landmark for that one hex.
 function verdictAt(state, hex) {
   let s = accept(state, createSpawnVehicleAction({ guildId: 'g1', class: HEAVY_TRANSPORT, location: { landmarkKind: 'system', landmarkId: HOME.id } }));
   const craftId = s.guilds[0].vehicles[s.guilds[0].vehicles.length - 1].id;
-  s = placeCraft(kitAboard(s, 'g1', craftId, 'deepScan'), 'g1', craftId, hex);
+  const landmark = seedLandmarkAtHex(hex.q, hex.r);
+  const at = landmark && landmark.kind === 'system' ? { landmarkKind: 'system', landmarkId: landmark.id } : hex;
+  s = placeCraft(kitAboard(s, 'g1', craftId, 'deepScan'), 'g1', craftId, at);
   return validateAction(s, createDeployAssetAction({ guildId: 'g1', vehicleId: craftId }));
 }
 

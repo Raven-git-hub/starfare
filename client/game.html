@@ -4392,11 +4392,13 @@ select.field{appearance:none; cursor:pointer;}
     PLAN.waypoints.forEach((wp, i) => {
       const dead = deadLegAt(PLAN, i);
       const broken = brokenAt(PLAN, i);
-      const idle = i === 0 && idleAtBerth(PLAN);
       // (2.2 deploy pipeline) On a KIT route the last stop is the kit's target: its lines come from deployRow
       // (the deploy map) or unloadRow (unload mode). The stops before it are plain turning points and read as
       // any other stop.
       const target = isKitPlan() && i === last ? (PLAN.deploy ? deployRow(wp.anchor) : unloadRow(wp.anchor)) : null;
+      // A kit route's last stop is never idle: the kit action rides it (added on the way out, kitWaypoints). Since
+      // 2.5 slice 16 that stop can be the craft's own berth — an array on the home's centre, deployed in place.
+      const idle = i === 0 && !target && idleAtBerth(PLAN);
       // The flagged line: a dead leg first (it blocks Finalise), then a target the kit can't use (it blocks
       // Finalise too), then a broken stop (it blocks Dispatch — remove it here, or Finalise and Clear its
       // action there), then the idle one-stop cue.
@@ -4583,9 +4585,7 @@ select.field{appearance:none; cursor:pointer;}
   //  - { hexes } (the Deep Scan Array, 2.5 slice 14b): the hexes themselves — the engine asked its own
   //    "attached" rule of each, so the client draws exactly those and works nothing out.
   function deployReach(kind) {
-    const snap = window.__snapshot ? window.__snapshot() : null;
-    const me = snap && (snap.guilds || []).find((g) => g.id === PLAYER_GUILD.guildId);
-    const lane = me && me.deployRange && me.deployRange[kind];
+    const lane = myDeployLane(kind);
     if (!lane) return null;
     const inside = new Set();
     if (Array.isArray(lane.hexes)) {
@@ -4597,6 +4597,28 @@ select.field{appearance:none; cursor:pointer;}
     return inside;
   }
 
+  // myDeployLane(kind) -> the player's guild's lane `kind` (`deployRange[kind]`) off its live snapshot row, or null
+  // when the row carries none.
+  function myDeployLane(kind) {
+    const snap = window.__snapshot ? window.__snapshot() : null;
+    const me = snap && (snap.guilds || []).find((g) => g.id === PLAYER_GUILD.guildId);
+    return (me && me.deployRange && me.deployRange[kind]) || null;
+  }
+
+  // laneListsHex(kind, c) -> does the kind's lane LIST hex `c` (the { hexes } shape)? A { radius, anchors } lane (the
+  // Outpost's) lists nothing: it is a disk the client draws, landmarks and all, so it never makes a system a target.
+  function laneListsHex(kind, c) {
+    const lane = myDeployLane(kind);
+    return !!lane && Array.isArray(lane.hexes) && lane.hexes.some((h) => h.q === c.q && h.r === c.r);
+  }
+
+  // ourArrayOn(c) -> does one of the guild's own Deep Scan Arrays already stand on hex `c`? (The view carries only
+  // our own; a rival's is the engine's to refuse at dispatch.)
+  function ourArrayOn(c) {
+    const myArrays = (window.__myArrays && window.__myArrays()) || [];
+    return myArrays.some((arr) => arr.coords && sameHex(c, arr.coords));
+  }
+
   // deployWords() -> the kit-kinds row for the kind the deploy map is placing (its hint and refusal words), or
   // a neutral stand-in, so a kind the table does not know still reads sensibly.
   function deployWords() {
@@ -4606,20 +4628,21 @@ select.field{appearance:none; cursor:pointer;}
   // deployRefusal(anchor) -> why the deploy map refuses this hex as the target, or '' when it may be picked.
   // GUIDANCE from what the map already draws, never the verdict (that is the engine's deployCheck). It asks
   // deployCheck's questions in deployCheck's order:
-  //  - open ground: not a system or a Syndicate waystation (a click there makes a landmark anchor), not the
-  //    Citadel's hex, not a hex any guild's Outpost or one of our own Deep Scan Arrays stands on — one structure
-  //    per hex (design.md §4);
+  //  - open ground: not a Syndicate waystation (a click there makes a landmark anchor), not the Citadel's hex, not
+  //    a hex any guild's Outpost or one of our own Deep Scan Arrays stands on — one structure per hex (design.md §4);
+  //    and not a system, except the one a lane lists: the array's own held centre (centreRefusal, 2.5 slice 16);
   //  - on the galaxy: a hex off the disc is not one a craft can be sent to (the engine's bounds check);
   //  - in the lane: one of the hexes the kind's lane paints (deployReach) — inside the dashed line. The refusal
   //    names the kind's own rule (the kit-kinds table): "Outside the deploy range", "Not in or beside your
   //    territory" — or, for a kind whose rule refuses a rival's control (the array, 2.5 slice 15), "Inside rival
   //    territory" when the hex is in a rival's painted disk. Which words, only: the lane decides the hex.
+  // A SYSTEM (a click on one makes a landmark anchor) is judged on its own, by centreRefusal below.
   function deployRefusal(a) {
+    if (a && a.landmarkKind === 'system') return centreRefusal(a);
     if (!a || typeof a.q !== 'number' || typeof a.r !== 'number') return 'Not a bare hex';
     if (guildOutpostByKey.has(a.q + ',' + a.r) || sameHex(a, galaxy.citadel.coords)) return 'Not a bare hex';
-    // …nor one of the guild's own Deep Scan Arrays (the view carries only our own; a rival's is the engine's to refuse).
-    const myArrays = (window.__myArrays && window.__myArrays()) || [];
-    if (myArrays.some((arr) => arr.coords && sameHex(a, arr.coords))) return 'Not a bare hex';
+    // …nor one of the guild's own Deep Scan Arrays.
+    if (ourArrayOn(a)) return 'Not a bare hex';
     const p = hexToPixel(a.q, a.r, galaxy.galaxyParams.hexSize);
     if (Math.hypot(p.x, p.y) > galaxy.galaxyParams.radius) return 'Off the galaxy';
     const reach = deployReach(PLAN.deploy);
@@ -4630,10 +4653,27 @@ select.field{appearance:none; cursor:pointer;}
     return '';
   }
 
+  // centreRefusal(a) -> why the deploy map refuses the SYSTEM `a` as the target, or '' when it may be picked. A
+  // system is a target only where the kind's lane LISTS its centre hex — the Deep Scan Array on a system its guild
+  // holds (2.5 slice 16; exploration-model.md §5, AMENDED 15-10-26) — and none of our own arrays stands there yet
+  // (one structure per hex). The engine chose those centres; nothing here works out which system is ours to use.
+  // The refusal words: a system nobody holds is "Not a bare hex", as it always was; a centre inside a rival's
+  // painted disk — a rival's own system, or ours where a rival's disk reaches it — reads as rival territory, for a
+  // kind that has those words (the array); everything else, the Outpost's every system included, "Not a bare hex".
+  function centreRefusal(a) {
+    const c = resolveAnchor(a);
+    if (!c) return 'Not a bare hex';
+    if (ourArrayOn(c)) return 'Not a bare hex';
+    if (laneListsHex(PLAN.deploy, c)) return '';
+    const words = deployWords();
+    const heldBySomeone = systemToGuild.has(a.landmarkId);
+    return words.rival && heldBySomeone && inRivalTerritory(c) ? words.rival : 'Not a bare hex';
+  }
+
   // inRivalTerritory(a) -> true when the hex lies inside a system disk a RIVAL holds, as the territory layer paints
   // it (the system's seed claimRadius — the disk computeTerritoryMap fills). WORDS ONLY: deployRefusal asks it to
   // choose the refusal for a hex ALREADY outside the painted lane; it decides nothing. A rival's Outpost hex never
-  // reaches it — that is refused first, as not a bare hex.
+  // reaches it — that is refused first, as not a bare hex. (centreRefusal asks it of a held system's centre too.)
   function inRivalTerritory(a) {
     for (const [systemId, guildId] of systemToGuild) {
       if (guildId === PLAYER_GUILD.guildId) continue;
@@ -4646,8 +4686,8 @@ select.field{appearance:none; cursor:pointer;}
   // drawDeployRing(inside) — the legal hexes (deployReach) drawn as a dashed OUTER BORDER, not filled hexes
   // (§5): only the edges whose neighbour is outside the set. For the Outpost's disks that is one ring; for the
   // Deep Scan Array's hexes it is the outer edge of the disk-plus-ring (2.5 slice 15 — it was a band round the
-  // ring), with a small inner line round the system's own hex, which is a landmark and never in the lane, and
-  // the edge pulled in wherever a rival's territory takes hexes out. Drawn in the player teal with the toll
+  // ring), and the edge pulled in wherever a rival's territory takes hexes out. The system's own centre is in the
+  // lane since slice 16 (an array may stand on it), so the disk draws whole — no inner line round the star. Drawn in the player teal with the toll
   // path's dash, on the same hex geometry as every other layer. A few hundred hexes per anchor, so it is simply
   // recomputed each frame (as the territory map is).
   function drawDeployRing(inside) {
@@ -5276,11 +5316,21 @@ select.field{appearance:none; cursor:pointer;}
       const p = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
       const scr = worldToScreen(p.x, p.y);
       if (scr.x < -20 || scr.x > window.innerWidth+20 || scr.y < -20 || scr.y > window.innerHeight+20) return;
-      const t = Math.min(9, 5 + zoom * 0.06);   // look, not a game number: the triangle's half-height in px
+      // Look, not a game number: the triangle's half-height in px. An array may stand on its own held system's
+      // centre (2.5 slice 16), where the star's dot is drawn on the same hex in the same teal; half as big again
+      // there, so the dot sits clear inside the triangle instead of touching its edges as the map zooms in.
+      const onStar = systemByKey.has(a.coords.q + ',' + a.coords.r);
+      const t = Math.min(9, 5 + zoom * 0.06) * (onStar ? 1.5 : 1);
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(scr.x, scr.y - t); ctx.lineTo(scr.x + t, scr.y + t * 0.8); ctx.lineTo(scr.x - t, scr.y + t * 0.8);
       ctx.closePath();
+      ctx.lineJoin = 'round';
+      // A dark under-stroke first, so the teal edge reads against the teal territory fill (an array inside its own
+      // disk, or on its centre) and apart from a star's own teal dot. Look only.
+      ctx.lineWidth = 3.6;
+      ctx.strokeStyle = 'rgba(4,8,16,0.75)';
+      ctx.stroke();
       ctx.lineWidth = 1.6;
       ctx.strokeStyle = col('player', 0.95);
       ctx.stroke();

@@ -1508,7 +1508,8 @@ Vehicle spawn/remove primitive (design.md §15.4 — operator/Storyteller, exit 
                   a LAST waypoint q,r@deploy:KIND (e.g. "101,55@deploy:outpost") plants the kit the craft
                   carries on arrival — refused up front unless it would deploy now; if the hex is taken or
                   out of range by the time it lands, the craft pulls back 3 hexes toward the nearest held
-                  system, kit aboard, flagged deployFailed
+                  system, kit aboard, flagged deployFailed; a Deep Scan Array may also end on a system its
+                  guild holds, sys:<id>@deploy:deepScan, and stands on that system's centre hex
                   a LAST waypoint sys:<id>@unload-kit (e.g. "sys:sys_0006@unload-kit") drops the kit the craft
                   carries into that held system's inventory on arrival — refused up front unless it would
                   unload now (exactly one kit aboard, a system the guild holds)
@@ -1585,7 +1586,8 @@ Flags
                  remove-outpost: which outpost id; delete-route: which saved-route id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
-                 or (dispatch-route, last waypoint only) q,r@deploy:KIND or sys:<id>@unload-kit
+                 or (dispatch-route, last waypoint only) q,r@deploy:KIND, sys:<id>@deploy:deepScan
+                 (an array on the centre of a system its guild holds) or sys:<id>@unload-kit
   --repeat R     dispatch-route: the launch mode — once (default) | continuous | nRun:N (N full cycles),
                  a repeating mode optionally + :immediate (default) | :perCycle (one lap per fuel cycle)
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)

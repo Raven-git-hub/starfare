@@ -1,8 +1,8 @@
 'use strict';
 
 // attached-hexes-oracle.js — the slow, obviously-right answer the `deployRange.deepScan` lane is checked
-// against (roadmap 2.5, slice 14b; REWRITTEN slice 15; docs/territory-model.md §5 "Painting the range";
-// docs/exploration-model.md §5 "Deploy placement", REVISED 15-10-26).
+// against (roadmap 2.5, slice 14b; REWRITTEN slice 15; the centre added slice 16; docs/territory-model.md §5
+// "Painting the range"; docs/exploration-model.md §5 "Deploy placement", REVISED and AMENDED 15-10-26).
 //
 // The snapshot finds the lane's hexes FAST: it only asks the deploy rule about hexes near the guild's own
 // footprints (sim/snapshot.js `attachedHexes`, its "net"), and the rule itself asks the one control helper
@@ -13,6 +13,9 @@
 //   one of its six neighbours is a hex G controls.
 //   "Controls": a held system controls every hex within its claimRadius of its centre; an Outpost controls
 //   its own hex (no aura yet).
+//   A hex with a SEED LANDMARK on it is legal only when it is the centre of a system G ITSELF holds (and, as
+//   for any hex, no rival controls it) — the one exception (AMENDED 15-10-26, slice 16). A waystation, the
+//   Citadel, a system nobody holds and a rival's system are never legal.
 //
 // It reads only the seed data and the state rows, and spells out its own hex distance and neighbours. So if
 // the net misses a hex, or the helper and the rule ever drift from the ruling, the lists differ and a test
@@ -64,10 +67,19 @@ function footprintsOf(state) {
   return [...held, ...outposts];
 }
 
-// attachedByRule(state, guildId) -> [ { q, r } ] — every in-bounds hex with no seed landmark on it that the
-// RULED placement (above) accepts for this guild, sorted by q then r. What the lane must equal, exactly.
+// attachedByRule(state, guildId) -> [ { q, r } ] — every in-bounds hex the RULED placement (above) accepts for
+// this guild — a bare hex, or the centre of a system it holds — sorted by q then r. What the lane must equal,
+// exactly.
 function attachedByRule(state, guildId) {
   const footprints = footprintsOf(state);
+  // The systems THIS guild holds, read straight off its claim rows.
+  const heldByGuild = new Set((state.claims || [])
+    .filter((c) => c.landmarkKind === 'system' && c.ownerGuildId === guildId)
+    .map((c) => c.landmarkId));
+  const isGround = (hex) => {
+    const landmark = seedLandmarkAtHex(hex.q, hex.r);
+    return !landmark || (landmark.kind === 'system' && heldByGuild.has(landmark.id));
+  };
   const controllers = (hex) => footprints.filter((f) => distance(hex, f.centre) <= f.radius).map((f) => f.guildId);
   const legal = (hex) => {
     const here = controllers(hex);
@@ -76,7 +88,7 @@ function attachedByRule(state, guildId) {
     return neighbours(hex).some((n) => controllers(n).includes(guildId));   // nobody's, beside the guild's own
   };
   return latticeHexes()
-    .filter((hex) => !seedLandmarkAtHex(hex.q, hex.r) && legal(hex))
+    .filter((hex) => isGround(hex) && legal(hex))
     .sort((a, b) => a.q - b.q || a.r - b.r);
 }
 

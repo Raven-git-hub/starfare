@@ -8,8 +8,9 @@
 //      hold, and built or bought only under its BILL kind `deep_scan_array` (⤳ 15-10-26); every kit kind has a
 //      deploy rule of its own.
 //   2. PLACEMENT (REVISED 15-10-26, slice 15): a bare hex inside a held system's disk (1 ≤ d ≤ claimRadius), on
-//      the ring just outside it (claimRadius + 1), or 1 from an owned Outpost, deploys; the centre is refused
-//      as 'not-bare-hex', a hex further out as 'not-attached', and a hex inside a RIVAL's control as
+//      the ring just outside it (claimRadius + 1), or 1 from an owned Outpost, deploys; so does the centre, from
+//      a craft berthed at the held system (AMENDED, slice 16 — tests/deep-scan-centre.test.js); a hex further
+//      out is refused as 'not-attached', and a hex inside a RIVAL's control as
 //      'rival-territory'. The anchor: a held system first (lowest id), else the lowest-id owned Outpost's own
 //      anchor system. (The slice-15 failure modes — the rival ring, arrival, not retroactive — are in
 //      deep-scan-placement.test.js.)
@@ -239,15 +240,16 @@ test('PLACEMENT, swept: around home, the bare disk AND the claimRadius + 1 ring 
   assert.ok(inside >= 1, 'and so does the inside of the disk');
 });
 
-test('REFUSED: two hexes outside the footprint, at the system, beside only RIVAL ground, or INSIDE a rival\'s disk', () => {
+test('REFUSED: two hexes outside the footprint, beside only RIVAL ground, or INSIDE a rival\'s disk', () => {
   const dir = freeDirection(HOME_HEX, [1, TOUCHING + 1]);
   // Two hexes outside the footprint (one beyond the touching ring) — the placement rule refuses.
   const far = arrayKitAt(along(HOME_HEX, dir, TOUCHING + 1));
   assert.match(refuse(far, deploy(far)), /in or beside no territory guild "g1" holds — a Deep Scan Array deploys inside its guild's territory, or on open space beside it/);
   // (Inside the guild's OWN disk was refused here before 15-10-26; it deploys now — the sweep above.)
-  // At the system itself — berthed at the landmark: the existing 'not-bare-hex' check, naming the array.
+  // (At the system itself — berthed at its own held home — it was refused here as 'not-bare-hex'. Since slice 16
+  // it deploys, on the centre: AMENDED 15-10-26, pinned in tests/deep-scan-centre.test.js.)
   const atHome = withArrayKit(arrayState());
-  assert.match(refuse(atHome, deploy(atHome)), /berthed at a landmark .* — a Deep Scan Array deploys on a bare hex/);
+  assert.equal(validateAction(atHome, deploy(atHome)).valid, true, 'berthed at its own home, the array goes on the centre');
   // Rival ground never counts: the ring around g2's system, and the hex beside g2's Outpost, are nobody's
   // control and touch none of g1's — 'not-attached'.
   const rivalHex = getSystem(RIVAL).coords;
@@ -343,8 +345,10 @@ test('THE KIND MUST MATCH: a deploy waypoint naming the other kind is refused up
   const outpostKit = kitAboard(arrayState({ fuelHoard: 10_000 }), 'g1', craftOf(arrayState()).id);
   assert.match(refuse(outpostKit, dispatch(outpostKit, [{ anchor: target, action: DEPLOY_ARRAY }])),
     /would fail now — .*must carry exactly one deep_scan_array_kit and nothing else to deploy — its hold is \{"outpost_kit":1\}/);
-  assert.match(refuse(arrayKit, dispatch(arrayKit, [{ anchor: AT_HOME, action: DEPLOY_ARRAY }])),
-    /the deploy waypoint 0 is a landmark .* — a Deep Scan Array deploys on a bare hex/);
+  // A landmark that is not a held centre — the home's waystation — is refused up front, naming the one exception.
+  // (AT_HOME itself is legal since slice 16: tests/deep-scan-centre.test.js.)
+  assert.match(refuse(arrayKit, dispatch(arrayKit, [{ anchor: { landmarkKind: 'outpost', landmarkId: HOME.waystation }, action: DEPLOY_ARRAY }])),
+    /the deploy waypoint 0 is a landmark .* — a Deep Scan Array deploys on a bare hex \{ q, r \}, or on the centre of a system its guild holds/);
 });
 
 // --- 4. on arrival ----------------------------------------------------------------------------------
@@ -446,7 +450,10 @@ test('INVARIANTS: a malformed array row, list or serial fails loudly', () => {
   assert.ok(rules((b) => { row(b).createdAtTick = b.tick + 1; }).includes('deepScanArray-createdAtTick-is-a-past-tick (§15.2)'));
   assert.ok(rules((b) => { row(b).createdAtTick = 1.5; }).includes('deepScanArray-createdAtTick-is-a-past-tick (§15.2)'));
   assert.ok(rules((b) => { row(b).coords = { q: 99999, r: 0 }; }).includes('deepScanArray-coords-in-bounds (seed.js)'));
-  assert.ok(rules((b) => { row(b).coords = { ...HOME_HEX }; }).includes('deepScanArray-hex-unoccupied-by-seed (§4)'));
+  // ⤳ slice 16: an array MAY share its hex with exactly one landmark, the system it is anchored to (it stands on
+  // that held system's centre). On a centre it does not hang off it still trips (the rest: deep-scan-centre.test.js).
+  assert.equal(rules((b) => { row(b).coords = { ...HOME_HEX }; }).includes('deepScanArray-hex-unoccupied-by-seed (§4)'), false);
+  assert.ok(rules((b) => { row(b).coords = { ...HOME_HEX }; row(b).anchorSystemId = RIVAL; }).includes('deepScanArray-hex-unoccupied-by-seed (§4)'));
   assert.ok(rules((b) => { b.outposts = [{ id: 'outpost_g1_01', ownerGuildId: 'g1', coords: { ...hex }, anchorSystemId: HOME.id, capacity: 0, dockCapacity: 0, createdAtTick: 0 }]; b.guilds[0].outpostSerial = 1; })
     .includes('deepScanArray-hex-unoccupied-by-outpost (§4)'));
   assert.ok(rules((b) => { b.deepScanArrays.push({ ...row(b), id: 'deepScanArray_g1_02' }); b.guilds[0].deepScanArraySerial = 2; })
