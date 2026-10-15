@@ -19,7 +19,8 @@ Buildable vs sellable — two catalogs. The dockyard can BUILD every kind that h
 (`sim/asset-recipes.js` `BUILDABLE_KINDS`): miner, factory, and the four guild transports
 (light / medium / heavy / spycraft). The Syndicate SELLS a narrower set — see §"What the
 Syndicate sells" below. The outpost / scanner / toll-gate / droid kinds follow when their
-entities and recipes exist.
+entities and recipes exist. *(⤳ 15-10-26: the outpost and the Deep Scan Array kits now join BOTH
+catalogs — §"Installation kits" below. The toll gate and droids still wait for their entities.)*
 
 ## What the Syndicate sells — sellable ⊂ buildable (RULED 22-09-26)
 
@@ -41,6 +42,53 @@ build gate and `/asset-recipes` keep the full `BUILDABLE_KINDS`, so a guild can 
 spycraft itself. `spycraft`'s `VEHICLE_BUY_BASELINE` entry goes **dormant** — no buy path prices
 it any more — retained, not read by the sell path. Narrative: stealth craft are something a
 guild makes in the dark, not something it orders from the institution.
+
+## Installation kits — the outpost and the Deep Scan Array join both catalogs (RULED 15-10-26)
+
+Until now a kit entered the game only through the operator `grantKit` lever or the human starter
+package. This ruling gives a guild two player paths to a kit — build it, or buy it — so the
+built load → ferry → deploy → structure loop (and, for the array, Survey / `queueScan`) runs from
+something the guild acquired itself.
+
+- **Which kinds.** `deep_scan_array` and `outpost` join `ALL_BILLS`, `BUILDABLE_KINDS` **and**
+  `SYNDICATE_SELLABLE_KINDS` (`sim/asset-recipes.js`). **`toll_gate` stays data-only**: it has no
+  entity and no kit row in `DEPLOYABLE_KITS`, so making it buildable would invent its kit. It joins
+  in its own slice.
+- **Why sellable (not build-only like spycraft).** The array is legitimate exploration
+  infrastructure, and the outpost is a depot (design.md §4). Spycraft stays the ONLY build-only
+  kind: stealth is made in the dark, but surveying and depots are things the Syndicate will sell.
+  The array's later monitoring function (L3, espionage-adjacent) does not change this ruling.
+- **What a finished build or delivery produces: a KIT, not an asset of the bill kind.** When a
+  dockyard build of one of these kinds completes, or a Syndicate commission for one lands, the
+  engine mints ONE idle kit asset through `mintKitAsset` (the one kit mint `grantKit`, the unload and
+  the starter package already use), at the same system a miner or factory of that path would land.
+  Its id and serial follow the kit sequence (`guild.kitAssetSerial`), not the per-kind asset number.
+  The kit is then exactly a granted kit: loadable, deployable, nothing special.
+- **The bill-kind → kit-kind bridge (closes the 06-10-26 seam, `exploration-model.md` §5).** A queue
+  entry or commission keeps carrying the BILL kind (`deep_scan_array` / `outpost`). One frozen map,
+  spelled once in `sim/asset-recipes.js`, translates at the mint: `deep_scan_array` → `deepScan`,
+  `outpost` → `outpost`. The toll gate gets its row (`toll_gate` → `tollGate`) with its kit. No rename.
+- **Build.** The bills and assembly times are the ones already ruled 27-09-26 (`asset-recipes.md`):
+  `BUILD_TICKS` outpost **12,960** (9 days), deep scan array **10,080** (7 days). They stop being inert.
+  Every existing dockyard rule applies unchanged: reserve-and-wait (the WHOLE bill must be present
+  before the countdown starts; a starved head waits and holds up the queue behind it), `MAX_QUEUE`.
+- **Buy — price.** The same formula, `max( baseline , round( partsCost × ASSET_PURCHASE_REDUCTION ) )`,
+  with two new per-kind baselines `[FIRST-CUT]` (`phase-1-tuning.md`): **Deep Scan Array kit
+  100,000,000**, **Outpost kit 150,000,000** credits. They sit in their own frozen table beside
+  `VEHICLE_BUY_BASELINE`. `assetPurchaseBaseline(kind)` reads it, so the purchase price and the
+  cancel refund (refund = baseline, the Syndicate keeps any premium) cannot disagree. *Scale check:*
+  at base prices the array's parts × 0.8 come to about 32M and the outpost's to about 0.46M, so the
+  baseline binds for both. The array's parts branch can bind if its Tier-3 specialists
+  (`deep_scan_mast`, `sensor_suite`) trade at roughly 3× base. That is the formula working as
+  designed, not a defect.
+- **Buy — fuel, queue, destination.** No new rule and no new number. A kit fills a heavy hold
+  (design.md §4), so its delivery burns the heavy-rate asset fuel (`ASSET_CARGO_VOLUME`), like
+  every asset. It counts against `SYNDICATE_QUEUE_MAX`, is cancellable on the same terms, and goes
+  to one destination system, which (as for every kind) the guild does not need presence in.
+- **No per-guild outpost cap (this slice).** With outposts buildable and sellable, the throttle
+  is the 9-day build or the 150M price, one heavy per kit, and the deploy placement rules. Whether
+  a guild should be capped is a play question, logged on the roadmap decision checklist, not
+  ruled here (pressure over prohibition).
 
 ## The two phases
 

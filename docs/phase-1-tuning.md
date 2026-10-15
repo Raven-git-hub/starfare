@@ -85,6 +85,17 @@ that is the next slice. Retune in play — a Syndicate asset purchase has never 
   indivisible payload with no good-unit count, so it burns at the light rate over the hex distance.
   `[FIRST-CUT]` choice — an asset-mass → hauler-tier mapping is a later ruling, not invented here.
 
+### Installation kits — build and buy (2.5, the Deep Scan Array acquire slice) *(15-10-26 — `docs/asset-purchase.md` §"Installation kits")*
+
+- **Syndicate buy baselines for the two kit kinds** `[FIRST-CUT]` — **RULED 15-10-26** (given by the
+  human, not derived): **`deep_scan_array` 100,000,000**, **`outpost` 150,000,000** credits. Each is the
+  `baseline` term of `price = max(baseline, round(partsCost × 0.8))`, in the same role
+  `VEHICLE_BUY_BASELINE` plays for a transport, and the cancel refund. For scale: light 5M · medium
+  15M · miner/factory 12M floor · spycraft 100M (dormant) · heavy 200M. At base prices both baselines
+  bind (array parts × 0.8 ≈ 32M, outpost ≈ 0.46M). Retune in play.
+- **Build times** — no change: outpost 12,960 · deep scan array 10,080 ticks (27-09-26, above). They
+  become live with this slice. `toll_gate`'s 8,640 stays inert, because the toll gate is not buildable.
+
 ### Guild transports — the guild transport tier (2.2-foundation) *(18-09-26 — the guild-transport thread; design.md §6 / §15.4, `docs/transport-model.md`)*
 The four guild-owned craft classes, all `[FIRST-CUT]`, RULED this design session (18-09-26). A guild transport is a **`Vehicle`** (design.md §15.4), built by a dockyard or bought from the Syndicate exactly as a ground asset is (the buy/build machinery is kind-general), minted **idle** into `guild.vehicles` at the building / delivery system. This table is the authority on the numbers the build slice reads. Retune in play — a guild transport has never been felt.
 

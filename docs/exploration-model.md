@@ -623,6 +623,10 @@ queue depth**:
 > convention `tollGate` / `deepScan`). Its correspondence with the installation bill's kind
 > `deep_scan_array` (`sim/asset-recipes.js`) is a **deliberate seam**: the future slice that gives
 > installations a dockyard build path bridges it, for the array and the toll gate together.
+> *(⤳ AMENDED 15-10-26, `asset-purchase.md` §"Installation kits": the array is bridged NOW, with no toll
+> gate: one bill-kind → kit-kind map (`deep_scan_array` → `deepScan`, `outpost` → `outpost`) in
+> `sim/asset-recipes.js`. The toll gate gets its row when its entity and kit exist. A guild acquires an array
+> kit by dockyard build or Syndicate buy.)*
 > **Not built:** monitoring, L3 espionage, a scan cancel, a player teardown / reclaim, a completion notice,
 > the client. *(⤳ 13-10-26: the client's survey flow is BUILT — the client flip's slice 3b, §10 — reading the
 > job off this row exactly as it is. The **completion notice** is still not built, and is **DEFERRED** (ruled
