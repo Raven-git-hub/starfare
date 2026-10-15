@@ -1487,10 +1487,11 @@ test('GET /console serves the RESTRUCTURED console (the authoritative design)', 
 test('GET /starters lists the seed\'s startable home systems', async () => {
   const { status, body } = await req('GET', '/starters');
   assert.equal(status, 200);
-  // 335 starter-eligible systems in seed 7331. Pinned on purpose: if this ever
-  // changes, the seed changed under us and we want to be told loudly.
-  assert.equal(body.count, 335);
-  assert.equal(body.starters.length, 335);
+  // 319 starter-eligible systems in seed 7331 (335 until roadmap 2.5 slice 17's
+  // starter-spacing repair demoted 16). Pinned on purpose: if this ever changes,
+  // the seed changed under us and we want to be told loudly.
+  assert.equal(body.count, 319);
+  assert.equal(body.starters.length, 319);
   // Shape: exactly what the picker shows. NOT the homeworld a guild seats on — which planet is Terran is
   // an L1 fact, so the wire no longer names it (ruling 12 slice 3c); the engine resolves it at founding.
   const s0 = body.starters[0];

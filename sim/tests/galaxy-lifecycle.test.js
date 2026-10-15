@@ -539,3 +539,42 @@ test('POST /reset does NOT re-anchor — a reset galaxy runs the unanchored cade
       'and the offset goes with the anchor — choosing one is Create’s job too');
   } finally { child.kill('SIGKILL'); }
 });
+
+// --- A galaxy created BEFORE the starter-spacing repair (roadmap 2.5 slice 17) -----------------
+
+test('a galaxy created before the starter-spacing repair boots UNCHANGED — a persisted seed is never regenerated', async () => {
+  // The seed such a galaxy saved is what the generator made before slice 17: the same output with the
+  // repair skipped (proved byte-identical in tools/generate_seed.test.js's blast-radius test), without the
+  // summary count the repair added, and with the validation it reported then. Seed 777 has starters the
+  // repair would now demote.
+  const { generateGalaxySeed } = require('../../tools/generate_seed.js');
+  const old = generateGalaxySeed(777, { skipStarterSpacingRepair: true });
+  delete old.stats.starterSpacingDemotions;
+  old.validation = { passed: true, issues: [] };
+  const repaired = generateGalaxySeed(777);
+  const wouldDemote = old.systems.filter((s, i) => s.starterEligible && !repaired.systems[i].starterEligible).map((s) => s.id);
+  assert.ok(wouldDemote.length > 0, 'seed 777 has starters the repair would demote, or this proves nothing');
+
+  const dir = tmpDir();
+  const seedFile = path.join(dir, 'seed.json');
+  fs.writeFileSync(seedFile, JSON.stringify(old));
+  const bytesBefore = fs.readFileSync(seedFile);
+  const port = await freePort();
+  const { child } = bootServer({ dir, port });
+  try {
+    const health = await waitForHealth(port);
+    assert.equal(health.galaxy, 'active');
+    assert.equal(health.seed, 777);
+    // Every starter it was created with is still offered — the would-be-demoted ones too.
+    const { body } = await get(port, '/starters');
+    assert.equal(body.count, old.systems.filter((s) => s.starterEligible).length);
+    for (const id of wouldDemote) assert.ok(body.starters.some((s) => s.id === id), `${id} is still a starter here`);
+    // And a guild can still found on one: the engine reads the persisted seed, never the generator.
+    const founded = await post(port, '/action', { type: 'foundGuild', guildId: 'old_timer', name: 'Old Timer', credits: 500, homeSystemId: wouldDemote[0] });
+    assert.equal(founded.status, 200, JSON.stringify(founded.body));
+  } finally {
+    child.kill('SIGKILL');
+  }
+  assert.ok(fs.readFileSync(seedFile).equals(bytesBefore), 'the volume\'s seed file was not rewritten');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

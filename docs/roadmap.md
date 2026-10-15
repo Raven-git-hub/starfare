@@ -3701,6 +3701,9 @@ boundary so the later hex-map swap doesn't touch it.
   may stand on the centre of a system its guild holds, deployed from a craft berthed there (by hand, in place, or flown
   and re-checked on arrival); the lane, the oracle, the invariants and the client follow; the CLI runbook's example is
   re-verified live.)*
+  *(⤳ 15-10-26 — **slice 17, the starter-spacing de-cluster repair, is BUILT**, the last entry below: the seed
+  generator keeps no two starters within each other's claim footprint (`territory-model.md` §6), every NEW galaxy
+  honours it, and `data/seed.json` is regenerated (335 → 319 starters). A galaxy already created keeps its seed.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4319,6 +4322,54 @@ boundary so the later hex-map swap doesn't touch it.
     system and an Outpost kit at home "not a bare hex"; the rival's view without a `deepScanArrays` key — **20 checks,
     zero console errors**. The harness lives outside the repo, as 15's does. Sim 2,262 → **2,280**, tools
     **83** (unchanged). Checklist items below.
+  - **Slice 17 — the starter-spacing de-cluster repair (generator) — ⤳ AS-BUILT 15-10-26.** Built to
+    `territory-model.md` §6, "RULED 15-10-26 — build the repair as specified here", and the slice-16 checklist's
+    ANSWERED note, item (2); as-built detail in §6's "AS-BUILT — the de-cluster repair". **No new number.** **(1) The
+    repair** (`repairStarterSpacing`, `tools/generate_seed.js`, pipeline step 8b): right AFTER starter tagging and
+    BEFORE the rare-tier repair (which converts only TO a rare tier, so cannot re-make a starter — tested). It walks
+    the starters in the generator's own system order and keeps one only if no starter ALREADY KEPT is too close;
+    otherwise it demotes it (a demoted system does not block). **(2) "Too close"** is read from the seed: two
+    footprints share a hex, `hexDist ≤ a.claimRadius + b.claimRadius` (`startersTooClose`) — 2 today, the ruled
+    ≥ 3. **(3) Demotion** converts EVERY Terran planet of the junior to a non-Terran archetype, re-drawn from its
+    ring's table with Terran left out (`pickArchetype`'s new optional `skip`; unchanged without it), regenerates its
+    nodes, and re-derives `starterEligible` (false). Never anything TO Terran. **(4) The blast radius:** the repair
+    draws from its own side stream (`mulberry32(seed ^ STARTER_SPACING_STREAM)`, a stream label), and a converted
+    planet's settlement slots come from it too — a Terran took no main-stream draw for its slots, so the main
+    stream's draw count is unchanged. Measured: with the repair skipped the output is byte-identical to the
+    pre-slice generator except the new validation line and the new stat, so only the converted planets differ.
+    **(5) Validation** gains "no two starters share a footprint" (names the first pair); the sector check fails,
+    naming the sector, if the repair ever empties one — never a quiet un-demote. **(6) `data/seed.json` regenerated
+    through the CLI** (the drift tripwire passes): 7331 → **335 → 319** starters, **16** systems demoted, **20**
+    Terran planets converted, all 16 sectors covered, validation PASSED; the diff is 1,433 changed lines, all inside
+    those 20 planets, the 16 `starterEligible` flags and four `stats` lines (`starterSystems`, `totalResourceNodes`
+    51,273 → 51,168, `totalSettlementSlots` 32,706 → 32,509, the new `starterSpacingDemotions: 16`). Seed 42 (the
+    runbook's): **397 → 380**, 17 demoted, 20 converted; its `sys_0006` and every runbook hex unchanged — the runbook's
+    deploy, retreat, unload, Deep Scan (ring and centre) and scan steps re-run live against a fresh `seat-demo --seed
+    42`, **16/16 checks** (harness outside the repo). `data/test_claims.json` (geometry only) did not move. The
+    rare-tier repair still fires zero times on all seven seeds measured (7331, 42, 222, 777, 4242, 4343, 9999), each
+    validating. **(7) A created galaxy is untouched:** only Create Galaxy calls the generator; boot reads the volume's
+    `seed.json`. New lifecycle test: a pre-slice seed-777 galaxy on a volume boots with all 352 of its starters
+    (24 the repair would now demote), a guild founds on one, and the seed file is not rewritten. **Goldens re-pinned,
+    by cause** (3 values in 4 tests; nothing else moved, slice 16's NO-OP state hashes included): *16 starters
+    demoted* — `seed.test.js` and `server.test.js` (`GET /starters`) 335 → 319; *the board carries the seed's `stats`
+    whole* — `l0-board.test.js`'s `BOARD_PIN` (313,702 → 313,731 bytes, the +29 being `"starterSpacingDemotions":16,`;
+    proved by building both boards — only `stats` differs), which the `/board` ETag test reads. **Re-pointed:**
+    `deep-scan-centre.test.js`'s `NEXT_DOOR` (two adjacent starters, no longer on the seed) → `INSIDE_DISK` (a starter
+    and a NON-starter system in each other's disk: `sys_0023` / `sys_0902`) for the unheld-centre, lost-system and
+    lane tests; the two "refused for both" paths (a rival founding next door in flight, and both home centres dropping
+    out of the lanes) moved onto a hand-edited seed through `setSeed` (the committed seed with `sys_0902`'s first
+    planet made Terran) — live engine code for a galaxy created before this slice. New there: on the committed seed
+    no starter lies in another's disk and the founding next door is refused. **Tripwires** (`generate_seed.test.js`
+    +12): the footprint rule; the chains (A–B–C each 1 apart → B, C demoted; C 3 from A and 1 from a demoted B →
+    kept); the junior is the later in system order; every Terran of a junior converted, its other planets untouched;
+    5,000 draws per ring never Terran; the committed seed's pairs; 42/777/4242/9999 validate with the repair firing;
+    final tags match planets (default and rare-tier stress floor); the blast radius against the repair skipped (and
+    the skipped galaxy fails validation); a sector emptied → validation names it; determinism through the repair.
+    **Checked to fail:** the repair skipped → 7 red; drawn from the main stream → 2; demoted systems blocking → 2; a
+    later pass converting to Terran → 2; the validation check removed → 1; converted slots from the main stream → 2;
+    only one Terran per junior converted → 7; the pre-slice `data/seed.json` put back → 2 tools + 5 sim red (the
+    founding-next-door test names `sys_0098` / `sys_1114`); boot made to regenerate the seed → the lifecycle test red
+    (352 vs 328 starters). Sim 2,280 → **2,283**, tools 83 → **95**. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -4400,7 +4451,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   many Outposts one guild may plant. The throttle is parts, time, credits, one heavy per kit and the deploy placement
   rules. RULED for now: **no cap**. Revisit in play if outpost spam distorts territory (pressure over
   prohibition: a council-vote or storyteller response is preferred to a hard limit).
-- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate ~~/ deep-scan~~ range, the aura radii, the starter separation; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer). **⤳ 05-10-26 — the DEEP-SCAN deploy range is RESOLVED, not as a number:** the deep-scan array is deploy-placed **adjacent to ("attached to") a held system or outpost** (its scan reach is galaxy-wide, so placement is a monitoring / flavour concern), superseding the `[FIRST-CUT]` 5-hex figure (`docs/exploration-model.md` §5, `territory-model.md` §5/§8). The toll-gate 10-hex range and the aura radii stay open.
+- **Territory & deployment `[FIRST-CUT]` numbers (29-09-26, `docs/territory-model.md`)** — need rulings before the deploy/claim build: the space-asset **deploy ranges** (outpost 10 / toll gate 10 / deep scan 5 hexes), the **semi-control aura radii** (system 5 / outpost 3 / gate·scan 2), the **starter minimum separation** (3 hexes = 2×claimRadius + 1), and the **arrival-revalidation** failure rule (a kit arriving to an illegal target stays aboard and the craft idles — confirm). Squatting enforcement (detection / penalty / report-bounty) is a ruled *direction* deferred to 2.5 / Phase-6, not a number. **⤳ 29-09-26 — the OUTPOST deploy range (10) is RULED as the `[FIRST-CUT]`** and recorded in `phase-1-tuning.md` "Territory & deployment" (`OUTPOST_DEPLOY_RANGE`, built with the 2.2 deploy pipeline slice 1). **⤳ 30-09-26 — the arrival-revalidation rule is RULED and CLOSED:** a failed on-arrival deploy RETREATS the craft `DEPLOY_RETREAT_HEXES` (`[FIRST-CUT]` 3, recorded in `phase-1-tuning.md`) toward the nearest held system, clamped at that system, kit aboard, flagged `deployFailed` (`territory-model.md` §5; built with the deploy pipeline slice 2). **Still open:** the toll-gate ~~/ deep-scan~~ range, the aura radii, ~~the starter separation~~ *(⤳ CONFIRMED 15-10-26 at 3 = 2 × claimRadius + 1 and BUILT in slice 17 — `territory-model.md` §6)*; **the off-lattice retreat landing** — near the rim the 3-hex step can land just outside the galaxy (9 system / in-range-hex pairs on the live seed); slice 2 builds it PROVISIONALLY as "step on along the same line to the first on-lattice hex (at worst the system)" — confirm or rule otherwise; and refining the retreat landing to avoid rival / contested space (with the spatial control layer). **⤳ 05-10-26 — the DEEP-SCAN deploy range is RESOLVED, not as a number:** the deep-scan array is deploy-placed **adjacent to ("attached to") a held system or outpost** (its scan reach is galaxy-wide, so placement is a monitoring / flavour concern), superseding the `[FIRST-CUT]` 5-hex figure (`docs/exploration-model.md` §5, `territory-model.md` §5/§8). The toll-gate 10-hex range and the aura radii stay open.
 - **The deploy map: two client calls (01-10-26, 2.2 deploy pipeline client slice 2, `territory-model.md` §5)**, built
   one way and flagged rather than ruled. **(1) No quote before DEPLOY.** ~~The ruling makes the chip's DEPLOY the
   finalise, so the deploy map sends the leg without ever showing the engine's time / fuel / credit quote. The route
@@ -5589,6 +5640,34 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      runbook's Deep Scan section now re-runs `seat-demo` so its `asset_seat_demo_deepScan_02` is right; followed straight
      on from the sections above, the grant prints `_03` (the kit serial is shared by every kind). (c) The route
      invariant asks the kind and the anchor's form, not who holds the system — holding is the deploy rule's question.
+- **The starter-spacing repair, slice 17 (2.5) — items for a confirm or a ruling** — *surfaced 15-10-26 by the build;
+  each was built the way stated, and none is decided by the code beyond that.*
+  1. **The slice-local rules the prompt spelled out, built as given — confirm:** the junior is the LATER starter in
+     the generator's system order, kept starters alone block (greedy); demotion converts every Terran planet of the
+     junior, re-drawn from its ring's table without Terran; the repair sits between tagging and the rare-tier repair.
+  2. **"Too close" is read as `hexDist ≤ a.claimRadius + b.claimRadius`** (the two footprints share a hex) rather
+     than a written 2 — the same value while every system's `claimRadius` is 1, and it follows any later radius change
+     instead of silently disagreeing with it. Confirm.
+  3. **The side stream's label** is `0x53504143` (the ASCII bytes of "SPAC"), XOR-ed into the seed. A stream id, not a
+     game number: any non-zero value keeps the streams apart, and changing it changes only the demoted planets' rolls.
+     Recorded.
+  4. **A new summary stat, `stats.starterSpacingDemotions`**, beside `rareTierRepairs` — in the seed, on the CLI, and
+     (because `/board` carries `stats` whole, as ruled) on the board. Confirm, or drop it and the board re-pins again.
+  5. **A test seam in the generator, `opts.skipStarterSpacingRepair`**, beside the existing numeric overrides
+     (`rareTierMinPerStarter`, `outpostMinSeparation`): the blast-radius and old-galaxy tests use it; nothing in play
+     passes it (the server calls `generateGalaxySeed(seedNumber)` with no options). Confirm, or rule it out and
+     those tests compare against a recorded hash instead.
+  6. **"Fails loudly" stops at validation.** An emptied sector makes `validation.passed` false with an issue naming
+     it, and the CLI prints FAILED — but **Create Galaxy (`POST /admin/galaxy/new`) does not read `validation`**: a
+     seed that failed any check would still be saved and served. Pre-existing for every validation check and not
+     changed here; never observed (all seven measured seeds pass). Rule whether Create should refuse such a seed.
+  7. **The blast radius is exact only while the rare-tier repair fires zero times** (it does on every seed measured).
+     Where it fires, a smaller starter pool and the converted planets (now rare-tier candidates) can change what it
+     converts, and so the main stream after it. Recorded.
+  8. **Seams — not decisions, recorded:** (a) "refused for both" is covered on the committed seed with one hand edit
+     (a neighbouring planet made Terran, through `setSeed`) rather than a small standalone seed, so every other seed
+     lookup the engine makes stays real. (b) The runbook harness lives outside the repo, as slice 16's does.
+     (c) `roadmap.md`'s earlier as-built notes that quote 335 starters are left as history.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

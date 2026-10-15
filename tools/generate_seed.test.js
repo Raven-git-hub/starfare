@@ -235,3 +235,158 @@ test('committed data/seed.json is byte-identical to the CLI output (drift tripwi
   const committed = fs.readFileSync(path.join(__dirname, '..', 'data', 'seed.json'), 'utf8');
   assert.equal(cli, committed, 'data/seed.json is stale — regenerate it from tools/generate_seed.js');
 });
+
+// --- starter spacing — the de-cluster repair (territory-model.md §6, roadmap 2.5 slice 17) ---
+
+// A hand-built system for the spacing repair: `archetypes` lists its planets.
+// starterEligible is derived from the planets, as the generator derives it.
+function handSystem(id, q, r, archetypes, name = 'KES-1000') {
+  return {
+    id, coords: { q, r }, name, claimRadius: 1, ring: 'middle',
+    planets: archetypes.map((archetype, i) => ({ id: `${id}_p${i + 1}`, archetype, resourceNodes: [] })),
+    starterEligible: archetypes.includes('terran'),
+  };
+}
+// The repair's stream for hand-built cases; any fixed seed keeps them deterministic.
+const handRand = () => G.mulberry32(1);
+
+test('spacing: footprints that share a hex are too close — within 2 apart at claimRadius 1, not 3', () => {
+  const at = (q) => handSystem(`s${q}`, q, 0, ['terran']);
+  assert.equal(G.startersTooClose(at(0), at(1)), true);
+  assert.equal(G.startersTooClose(at(0), at(2)), true);
+  assert.equal(G.startersTooClose(at(0), at(3)), false);
+});
+
+test('spacing chain A–B–C, each 1 apart: A kept, B demoted, C demoted (C is 2 from A)', () => {
+  const sys = [handSystem('A', 0, 0, ['terran']), handSystem('B', 1, 0, ['terran']), handSystem('C', 2, 0, ['terran'])];
+  const { demoted } = G.repairStarterSpacing(sys, handRand());
+  assert.deepEqual(demoted, ['B', 'C']);
+  assert.deepEqual(sys.map(s => s.starterEligible), [true, false, false]);
+});
+
+test('spacing chain: a DEMOTED system does not block — C, 3 from A and 1 from demoted B, is kept', () => {
+  const sys = [handSystem('A', 0, 0, ['terran']), handSystem('B', 2, 0, ['terran']), handSystem('C', 3, 0, ['terran'])];
+  const { demoted } = G.repairStarterSpacing(sys, handRand());
+  assert.deepEqual(demoted, ['B']);
+  assert.deepEqual(sys.map(s => s.starterEligible), [true, false, true]);
+});
+
+test('spacing: "the junior" is the later one in the generator\'s system order', () => {
+  const sys = [handSystem('Z', 1, 0, ['terran']), handSystem('A', 0, 0, ['terran'])];
+  assert.deepEqual(G.repairStarterSpacing(sys, handRand()).demoted, ['A']);
+});
+
+test('spacing: EVERY Terran planet of a junior is converted; its other planets are untouched', () => {
+  const keep = handSystem('A', 0, 0, ['terran']);
+  const junior = handSystem('B', 1, 0, ['terran', 'rocky', 'terran']);
+  const rocky = junior.planets[1];
+  const rockyBefore = JSON.stringify(rocky);
+  const { convertedPlanetIds } = G.repairStarterSpacing([keep, junior], handRand());
+  assert.deepEqual([...convertedPlanetIds], ['B_p1', 'B_p3']);
+  for (const p of [junior.planets[0], junior.planets[2]]) {
+    assert.notEqual(p.archetype, 'terran', `${p.id} is still Terran`);
+    assert.ok(p.resourceNodes.length > 0, `${p.id} got no regenerated nodes`);
+    assert.ok(p.resourceNodes.every(n => n.id.startsWith(`${p.id}_n`)), `${p.id} node ids not its own`);
+  }
+  assert.equal(JSON.stringify(rocky), rockyBefore, 'a non-Terran planet of the junior changed');
+  assert.equal(junior.starterEligible, false);
+  assert.equal(keep.planets[0].archetype, 'terran', 'the kept starter was touched');
+});
+
+test('spacing: a demotion never draws Terran, in any ring', () => {
+  const rand = G.mulberry32(17);
+  for (const ring of ['inner', 'middle', 'outer']) {
+    for (let i = 0; i < 5000; i++) assert.notEqual(G.pickArchetype(rand, ring, 'terran'), 'terran');
+  }
+});
+
+test('spacing: no two starters share a footprint on the COMMITTED data/seed.json', () => {
+  const seed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed.json'), 'utf8'));
+  const starters = seed.systems.filter(s => s.starterEligible);
+  assert.ok(starters.length > 0);
+  for (const s of seed.systems) assert.equal(s.claimRadius, 1, `${s.id}: the "within 2" reading assumes claimRadius 1`);
+  for (let i = 0; i < starters.length; i++) {
+    for (let j = i + 1; j < starters.length; j++) {
+      const d = G.hexDist(starters[i].coords, starters[j].coords);
+      assert.ok(d > 2, `starters ${starters[i].id} and ${starters[j].id} are only ${d} hex(es) apart`);
+    }
+  }
+});
+
+test('spacing: holds and validates on other seeds too — the runbook\'s 42 and a spread of others', () => {
+  for (const seed of [42, 777, 4242, 9999]) {
+    const g = G.generateGalaxySeed(seed);
+    assert.equal(g.validation.passed, true, `seed ${seed}: ${g.validation.issues.join('; ')}`);
+    assert.ok(g.stats.starterSpacingDemotions > 0, `seed ${seed}: the repair never fired, so this proves nothing`);
+  }
+});
+
+test('spacing: no later pass makes a demoted system a starter again — every final tag matches its planets', () => {
+  // A later pass that converted a planet TO Terran would leave a demoted system
+  // tagged false while holding a Terran planet. Checked at the default floor and
+  // under the rare-tier stress floor, where the rare-tier repair converts hundreds.
+  for (const g of [build(), build({ rareTierMinPerStarter: 50 })]) {
+    for (const s of g.systems) {
+      assert.equal(s.starterEligible, G.isStarterEligible(s), `${s.id}: tag ${s.starterEligible} disagrees with its planets`);
+    }
+    assert.equal(g.validation.passed, true, g.validation.issues.join('; '));
+  }
+});
+
+test('spacing blast radius: only the demoted systems\' Terran planets (and their tags + summary counts) differ', () => {
+  const repaired = build();
+  const unrepaired = build({ skipStarterSpacingRepair: true });
+  // Without the repair the spacing check bites: this is the galaxy the repair fixes.
+  assert.equal(unrepaired.validation.passed, false);
+  assert.match(unrepaired.validation.issues.join('; '), /claim footprint/);
+
+  assert.deepEqual(repaired.outposts, unrepaired.outposts);
+  assert.deepEqual(repaired.citadel, unrepaired.citadel);
+  assert.deepEqual(repaired.galaxyParams, unrepaired.galaxyParams);
+  let demoted = 0;
+  let converted = 0;
+  repaired.systems.forEach((s, i) => {
+    const before = unrepaired.systems[i];
+    for (const key of Object.keys(before)) {
+      if (key !== 'planets' && key !== 'starterEligible') assert.deepEqual(s[key], before[key], `${s.id}.${key} moved`);
+    }
+    const wasDemoted = before.starterEligible && !s.starterEligible;
+    if (wasDemoted) demoted++;
+    else assert.equal(s.starterEligible, before.starterEligible, `${s.id} gained a starter tag`);
+    s.planets.forEach((p, j) => {
+      const old = before.planets[j];
+      if (wasDemoted && old.archetype === 'terran') {
+        converted++;
+        assert.notEqual(p.archetype, 'terran');
+      } else {
+        assert.deepEqual(p, old, `${p.id} moved, but it was not a demoted Terran planet`);
+      }
+    });
+  });
+  assert.ok(demoted > 0, 'the repair fired on 7331');
+  assert.equal(repaired.stats.starterSpacingDemotions, demoted);
+  assert.equal(repaired.stats.starterSystems, unrepaired.stats.starterSystems - demoted);
+  assert.ok(converted >= demoted, 'every demoted system lost at least one Terran planet');
+});
+
+test('spacing: a repair that empties a sector FAILS validation, naming the sector — never quietly undone', () => {
+  // One far-apart starter per sector, then the last sector's only starter is set
+  // next to the first sector's: the walk keeps the first and demotes it, so the
+  // last sector is left with none.
+  const prefixes = ['KES', 'VAN', 'ORU', 'DRA', 'MOL', 'ILY', 'THE', 'ZOV', 'COR', 'BAR', 'RYN', 'FEN', 'AXE', 'PEL', 'HAL', 'QIR'];
+  const sys = prefixes.map((pfx, i) => handSystem(`s${i}`, i * 10, 0, ['terran'], `${pfx}-1000`));
+  sys[15].coords = { q: 1, r: 0 };
+  const { demoted } = G.repairStarterSpacing(sys, handRand());
+  assert.deepEqual(demoted, ['s15']);
+  assert.equal(sys[15].starterEligible, false, 'the repair un-demoted to save the sector');
+  const { issues } = G.validateGalaxy(sys, G.PARAMS.hexSize, G.PARAMS.radius, 0);
+  assert.ok(issues.some(m => /missing from sectors: QIR$/.test(m)), `no sector issue in: ${issues.join('; ')}`);
+});
+
+test('spacing: determinism holds through the repair (same seed twice, byte-identical, and it fired)', () => {
+  const a = G.generateGalaxySeed(42);
+  const b = G.generateGalaxySeed(42);
+  assert.ok(a.stats.starterSpacingDemotions > 0);
+  assert.equal(JSON.stringify(a), JSON.stringify(b));
+  assert.notEqual(JSON.stringify(a.systems), JSON.stringify(build().systems));
+});

@@ -712,6 +712,44 @@ checklist.)* *(⤳ **RULED 15-10-26 — build the repair as specified here**, in
 honours the ≥ 3-hex starter spacing; the 3-hex figure (2 × claimRadius + 1) is confirmed. No founding-time gate.
 A galaxy already created keeps its persisted seed and is not changed. Roadmap 2.5 slice 17.)*
 
+**⤳ AS-BUILT 15-10-26 — the de-cluster repair (roadmap 2.5 slice 17; generator only).** Built as specified above;
+**no new number.** In `tools/generate_seed.js`:
+- **The spacing rule, from the seed.** Two starters are too close when their claim footprints would share a hex:
+  `hexDist ≤ a.claimRadius + b.claimRadius` (`startersTooClose`). Every system's `claimRadius` is 1, so this is
+  "not within 2" — the ruled 3 = 2 × claimRadius + 1, read from the seed rather than written down again.
+- **Who is the junior (`repairStarterSpacing`, pipeline step 8b).** It runs right AFTER starter tagging and BEFORE
+  the rare-tier repair (step 9). It walks the starter systems in the generator's own system order (`sys_0001`
+  upward) and KEEPS one only if no starter already kept is too close; otherwise it demotes it. Only kept starters
+  block — a demoted system no longer counts, so in a chain A–B–C where B is 2 from A and C is 1 from B but 3 from
+  A, B is demoted and C is kept. Deterministic, and the fewest demotions this greedy order can make.
+- **What demotion does.** EVERY Terran planet of the junior is converted to a non-Terran archetype, re-drawn from
+  the system's own ring-weighted table with Terran left out (`pickArchetype(rand, ring, 'terran')`), and its
+  resource nodes are regenerated — the convert-in-place `repairRareTierGuarantee` uses. The system's
+  `starterEligible` is then re-derived from its planets (so false). Nothing is converted TO Terran, and the
+  rare-tier repair after it converts only to a rare tier, so it cannot re-make a starter and re-break the spacing.
+- **The blast radius — only the converted planets.** The repair draws from its OWN side stream,
+  `mulberry32(seed ^ STARTER_SPACING_STREAM)` (a stream label, not a game number), never the main one; and a
+  converted planet's settlement slots come from that side stream too. A Terran planet takes no main-stream draw
+  for its slots (a fixed 15), so the main stream's draw count — and every other planet's slots — are unchanged.
+  Measured: with the repair skipped, the generator's output is byte-identical to the generator before this slice
+  (apart from the new validation line and the new stat), so every planet outside a demoted system, and every
+  non-Terran planet inside one, is byte-identical. This holds whenever the rare-tier repair fires zero times, as it
+  does on every seed measured (7331, 42, 222, 777, 4242, 4343, 9999). On a seed where it fires, a smaller starter
+  pool and the converted planets (now rare-tier candidates) can change what it converts, and so the main stream
+  after it.
+- **Validation (step 10)** gains "no two starters share a footprint", naming the first pair. Its other checks
+  stay. If the repair ever left a sector with no starter, the existing sector check fails, naming the sector —
+  the repair never quietly un-demotes.
+- **`data/seed.json` (7331) regenerated through the CLI:** 335 → **319** starters, **16** systems demoted, **20**
+  Terran planets converted; all 16 sectors still covered; validation PASSED. The diff touches only those 20
+  planets, the 16 `starterEligible` flags and four `stats` lines (`starterSystems`, `totalResourceNodes`
+  51,273 → 51,168, `totalSettlementSlots` 32,706 → 32,509, and the new `starterSpacingDemotions`). Seed 42 (the
+  CLI runbook's): 397 → **380**, 17 demoted, 20 converted; its home `sys_0006` and every runbook hex unchanged.
+- **A created galaxy is untouched.** The load path reads the volume's `seed.json` (`sim/persist.js` `loadSeed`);
+  only Create Galaxy calls the generator. A galaxy created before this slice keeps its side-by-side starters, so
+  §2's overlap and the as-built "refused for both" (`exploration-model.md` §5) can still arise there; the engine
+  path stays tested on a hand-edited seed.
+
 ## 7. The founding grant
 
 A new guild's founding endowment gains, on top of the existing starter miners/factories:
@@ -745,7 +783,9 @@ confirm.)*
   retreat lands when that step falls just off the lattice near the rim (built provisionally as "step on along
   the same line to the first on-lattice hex"), and refining the landing to avoid rival / contested space (with
   the §1–§3 control map).
-- Starter minimum separation value (3) — confirm as the generation constant.
+- ~~Starter minimum separation value (3) — confirm as the generation constant.~~ — **CONFIRMED 15-10-26** (3 =
+  2 × claimRadius + 1) and **BUILT** the same day, roadmap 2.5 slice 17: §6's de-cluster repair, read from the
+  seed's `claimRadius`.
 - The deploy map (client slice 2): ~~whether to show the engine's time / fuel quote before Deploy~~ — **RULED yes,
   BUILT 01-10-26:** the Deploy Target panel shows it once a hex is picked (§5). **Still open:** the arrow-key pan
   step (built at 120 screen px) — see the roadmap's decision checklist.

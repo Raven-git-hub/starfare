@@ -111,9 +111,14 @@ function objectsIn(value, out = new Set()) {
 // Recorded 13-10-26 by the board-widening slice. (Before it, the systems-only board was 283,008 bytes, sha256
 // f901b66938dd67bd3b558913882f854ed0b901f46497b170e767c2da0c8216fe.) A deliberate change to the board re-pins
 // these; an accidental one fails here first.
+// Re-pinned 15-10-26 by roadmap 2.5 slice 17 (the starter-spacing repair regenerated data/seed.json). Only the
+// board's `stats` moved — carried whole, as ruled: starterSystems 335 → 319, totalResourceNodes 51,273 → 51,168,
+// totalSettlementSlots 32,706 → 32,509, and the new starterSpacingDemotions: 16 (the +29 bytes). Every system,
+// planet id and waystation row is unchanged. (Before: 313,702 bytes, sha256
+// f5c5e90930de20fa79400990bb50cd2e9808de6979569348b39eb7528ea31f20.)
 const BOARD_PIN = {
-  bytes: 313702,
-  sha256: 'f5c5e90930de20fa79400990bb50cd2e9808de6979569348b39eb7528ea31f20',
+  bytes: 313731,
+  sha256: 'cdb17b3e3356f74e7281a631ed371929aa671656f1144732b6cd193ce8ae2a0c',
 };
 
 // --- 1. shape ---------------------------------------------------------------------------------------------

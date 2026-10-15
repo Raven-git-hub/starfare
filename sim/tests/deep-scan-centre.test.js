@@ -15,10 +15,12 @@
 //      a system nobody holds, even one inside the guild's own disk ('not-bare-hex' — the slice's decision); a
 //      waystation ('not-bare-hex'); the Citadel (not a berth at all; as a bare hex, 'occupied'); and a bare hex
 //      that merely shares a held system's coordinates ('occupied' — a centre is reached berthed at the system).
-//   4. IN FLIGHT — a REACHABLE path: on the committed seed some starter systems are adjacent (the starter spacing
-//      of territory-model.md §6 is ruled but not built), so a rival founding next door puts the guild's own centre
-//      inside a rival's disk while the craft flies → 'rival-territory', retreat AT the home, kit aboard, notice.
-//      And the path no play reaches (the guild LOSES the system) halts on arrival, naming the tick.
+//   4. IN FLIGHT — reachable only on a galaxy created BEFORE roadmap 2.5 slice 17's starter-spacing repair
+//      (territory-model.md §6), whose persisted seed can hold two starters side by side: a rival founding next
+//      door puts the guild's own centre inside a rival's disk while the craft flies → 'rival-territory', retreat
+//      AT the home, kit aboard, notice. Covered on a hand-edited seed (setSeed); on the committed seed — like every
+//      new galaxy — the founding next door is refused. And the path no play reaches (the guild LOSES the system)
+//      halts on arrival, naming the tick.
 //   5. INVARIANTS — every one holds with an array on a centre, tick after tick; the two widened rules are widened
 //      to exactly this case (an array on its OWN anchor system's centre; a deepScan deploy stopping at a system).
 //   6. THE LANE — publishes each held centre, never an unheld, rival, waystation or Citadel hex, and equals the
@@ -45,9 +47,10 @@ const { CENTRE_KIND } = require('../deep-scan-arrays.js');
 const { hexDistance } = require('../transport.js');
 const {
   getSystem, getClaimRadius, getStarterSystems, getTerranHomeworld, getCitadel, getOutpost, isHexInBounds,
-  seedLandmarkAtHex,
+  seedLandmarkAtHex, setSeed,
 } = require('../seed.js');
 const seed = require('../../data/seed.json');
+const { mulberry32, generateResourceNodes, generateSettlementSlots } = require('../../tools/generate_seed.js');
 const { HEAVY_TRANSPORT } = require('../vehicles.js');
 const { starterHomeAtDistance } = require('./waystation-fixtures.js');
 const { kitAboard, placeCraft } = require('./kit-fixtures.js');
@@ -136,17 +139,44 @@ const isFree = (h) => isHexInBounds(h.q, h.r) && !seedLandmarkAtHex(h.q, h.r);
 // A free bare hex a few hexes out from home, for a heavy to fly home FROM.
 const OUT_THERE = hexesAt(HOME_HEX, 3).find(isFree);
 
-// NEXT_DOOR — two STARTER systems on the committed seed whose disks reach each other's centres: B's disk covers A's
-// centre. territory-model.md §6 rules starters ≥ 3 hexes apart, but the de-cluster repair is not built, so the
-// seed has such pairs (found by scanning, so a regenerated seed carries the test — or fails it loudly here).
-const NEXT_DOOR = (() => {
-  const starters = getStarterSystems().map((s) => s.id);
-  for (const a of starters) {
-    const b = starters.find((x) => x !== a && hexDistance(centreOf(a), centreOf(x)) <= getClaimRadius(x));
-    if (b && a !== RIVAL && b !== RIVAL) return { a, b };
+// INSIDE_DISK — a starter system `a` and another system `b` so close that each centre is inside the other's disk.
+// On the committed seed `b` is NOT a starter: since roadmap 2.5 slice 17's starter-spacing repair
+// (territory-model.md §6) no two starters' disks overlap, but other systems still crowd a starter freely (§2:
+// overlap is a feature). Found by scanning, so a regenerated seed carries the test — or fails it loudly here.
+const inEachOthersDisk = (x, y) => hexDistance(centreOf(x), centreOf(y)) <= Math.min(getClaimRadius(x), getClaimRadius(y));
+const INSIDE_DISK = (() => {
+  for (const { id: a } of getStarterSystems()) {
+    const b = seed.systems.find((x) => x.id !== a && inEachOthersDisk(a, x.id));
+    if (a !== RIVAL && b) return { a, b: b.id };
   }
-  throw new Error('the seed has no two starter systems whose disks reach each other\'s centres');
+  throw new Error('the seed has no starter system with another system inside its disk');
 })();
+
+// nextDoorSeed() -> the committed seed with ONE hand edit: INSIDE_DISK's `b` made a starter (its first planet turned
+// Terran, with a Terran's nodes and slots, as the generator makes one). Two starters' disks then overlap — what
+// the starter-spacing repair keeps out of every NEW galaxy, but what a galaxy created before it can still hold (a
+// persisted seed is never regenerated). The seniority control map is unbuilt, so "refused for both" is live engine
+// code for such a galaxy, and it stays covered here, through the setSeed seam. (mulberry32(1) only fills the three
+// random Terran nodes; it is a fixture stream, not a game number.)
+function nextDoorSeed() {
+  const edited = structuredClone(seed);
+  const b = edited.systems.find((x) => x.id === INSIDE_DISK.b);
+  const planet = b.planets[0];
+  planet.archetype = 'terran';
+  planet.resourceNodes = generateResourceNodes('terran', mulberry32(1), planet.id);
+  planet.settlementSlots = generateSettlementSlots('terran', mulberry32(1), planet.id);
+  b.starterEligible = true;
+  return edited;
+}
+// onNextDoorSeed(fn) — run `fn` with that seed active, and always put the committed seed back afterwards.
+function onNextDoorSeed(fn) {
+  setSeed(nextDoorSeed());
+  try {
+    return fn();
+  } finally {
+    setSeed(null);   // back to the committed seed for every other test
+  }
+}
 
 // --- 1. the guild's own centre -------------------------------------------------------------------------
 
@@ -252,7 +282,7 @@ test('A RIVAL\'S CENTRE is "rival-territory" — by hand and at dispatch', () =>
 
 test('AN UNHELD CENTRE is "not-bare-hex" — even one INSIDE the guild\'s own disk, which the placement rule alone would take', () => {
   // g1 holds A; B, a system whose centre lies inside A's disk, is held by nobody.
-  const { a, b } = NEXT_DOOR;
+  const { a, b } = INSIDE_DISK;
   assert.ok(hexDistance(centreOf(b), centreOf(a)) <= getClaimRadius(a), 'B\'s centre is inside g1\'s own disk');
   const { s, craftId } = armed(galaxy({ home: a, fuelHoard: 100_000 }), 'g1', at(b));
   assert.match(refuse(s, deployAsset('g1', craftId)),
@@ -280,8 +310,21 @@ test('A WAYSTATION, the CITADEL, and a bare hex on a held centre\'s coordinates 
 
 // --- 4. in flight -----------------------------------------------------------------------------------------
 
-test('IN FLIGHT, REACHABLE: a rival founds on the starter next door, its disk covers the home centre → "rival-territory", retreat AT home, kit aboard', () => {
-  const { a, b } = NEXT_DOOR;
+test('IN FLIGHT, on a NEW galaxy: no rival can found inside a home disk — no starter lies in another\'s, and the system beside one is refused', () => {
+  // A founding next door is the only way a home centre becomes a rival's while a craft flies (foundGuild is the one
+  // claim writer). On the committed seed — like every galaxy generated since slice 17 — no starter can do it.
+  const starters = getStarterSystems().map((s) => s.id);
+  for (const x of starters) {
+    const inside = starters.find((y) => y !== x && inEachOthersDisk(x, y));
+    assert.equal(inside, undefined, `starter ${inside} lies inside starter ${x}'s disk`);
+  }
+  const { a, b } = INSIDE_DISK;
+  assert.match(refuse(galaxy({ home: a }), createFoundGuildAction({ guildId: 'g3', name: 'Next Door', isBot: true, credits: 0, homeSystemId: b })),
+    new RegExp(`homeSystemId "${b}" is not a starter-eligible system`));
+});
+
+test('IN FLIGHT, REACHABLE on a galaxy created before the spacing repair: a rival founds on the starter next door → "rival-territory", retreat AT home, kit aboard', () => onNextDoorSeed(() => {
+  const { a, b } = INSIDE_DISK;
   const start = hexesAt(centreOf(a), 3).find(isFree);
   const { s: laden, craftId } = armed(galaxy({ home: a, fuelHoard: 100_000 }), 'g1', start);
   let s = accept(laden, dispatch('g1', craftId, [{ anchor: at(a), action: DEPLOY_ARRAY }]));   // legal at dispatch
@@ -297,11 +340,11 @@ test('IN FLIGHT, REACHABLE: a rival founds on the starter next door, its disk co
   assert.deepEqual({ cause: notice.payload.cause, targetHex: notice.payload.targetHex, retreatSystemId: notice.payload.retreatSystemId },
     { cause: 'rival-territory', targetHex: centreOf(a), retreatSystemId: a });
   assert.deepEqual(checkInvariants(s, s.tick), []);
-});
+}));
 
 test('IN FLIGHT, UNREACHABLE: if the guild LOST the system (no play path does), the arrival HALTS, naming the tick', () => {
   // g1 holds a second system X; the craft flies to X's centre; X's claim is then removed by hand.
-  const x = NEXT_DOOR.b;
+  const x = INSIDE_DISK.b;
   const { s: laden, craftId } = armed(galaxy({ extra: [x], fuelHoard: 100_000 }), 'g1', hexesAt(centreOf(x), 3).find(isFree));
   let s = accept(laden, dispatch('g1', craftId, [{ anchor: at(x), action: DEPLOY_ARRAY }]));
   s.claims = s.claims.filter((c) => c.landmarkId !== x);
@@ -379,17 +422,24 @@ test('THE LANE publishes each held centre (and only held ones), stays occupancy-
   assert.ok([...mine, ...theirs].every((k) => !banned.has(k)));
 });
 
-test('THE LANE, next door: an unheld centre inside the disk is left out; once a rival holds it, BOTH home centres drop out (refused for both)', () => {
-  const { a, b } = NEXT_DOOR;
-  let s = galaxy({ home: a });
+test('THE LANE, next door: an unheld centre inside the disk is left out', () => {
+  const { a, b } = INSIDE_DISK;
+  const s = galaxy({ home: a });
   assert.ok(laneOf(s, 'g1').map(keyOf).includes(keyOf(centreOf(a))));
   assert.ok(!laneOf(s, 'g1').map(keyOf).includes(keyOf(centreOf(b))), 'B is held by nobody: its centre is not ground');
   assert.deepEqual(laneOf(s, 'g1'), attachedByRule(s, 'g1'));
+});
+
+test('THE LANE, next door, on a galaxy created before the spacing repair: once a rival holds B, BOTH home centres drop out (refused for both)', () => onNextDoorSeed(() => {
+  const { a, b } = INSIDE_DISK;
+  let s = galaxy({ home: a });
+  assert.ok(laneOf(s, 'g1').map(keyOf).includes(keyOf(centreOf(a))));
   s = accept(s, createFoundGuildAction({ guildId: 'g3', name: 'Next Door', isBot: true, credits: 0, homeSystemId: b }));
   assert.ok(!laneOf(s, 'g1').map(keyOf).includes(keyOf(centreOf(a))), 'g1\'s centre is inside g3\'s disk now');
+  assert.ok(!laneOf(s, 'g3').map(keyOf).includes(keyOf(centreOf(b))), 'and g3\'s own centre is inside g1\'s disk');
   assert.deepEqual(laneOf(s, 'g1'), attachedByRule(s, 'g1'));
   assert.deepEqual(laneOf(s, 'g3'), attachedByRule(s, 'g3'));
-});
+}));
 
 // --- 7. no-op + determinism ---------------------------------------------------------------------------------
 
