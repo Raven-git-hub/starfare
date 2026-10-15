@@ -5249,7 +5249,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   6. **`nodeLockouts` stays public** (the Syndicate's own bar on a node; no guild, no holding) — it names the site of a torn-down licensed venture. Confirm. **⤳ RULED 06-10-26 — CLOSED, the other way: FILTERED.** A lockout is omitted unless the viewer knows the node (`knowsNode`) or controls its system (`guildHolds`); a settlement slot is never a known node, so a slot lockout shows only on held ground. Tripwire: a lockout on an un-known rival node is not in the view.
   7. **L0 rows carry the system `name`** (the generator derives it from position alone — sector + a coords catalog number), alongside `id`, `coords`, `planetCount`, controller. Confirm. **⤳ CONFIRMED AS-BUILT 06-10-26 — CLOSED.**
 - **Deep Scan Array slice (b1) (2.5, deployable array) — items for a ruling or a confirm** — *surfaced 06-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
-  1. **A hex INSIDE a held footprint.** Built literally: "attached" is `hexDistance === claimRadius + 1`, so a bare hex inside a held system's control disk (today, the 6 hexes 1 from the centre) is refused as `not-attached` — it is *in* the footprint, not touching it. One quirk follows: such a hex **does** pass when it also sits beside an Outpost the guild owns. Confirm, or rule that inside-the-disk is legal too (the predicate would become `1 ≤ distance ≤ claimRadius + 1`).
+  1. **A hex INSIDE a held footprint.** Built literally: "attached" is `hexDistance === claimRadius + 1`, so a bare hex inside a held system's control disk (today, the 6 hexes 1 from the centre) is refused as `not-attached` — it is *in* the footprint, not touching it. One quirk follows: such a hex **does** pass when it also sits beside an Outpost the guild owns. Confirm, or rule that inside-the-disk is legal too (the predicate would become `1 ≤ distance ≤ claimRadius + 1`). **⤳ RULED 15-10-26 — CLOSED:** inside the guild's own control disk is legal, and any hex inside a RIVAL's control is refused, even one touching the guild's territory (`exploration-model.md` §5, REVISED 15-10-26).
   2. **The anchor of an Outpost-attached array.** Stored as that Outpost's own `anchorSystemId`, so `anchorSystemId` always names a system; *which* Outpost it touched is not recorded (that id would dangle once the Outpost is packed up). Confirm, or name the slice that needs the Outpost id.
   3. **Attachment is judged at deploy only.** An array stays when the Outpost it touched is later packed up or removed (no invariant demands it stay attached). Confirm, or rule what happens to it.
   4. **No way to remove an array.** No existing operator remove lever generalises (`removeOutpost` is Outpost-only) and a reclaim flow was out of scope, so an array is permanent this slice. Needed when ruled: an operator remove lever and/or the reclaim. **⤳ 06-10-26, (b2): the OPERATOR lever is BUILT — `removeDeepScanArray`, mirroring `removeOutpost` (it is how a scan job is lost). Still open: a player teardown / reclaim of an array.**
@@ -5348,6 +5348,16 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 - **The Deep Scan Array acquire half, CLIENT slice 14b (2.5 — the client loop + the `deepScan` paint lane) — items for a
   ruling or a confirm** — *surfaced 15-10-26 by the build; each was built the way stated, and none is decided by the code
   beyond that.*
+  **⤳ ANSWERED 15-10-26 (the design room) — all eight CLOSED:** (1) the enumerated, occupancy-blind lane is
+  confirmed; the rule it paints is REVISED (`exploration-model.md` §5: inside own control is legal, rival control is
+  refused), and the lane follows `attachedPlacement`, so it widens with it. (2) **Unreachable by rule: a guild cannot
+  exist without a held system**, so the Outpost-only case never arises in play; nothing to build. (3) **RULED:** a
+  guild's own arrays are drawn on its map; a rival's never (detection, later; `exploration-model.md` §5 "Map
+  visibility"). (4) The art exists: `client/assets/units/deepscan.jpg`, committed with this ruling. (5) The
+  client's copy of the kit tables plus its drift tripwire is confirmed. (6) The failed-deploy title is **"Deployment
+  Failed — Deep Scan Array"** / **"Deployment Failed — Outpost"** (title case, the structure named); the other words
+  are confirmed. (7) The Deployed card is confirmed read-only for now; the Manage wiring is a later slice. (8)
+  Confirmed. The build is slice 15 (`claude/cc-prompt-exploration-15-array-placement-and-map.md`).
   1. **The `deepScan` lane enumerates its hexes.** The outpost lane's "thin shape by ruling — no enumerated hex set, no
      bounds filtering" (deploy slice 3) is kept for the outpost; the array's lane lists the hexes, in-bounds and off seed
      landmarks, because "attached" is not a radius (as this slice's prompt directed). Confirm, and confirm the lane stays

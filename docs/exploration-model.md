@@ -477,6 +477,26 @@ footprint and changes no territory.
   scan is galaxy-wide, placement does nothing for discovery this slice — its payoff is the
   deferred monitoring aim. Recorded honestly so nobody later wonders why placement is fussy but
   inert.
+  *(⤳ **REVISED 15-10-26 — placement widened, rival territory excluded** (closes roadmap 2.5 (b1)
+  checklist item 1).* A Deep Scan Array may be deployed on a hex that is EITHER:
+  1. **inside the guild's own control:** a hex within one of its held systems' control disks
+     (`1 ≤ hexDistance ≤ claimRadius` from the centre). The centre is a landmark and an Outpost's
+     hex is occupied, so the existing bare-hex and occupied checks still refuse both; OR
+  2. **uncontrolled deep space sharing an edge with the guild's own control:** a hex in NO guild's
+     control that is adjacent to a hex the guild controls (exactly `claimRadius + 1` from a held
+     system's centre, or 1 from one of the guild's own Outposts).
+
+  "Controlled" means the guild's OWN control. **A hex inside a rival's control (a rival-held
+  system's disk, or a rival Outpost's hex) is always refused**, even when it also touches the
+  guild's own territory. Today an Outpost controls only its own hex (it has no aura yet); when the
+  aura radii are ruled, "controlled" grows with them. The rule is checked at dispatch and again on
+  arrival (the existing revalidation and retreat). It is NOT re-applied to arrays already standing.
+  The anchor order is unchanged: the held system whose disk the hex is in or touches (lowest id),
+  else the touched Outpost's own anchor.
+- **Map visibility — RULED 15-10-26.** A guild's OWN Deep Scan Arrays are drawn on its galaxy map.
+  A rival's array is **never drawn**. Seeing one is a detection matter, deferred with transport
+  detection (L3), exactly as a rival's transport is. Today a rival's array is already absent from a
+  guild's view (`sim/fog.js`); this ruling keeps it so until detection is designed.
 
 > **⤳ AS-BUILT 06-10-26 — Form + Deploy placement (roadmap 2.5 (b1); engine + operator, no client, no
 > scan).** Built to "Form" and "Deploy placement = attached" above; **no new number** — "attached" is
