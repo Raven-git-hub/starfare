@@ -5,8 +5,9 @@
 // control helper, sim/claims.js `controlNear`). An array may go INSIDE the guild's own control, or on open space
 // sharing an edge with it, and NEVER inside a rival's control. One test per failure mode the slice named:
 //
-//   1. INSIDE THE OWN DISK: every bare hex 1 ≤ d ≤ claimRadius deploys, anchored to the system; the centre is
-//      still 'not-bare-hex', and a disk hex holding the guild's own Outpost or array is still 'occupied'.
+//   1. INSIDE THE OWN DISK: every bare hex 1 ≤ d ≤ claimRadius deploys, anchored to the system, and a disk hex
+//      holding the guild's own Outpost or array is still 'occupied'. (The centre was 'not-bare-hex' here; since
+//      slice 16 it deploys, from a craft berthed at the system — tests/deep-scan-centre.test.js.)
 //   2. BETWEEN TWO GUILDS: a hex one ring outside BOTH disks is nobody's and touches both — legal for both; a hex
 //      on A's ring but inside B's disk is refused for A as 'rival-territory'; a hex inside BOTH disks is refused
 //      for both (the seniority rule that would split an overlap is not built).
@@ -154,11 +155,9 @@ test('INSIDE THE OWN DISK: every bare hex 1 ≤ d ≤ claimRadius deploys, ancho
   }
 });
 
-test('INSIDE THE OWN DISK, still refused: the centre (not-bare-hex), and a disk hex under the guild\'s own Outpost or array (occupied)', () => {
-  // The centre: a craft at the system is berthed at the landmark, so the bare-hex check refuses it first.
-  const { s: atHome, craftId } = armed(galaxy(), 'g1', { landmarkKind: 'system', landmarkId: HOME.id });
-  assert.match(validateAction(atHome, createDeployAssetAction({ guildId: 'g1', vehicleId: craftId })).reason,
-    /berthed at a landmark .* — a Deep Scan Array deploys on a bare hex/);
+test('INSIDE THE OWN DISK, still refused: a disk hex under the guild\'s own Outpost or array (occupied)', () => {
+  // (The centre, refused here as 'not-bare-hex' before slice 16, now deploys from a craft berthed at the system:
+  // AMENDED 15-10-26, pinned in tests/deep-scan-centre.test.js.)
   // A disk hex carrying g1's own Outpost.
   const [first, second] = hexesAt(HOME_HEX, 1).filter(isFree);
   const withOutpost = spawnOutpost(galaxy(), 'g1', HOME.id, first);

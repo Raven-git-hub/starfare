@@ -29,7 +29,7 @@ const {
   DEPLOY_FAILED_REASONS, outpostFreeSpace, consignmentSummary,
 } = require('./outposts.js');
 const {
-  deepScanArrayId, nextDeepScanArraySerial, SCAN_TICKS, SCAN_LEVELS,
+  deepScanArrayId, nextDeepScanArraySerial, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
 } = require('./deep-scan-arrays.js');
 const { resolveManifest, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
@@ -489,19 +489,21 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
   if (!DEPLOY_FAILED_REASONS.includes(check.failure)) {
     // Only the hex ('occupied') or the placement ('out-of-range' for an Outpost, 'not-attached' or
     // 'rival-territory' for a Deep Scan Array) can change while a craft flies. The dispatch proved the target
-    // is a bare hex (an anchor never moves) and the hold exactly one kit of this kind (a kit is never
-    // manifested); and a guild never loses its home system, so it always holds one ('no-held-system'). Any of
-    // those failing here means the state is corrupt — HALT with the tick and the values rather than guess where
-    // to put the craft (§15.5: a silent violation is worse than a crash).
+    // is a bare hex (an anchor never moves) — or, for an array, the centre of a system some guild holds, and no
+    // path takes a system from a guild, so that centre is still held — and the hold exactly one kit of this kind
+    // (a kit is never manifested); and a guild never loses its home system, so it always holds one
+    // ('no-held-system'). Any of those failing here means the state is corrupt — HALT with the tick and the
+    // values rather than guess where to put the craft (§15.5: a silent violation is worse than a crash).
     throw new Error(`deploy on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check, which the dispatch gate rules out — ${check.reason}`);
   }
   // Read what the notice needs BEFORE the snap moves the craft. The craft still sits on the target, which
-  // deployCheck has just proved is a bare hex (every retreatable failure comes after its bare-hex check), so
-  // its location IS the `{ q, r }` it could not deploy on — copied, so the notice never aliases the craft.
+  // deployCheck's first check has just passed (every retreatable failure comes after it): a bare hex, or — for a
+  // Deep Scan Array — the held system it berthed at to stand on its centre (slice 16). Either way the hex it
+  // could not deploy on is its resolved coords, a fresh { q, r }, so the notice never aliases the craft.
   // The retreat system is asked of nearestHeldSystem with exactly the arguments retreatLanding gives it on
   // the next line (this guild, this hex, nothing changed in between), so it names the very system the craft
   // is pulled toward.
-  const targetHex = { q: craft.location.q, r: craft.location.r };
+  const targetHex = resolveVehicleLocation(craft.location).coords;
   const retreatTo = nearestHeldSystem(state, guild.id, targetHex);
   if (retreatTo === null) {
     // The retreat needs a held system to pull toward. An Outpost deploy cannot get here without one (its
@@ -1831,10 +1833,46 @@ function craftParkedAt(state, outpost) {
 function hexOccupant(state, coords) {
   const landmark = seedLandmarkAtHex(coords.q, coords.r);
   if (landmark) return { kind: landmark.kind, id: landmark.id };
+  return guildStructureAt(state, coords);
+}
+
+// guildStructureAt(state, coords) -> { kind, id } for the GUILD structure (an Outpost or a Deep Scan Array) on
+// hex `coords`, or null. hexOccupant's second half: the structures in live state, without the seed landmarks.
+// deployCheck asks it ON ITS OWN for the one deploy that shares its hex with a seed landmark — a Deep Scan
+// Array on a held system's centre (roadmap 2.5 slice 16), where the landmark is the system itself — so only
+// another structure on that centre (an array already there) refuses it.
+function guildStructureAt(state, coords) {
   const outpost = (state.outposts || []).find((o) => o.coords && o.coords.q === coords.q && o.coords.r === coords.r);
   if (outpost) return { kind: 'outpost', id: outpost.id };
   const array = (state.deepScanArrays || []).find((a) => a.coords && a.coords.q === coords.q && a.coords.r === coords.r);
   return array ? { kind: 'deepScanArray', id: array.id } : null;
+}
+
+// THE ONE EXCEPTION to "a structure deploys on a bare hex" (docs/exploration-model.md §5, AMENDED 15-10-26;
+// roadmap 2.5 slice 16): a Deep Scan Array may also stand on the CENTRE hex of a system its guild holds,
+// reached by a craft berthed AT that system. It is for arrays only — an Outpost still refuses every system
+// hex — so the one kind it covers is a named constant, CENTRE_KIND (sim/deep-scan-arrays.js).
+
+// centreNote(kind) -> the words a "not on a bare hex" refusal adds for the kind the exception covers, so the
+// player is told where else it may go; '' for every other kind (the Outpost's refusals keep their old text).
+function centreNote(kind) {
+  return kind === CENTRE_KIND ? ', or on the centre of a system its guild holds' : '';
+}
+
+// claimedCentreAt(state, coords) -> the id of the system whose CENTRE hex `coords` is, when some guild holds
+// that system; else null — a bare hex, a Syndicate waystation, the Citadel, or a system nobody holds.
+// The GROUND half of the exception above: is this centre controlled ground at all? deployCheck asks it of a
+// craft berthed at a system, and the snapshot's `deployRange.deepScan` lane asks it of every landmark hex in its
+// net, so the two ask the same question. WHOSE control it is stays the placement rule's to judge, exactly as for
+// any hex (attachedPlacement): the guild's own → legal; a rival's → 'rival-territory'. A system nobody holds is
+// "neither controlled nor deep space" (the ruling), so it gets no exception: it stays 'not-bare-hex', the reason
+// every other landmark gets. Holding is read through controlNear (sim/claims.js): a held system's control disk
+// includes its own centre, so the system's OWN footprint is on this hex exactly when some guild holds it.
+function claimedCentreAt(state, coords) {
+  const landmark = seedLandmarkAtHex(coords.q, coords.r);
+  if (!landmark || landmark.kind !== 'system') return null;
+  const held = controlNear(state, coords, 0).some((f) => f.kind === 'system' && f.id === landmark.id);
+  return held ? landmark.id : null;
 }
 
 // mintOutpost(state, guild, coords, anchorSystemId, tick) -> the new Outpost row, having MUTATED `state`
@@ -1904,7 +1942,10 @@ function nearestHeldSystem(state, guildId, coords) {
 // triggers — the manual deployAsset (the craft is already there) and the on-arrival deploy of a routed
 // craft (slice 2, which also asks it up front, at dispatch, of the hex the craft is being sent to) — so
 // every trigger judges a deploy by the same four checks, in the same order:
-//   'not-bare-hex'   — a structure goes on OPEN GROUND (design.md §4), never at a system or waystation;
+//   'not-bare-hex'   — a structure goes on OPEN GROUND (design.md §4), never at a system or waystation —
+//                      with ONE exception: a Deep Scan Array berthed at a system some guild holds goes on that
+//                      system's centre (claimedCentreAt above; roadmap 2.5 slice 16). The three checks after
+//                      this one then judge that centre as they judge any hex;
 //   'kit'            — the hold is exactly one kit OF THE KIND THIS DEPLOY PLACES, and nothing else;
 //   'occupied'       — ONE STRUCTURE PER HEX, the same `hexOccupant` question spawnOutpost asks;
 //   PLACEMENT        — where this KIND may go: the one check that differs by kind (DEPLOYABLE_STRUCTURES below):
@@ -1923,8 +1964,12 @@ function deployCheck(state, guildId, vehicleId, location, cargo, kind) {
   const structure = deployableStructure(kind); // null for a kind with no kit — the 'kit' check refuses it
   const what = structure ? structure.as : 'a structure'; // for the refusal text only
   const where = resolveVehicleLocation(location);
-  if (!where || where.form !== 'hex') {
-    return { ok: false, failure: 'not-bare-hex', reason: `vehicle ${JSON.stringify(vehicleId)} is berthed at a landmark ${JSON.stringify(location)} — ${what} deploys on a bare hex; fly the craft to open space first` };
+  // `centre` is the held system's id when this deploy is THE ONE EXCEPTION (a Deep Scan Array berthed at a system
+  // some guild holds), else null. Only three lines below read it: this ground check, the occupancy check and the
+  // anchor. A bare hex that merely shares a system's coordinates is not a berth there, and stays 'occupied'.
+  const centre = kind === CENTRE_KIND && where && where.form === 'landmark' ? claimedCentreAt(state, where.coords) : null;
+  if (!where || (where.form !== 'hex' && centre === null)) {
+    return { ok: false, failure: 'not-bare-hex', reason: `vehicle ${JSON.stringify(vehicleId)} is berthed at a landmark ${JSON.stringify(location)} — ${what} deploys on a bare hex${centreNote(kind)}; fly the craft to open space first` };
   }
   // EXACTLY ONE kit of this kind and nothing else — so a craft carrying an array kit cannot be sent to
   // deploy an Outpost, nor the reverse. (A kit fills a whole heavy hold, so "nothing else" also holds by
@@ -1940,15 +1985,21 @@ function deployCheck(state, guildId, vehicleId, location, cargo, kind) {
   if (structure === null) {
     throw new Error(`deploy rule: kit kind ${JSON.stringify(kind)} has no DEPLOYABLE_STRUCTURES row (sim/actions.js)`);
   }
-  // This is also what refuses a craft parked at a guild Outpost (it sits on that Outpost's hex).
+  // This is also what refuses a craft parked at a guild Outpost (it sits on that Outpost's hex). On a held
+  // centre the hex's seed landmark is the system the array is meant to stand on, so only another STRUCTURE
+  // there counts: a second array on one centre is 'occupied', like a second array anywhere.
   const coords = where.coords;
-  const occupant = hexOccupant(state, coords);
+  const occupant = centre === null ? hexOccupant(state, coords) : guildStructureAt(state, coords);
   if (occupant) {
     return { ok: false, failure: 'occupied', reason: `hex { q: ${coords.q}, r: ${coords.r} } is already occupied by ${occupant.kind} ${JSON.stringify(occupant.id)} — one structure per hex` };
   }
+  // A rival's centre is refused here, as 'rival-territory': it is inside the rival's control, like any hex of
+  // its disk. The guild's own centre is inside its own control, so the placement rule accepts it.
   const placed = structure.placement(state, guildId, coords);
   if (!placed.ok) return placed;
-  return { ok: true, coords, anchorSystemId: placed.anchorSystemId };
+  // A centre's anchor is its OWN system (the ruling), not the lowest-id held system near it, which is what the
+  // placement rule picks for any other hex. While a guild holds one system the two are the same system.
+  return { ok: true, coords, anchorSystemId: centre === null ? placed.anchorSystemId : centre };
 }
 
 // outpostPlacement(state, guildId, coords) -> { ok: true, anchorSystemId } | { ok: false, failure, reason }
@@ -1972,7 +2023,9 @@ function outpostPlacement(state, guildId, coords) {
 // 2.5 slice 15). GEOMETRY over the seed's `claimRadius`, not a tunable — there is no range number here, and no
 // scan reach (the scan is galaxy-wide). The array's hex must be EITHER
 //   1. INSIDE the guild's own control (a held system's disk; an Outpost's own hex is in it too, but the
-//      earlier 'occupied' check has already refused that, as 'not-bare-hex' refuses a system's centre); OR
+//      earlier 'occupied' check has already refused that). The disk's centre is in it too: deployCheck lets an
+//      array reach the centre of a system some guild holds (its one exception, slice 16), and this rule then
+//      takes it as it takes any hex of the disk — legal if the disk is the guild's own; OR
 //   2. in NO guild's control, but sharing an edge with the guild's own control (one hex outside a held
 //      system's disk, or beside one of its Outposts).
 // And it is NEVER inside a RIVAL's control — not even a hex that also touches the guild's own territory.
@@ -4193,7 +4246,8 @@ function validateAction(state, action) {
 
   if (action.type === 'deployAsset') {
     // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5, the SPACE lane): a craft idle on a
-    // bare hex places the structure its kit packs — an Outpost, or (2.5 (b1)) a Deep Scan Array. Refused
+    // bare hex places the structure its kit packs — an Outpost, or (2.5 (b1)) a Deep Scan Array; an array also
+    // from a craft berthed at its guild's own held system, onto that system's centre (2.5 slice 16). Refused
     // whole, gates in the order a failure is felt.
     const guild = findGuild(state, action.guildId);
     if (!guild) {
@@ -4355,7 +4409,9 @@ function validateAction(state, action) {
     // its kit to hex X, and plant the structure the moment it lands". Refused whole, up front, when:
     //   - it is not on the FINAL waypoint: the craft deploys where its trip ends (after a deploy the kit is
     //     gone, so there is nothing left to haul on to a later stop);
-    //   - that waypoint is a landmark, not a bare hex: a structure goes on open ground;
+    //   - that waypoint is a landmark, not a bare hex: a structure goes on open ground — except a Deep Scan
+    //     Array's held system, whose centre it may stand on (slice 16): the stop is then that SYSTEM, so the
+    //     craft ends berthed there, and the array's hex is the system's centre;
     //   - the deploy would fail NOW — THE ONE deploy rule (deployCheck), asked of the target hex today with
     //     the hold the craft has today, for the waypoint's KIND: exactly one kit OF THAT KIND and nothing
     //     else (so a craft carrying an array kit cannot be sent to plant an Outpost, nor the reverse), the hex
@@ -4375,10 +4431,13 @@ function validateAction(state, action) {
       }
       const target = action.waypoints[last].anchor;
       const kind = action.waypoints[last].action.kind;
-      if (resolveVehicleLocation(target).form !== 'hex') { // routeWaypointError proved it resolves
-        return { valid: false, reason: `the deploy waypoint ${last} is a landmark ${JSON.stringify(target)} — ${deployableStructure(kind).as} deploys on a bare hex { q, r }` };
-      }
+      // The ground (bare hex, or a Deep Scan Array's held centre — deployCheck's one exception, slice 16) is
+      // judged by the deploy rule itself, its first check, so this gate holds no copy of the exception. A
+      // landmark the rule refuses keeps this gate's own wording.
       const check = deployCheck(state, action.guildId, action.vehicleId, target, craft.cargo, kind);
+      if (!check.ok && check.failure === 'not-bare-hex') {
+        return { valid: false, reason: `the deploy waypoint ${last} is a landmark ${JSON.stringify(target)} — ${deployableStructure(kind).as} deploys on a bare hex { q, r }${centreNote(kind)}` };
+      }
       if (!check.ok) {
         return { valid: false, reason: `the deploy at waypoint ${last} would fail now — ${check.reason}` };
       }
@@ -6176,6 +6235,9 @@ module.exports = {
   // THE Deep Scan Array's placement rule — also asked, read-only, by sim/snapshot.js's `deployRange.deepScan`
   // lane, which publishes the hexes it accepts so the client paints the rule itself, never a copy of it.
   attachedPlacement,
+  // ...and the ground half of the array's one exception (a held system's centre, slice 16), which the same lane
+  // asks of each landmark hex in its net, as deployCheck asks it of a craft berthed at a system.
+  claimedCentreAt,
   validateAction,
   applyAction,
   intake,

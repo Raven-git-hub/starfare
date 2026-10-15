@@ -68,8 +68,9 @@ top-level `outposts` / `claims`.
 - `grant-kit --guild ID --system ID --kind outpost` / `load-kit --guild ID --id VEHICLE_ID --asset ASSET_ID` /
   `unload-kit --guild ID --id VEHICLE_ID` / `deploy-asset --guild ID --id VEHICLE_ID` — the deploy pipeline
   (next section; not part of the automation demo). `dispatch-route` also takes a last stop
-  `q,r@deploy:KIND`, the deploy on arrival (the section after it), or `sys:<id>@unload-kit`, the unload on
-  arrival (the section after that).
+  `q,r@deploy:KIND`, the deploy on arrival (the section after it) — or `sys:<id>@deploy:deepScan`, a Deep Scan
+  Array on the centre of a system its guild holds (the Deep Scan Array section) — or `sys:<id>@unload-kit`, the
+  unload on arrival (the section after that).
 
 ## The deploy pipeline — a kit hauled and deployed (2.2 deploy slice 1)
 
@@ -113,7 +114,14 @@ exactly one kit aboard. The guild's idle kits read back as its `assets` rows wit
 
 The same pipeline without the manual step: the deploy rides the dispatch as the route's last stop,
 `q,r@deploy:KIND`, and resolves on the tick the craft lands (`docs/territory-model.md` §5). From the
-granted and loaded kit above (on seed 42 the home system is at `104,55`):
+granted and loaded kit above (on the seed-42 galaxy the home system is at `104,55`):
+
+> **Whose hexes these are.** Every hex in this runbook is the **seed-42 galaxy's** — the one `seat-demo --seed 42`
+> *generates* (`POST /admin/galaxy/new` builds the map from that number), where `sys_0006` "BAR-1337" is the home
+> at `104,55`. They are not `data/seed.json`'s: the committed reference seed is 7331, and there `sys_0006` is a
+> different system at `54,127`. *(⤳ 15-10-26, roadmap 2.5 slice 16: re-derived from a live `seat-demo --seed 42`
+> and every command below run once against it — they work as written. Slice 15's checklist had read these hexes
+> against `data/seed.json`.)*
 
     node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "101,55@deploy:outpost" $B
     node tools/admin.js tick N $B                                 # N = firstLegArrivalTick minus now
@@ -173,22 +181,47 @@ disk; `claimRadius` is in the seed, 1 for every system today), or 1 hex from one
 There is no range number. It scans nothing yet (slice (b2)). *(⤳ REVISED 15-10-26, roadmap 2.5 slice 15: a bare hex
 INSIDE the guild's own disk is legal too, and any hex inside a RIVAL's control is refused — exit 1,
 "is inside guild … 's territory"; a route whose target becomes a rival's while it flies retreats with
-`deployFailed: { reason: 'rival-territory' }`. `docs/exploration-model.md` §5.)* On the seat-demo galaxy above (home
-`sys_0006` at `104,55`, so `106,55` is on the ring and `107,55` is one hex past it):
+`deployFailed: { reason: 'rival-territory' }`. `docs/exploration-model.md` §5.)* On a fresh seat-demo galaxy (home
+`sys_0006` at `104,55`, so `105,55` is inside its disk, `106,55` is on the ring and `107,55` is one hex past it):
 
+    node tools/admin.js seat-demo --seed 42 $B                    # fresh: the heavy idle and empty at home
+    HOME=$(node tools/admin.js snapshot --pick guilds.0.homeSystemId $B)
+    node tools/admin.js adjust-fuel --guild seat_demo --delta 100000 $B
     node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind deepScan $B    # prints the minted asset id
     node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_deepScan_02 $B
     node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "106,55@deploy:deepScan" $B
     node tools/admin.js tick N $B                                 # N = to the arrival; the array is placed on it
     node tools/admin.js snapshot --pick deepScanArrays $B         # the god's-eye rows
 
-or fly there with `dispatch-vehicle` and place it by hand with `deploy-asset`, which prints the new array's id
-(`deepScanArray_<guild>_NN`), hex and anchor system. A hex that does not touch the guild's territory is refused,
+The grant names the kit `_02` because the kit serial is shared by every kit kind, and a fresh seat-demo guild
+already holds the starter Outpost kit `_01`; after the sections above it prints a later number, so load the one it
+printed. Or fly there with `dispatch-vehicle` and place it by hand with `deploy-asset`, which prints the new array's
+id (`deepScanArray_<guild>_NN`), hex and anchor system. A hex that does not touch the guild's territory is refused,
 up front for a route, at once for `deploy-asset` (exit 1, "touches no footprint guild … holds" — *⤳ slice 15: "is in or
 beside no territory guild … holds"*); so is one inside the disk (*⤳ no longer — slice 15*), an occupied hex (one structure per hex, Outposts and arrays alike), and a deploy whose waypoint
 kind does not match the kit aboard. A route whose attachment is lost while it flies (the Outpost it touched was
 packed up) retreats exactly as an Outpost deploy does, flagged `deployFailed: { reason: 'not-attached' }`.
 `grant-kit`, `load-kit` and `unload-kit` list the guild's idle kits of every kind.
+
+**On the home system's own centre (2.5 slice 16).** An array may also stand on the centre hex of a system its guild
+holds — the one exception to "a deploy lands on a bare hex", for arrays only (`docs/exploration-model.md` §5,
+AMENDED 15-10-26). The last stop is then the **system** itself, so the craft ends berthed there and the array's hex
+is the system's centre, `104,55`, anchored to it. From a heavy back at home with a fresh array kit aboard:
+
+    node tools/admin.js dispatch-vehicle --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --waypoints "sys:$HOME" $B
+    node tools/admin.js tick N $B                                 # home again, empty
+    node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind deepScan $B    # _03
+    node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_deepScan_03 $B
+    node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "sys:$HOME@deploy:deepScan" $B
+    node tools/admin.js snapshot --pick deepScanArrays.1 $B       # deepScanArray_seat_demo_02 on 104,55, anchored sys_0006
+
+The heavy is already at that stop, so the route acts in place: the array is planted on the dispatch tick, no fuel
+burns, and the heavy stays idle, berthed at home. (`deploy-asset` from a heavy berthed at home does the same by
+hand; from anywhere else the route flies to the system and plants it on landing, re-checked on arrival.) A second
+array on the same centre is refused (exit 1, "already occupied by deepScanArray …"), and so is an **Outpost** kit
+sent to any system ("is a landmark … an Outpost deploys on a bare hex"), a system nobody holds or a waystation
+("… deploys on a bare hex, or on the centre of a system its guild holds"), and a rival's system ("is inside guild
+… 's territory").
 
 A guild sees only its OWN arrays: `GET /snapshot?guild=<id>` carries `deepScanArrays` with that guild's rows
 only, and no `deepScanArrays` key at all when it owns none; a rival's array is not in the view.

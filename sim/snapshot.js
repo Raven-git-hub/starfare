@@ -56,7 +56,7 @@ const { copyRouteWaypoint } = require('./routes.js');
 // The one home of a lap's price (beside dispatchRoute), so a lane's row shows what its laps really burn.
 // No require cycle: nothing actions.js loads requires this file.
 // attachedPlacement: the Deep Scan Array's deploy rule, which the `deployRange.deepScan` lane asks hex by hex.
-const { perLapCost, attachedPlacement } = require('./actions.js');
+const { perLapCost, attachedPlacement, claimedCentreAt } = require('./actions.js');
 const {
   getSite, getLandmark, getStarterSystems, getTerranHomeworld,
   getSystem, getClaimRadius, isHexInBounds, seedLandmarkAtHex,
@@ -879,7 +879,9 @@ function orderSnapshot(order) {
 //     hexes   — attachedHexes(state, guildId): every hex a Deep Scan Array may be deployed on. An array is not
 //               placed within a RADIUS: it goes in or beside the guild's own territory and never inside a
 //               rival's (exploration-model.md §5, REVISED 15-10-26 — slice 15), so the lane publishes the hexes
-//               themselves, not a number to draw disks with. Sorted by q then r, deduped.
+//               themselves, not a number to draw disks with. Since slice 16 that includes the centre hex of each
+//               system the guild holds (AMENDED 15-10-26) — the one landmark hex a lane ever lists; a deploy there
+//               ends berthed AT the system. Sorted by q then r, deduped.
 //
 // LANE-KEYED: each lane is a sibling key, and each is OMITTED when it is empty — `outpost` when the guild holds
 // no system, `deepScan` when no hex is attached to anything it holds. null (so the caller omits `deployRange`)
@@ -896,9 +898,9 @@ function deployRangeFor(state, guildId) {
   return Object.keys(range).length > 0 ? range : null;
 }
 
-// attachedHexes(state, guildId) -> [ { q, r } ] — the in-bounds, bare hexes the Deep Scan Array's deploy rule
-// (`attachedPlacement`, sim/actions.js) ACCEPTS for this guild, sorted by q then r (invariant 9). The `deepScan`
-// lane above.
+// attachedHexes(state, guildId) -> [ { q, r } ] — the in-bounds hexes (bare, or a held system's centre) the Deep
+// Scan Array's deploy rule (`attachedPlacement`, sim/actions.js) ACCEPTS for this guild, sorted by q then r
+// (invariant 9). The `deepScan` lane above.
 //
 // THE RULE IS NOT COPIED HERE. Every hex is put to `attachedPlacement` itself, so the paint and the deploy can
 // never disagree about which hex is attached. What this function adds is only WHERE TO ASK — a "net" of hexes
@@ -911,10 +913,16 @@ function deployRangeFor(state, guildId) {
 // loudly.
 //
 // "Bare" means no SEED landmark (a system, a Syndicate waystation, the Citadel) on the hex: those never change,
-// and a deploy can never land on one. Guild structures (Outposts, other arrays) are NOT filtered out — like the
-// outpost lane, this lane ignores occupancy: they come and go between polls, the client already draws them, and
-// deployCheck's 'occupied' check is the authority. (A RIVAL's Outpost hex is absent all the same — not for being
-// occupied, but because it is the rival's control, which the rule itself refuses.)
+// and a deploy can never land on one — with ONE exception (roadmap 2.5 slice 16; exploration-model.md §5 AMENDED
+// 15-10-26): a Deep Scan Array may stand on the centre of a system its guild holds. So a landmark hex in the net
+// is kept only when the deploy rule's own ground question (`claimedCentreAt`, sim/actions.js) calls it a held
+// centre, and then put to `attachedPlacement` like any hex: the guild's own centre passes, a rival's does not.
+// The net already holds each held system's centre (the middle of its disk), so the net needed no change.
+//
+// Guild structures (Outposts, other arrays) are NOT filtered out — like the outpost lane, this lane ignores
+// occupancy: they come and go between polls, the client already draws them, and deployCheck's 'occupied' check
+// is the authority. (A RIVAL's Outpost hex is absent all the same — not for being occupied, but because it is
+// the rival's control, which the rule itself refuses.)
 function attachedHexes(state, guildId) {
   const net = new Map();   // "q,r" -> { q, r }: a Map, so a hex near two footprints is asked about once
   const cast = (centre, reach) => {
@@ -932,8 +940,10 @@ function attachedHexes(state, guildId) {
   for (const outpost of state.outposts || []) {
     if (outpost.ownerGuildId === guildId) cast(outpost.coords, 1);
   }
+  // Ground an array may stand on at all: a bare hex, or a held system's centre (the one exception, slice 16).
+  const isGround = (hex) => !seedLandmarkAtHex(hex.q, hex.r) || claimedCentreAt(state, hex) !== null;
   return [...net.values()]
-    .filter((hex) => isHexInBounds(hex.q, hex.r) && !seedLandmarkAtHex(hex.q, hex.r))
+    .filter((hex) => isHexInBounds(hex.q, hex.r) && isGround(hex))
     .filter((hex) => attachedPlacement(state, guildId, hex).ok)
     .sort((a, b) => a.q - b.q || a.r - b.r);
 }

@@ -103,7 +103,7 @@ const {
 } = require('./seed.js');
 const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
 const {
-  deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS,
+  deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
 } = require('./deep-scan-arrays.js');
 const { knowsPlanet } = require('./exploration.js');
 const {
@@ -1568,9 +1568,11 @@ function routeViolation(route) {
 // deployActionViolation(route) -> a detail object naming a deploy action out of place on a craft's
 // route, or null (roadmap 2.2 deploy pipeline slice 2). The dispatch places a deploy only on the FINAL
 // waypoint (the craft deploys where its trip ends), only on a bare-hex anchor (an Outpost goes on open
-// ground), and only on a one-shot route (a kit never rides a repeating lane). The executor never moves a
-// deploy action, so a route breaking any of these was corrupted after launch. `waypointListViolation` has
-// already checked each action's own shape.
+// ground) — or, for the one kind the exception covers (CENTRE_KIND, the Deep Scan Array; roadmap 2.5 slice
+// 16), a SYSTEM anchor, whose centre it stands on — and only on a one-shot route (a kit never rides a
+// repeating lane). WHICH system (one some guild holds) is the deploy rule's question at dispatch and on arrival,
+// not a shape, so it is not asked here. The executor never moves a deploy action, so a route breaking any of
+// these was corrupted after launch. `waypointListViolation` has already checked each action's own shape.
 function deployActionViolation(route) {
   const last = route.waypoints.length - 1;
   for (let i = 0; i <= last; i += 1) {
@@ -1579,8 +1581,9 @@ function deployActionViolation(route) {
     if (i !== last) {
       return { reason: `waypoint ${i} carries a deploy action, which rides the final waypoint only`, waypoints: route.waypoints.length };
     }
-    if (resolveVehicleLocation(wp.anchor).form !== 'hex') {
-      return { reason: `the deploy waypoint ${i}'s anchor must be a bare hex`, anchor: wp.anchor };
+    const onCentre = wp.action.kind === CENTRE_KIND && wp.anchor.landmarkKind === 'system';
+    if (resolveVehicleLocation(wp.anchor).form !== 'hex' && !onCentre) {
+      return { reason: `the deploy waypoint ${i}'s anchor must be a bare hex (or, for a ${CENTRE_KIND} deploy, a system)`, anchor: wp.anchor, kind: wp.action.kind };
     }
     if (route.mode !== undefined) {
       return { reason: 'a deploy action rides a one-shot route only (a kit never rides a repeating lane)', mode: route.mode };
@@ -2243,7 +2246,10 @@ function checkOutpostIntegrity(state) {
 //   - `anchorSystemId` resolves to a real SYSTEM (an array always hangs off a system);
 //   - `coords` is an in-bounds integer hex;
 //   - `createdAtTick` is a whole tick in [0, now] (§15.2 — it records when the array was deployed);
-//   - ONE STRUCTURE PER HEX (§4 / §2): its hex holds no seed landmark, no guild Outpost and no OTHER array.
+//   - ONE STRUCTURE PER HEX (§4 / §2): its hex holds no seed landmark, no guild Outpost and no OTHER array —
+//     except the ONE seed landmark an array may share its hex with: the SYSTEM it is anchored to, when it stands
+//     on that system's centre (roadmap 2.5 slice 16; exploration-model.md §5 AMENDED 15-10-26). Widened to exactly
+//     that case: on a waystation, on the Citadel, or on a system it does not hang off is still a violation.
 //   - its `scan` job (2.5 (b2)), when it carries one, is well-formed — see `checkScanJob` below.
 // And per guild: `deepScanArraySerial` ≥ the highest live suffix, so a future mint can never reissue a live id.
 // NOT asserted: that the hex is STILL in or beside held territory, or STILL clear of a rival's control.
@@ -2297,11 +2303,15 @@ function checkDeepScanArrayIntegrity(state) {
       out.push({ rule: 'deepScanArray-coords-in-bounds (seed.js)', where: `${where}.coords`, detail: { coords: c } });
       continue; // the hex checks below need a real hex
     }
-    // One structure per hex (§4 / §2): not on a seed landmark, not on an Outpost, not on another array.
+    // One structure per hex (§4 / §2): not on a seed landmark, not on an Outpost, not on another array. The one
+    // landmark allowed is the array's OWN anchor system — the deploy puts an array on a held centre anchored to
+    // that very system (deployCheck), so a centre array with any other anchor was not made by a deploy. Whether
+    // the system is STILL held is not asked: placement is not re-applied to an array already standing.
     const key = `${c.q},${c.r}`;
     const landmark = seedLandmarkAtHex(c.q, c.r);
-    if (landmark) {
-      out.push({ rule: 'deepScanArray-hex-unoccupied-by-seed (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, occupiedBy: { kind: landmark.kind, id: landmark.id } } });
+    const onItsOwnCentre = !!landmark && landmark.kind === 'system' && landmark.id === a.anchorSystemId;
+    if (landmark && !onItsOwnCentre) {
+      out.push({ rule: 'deepScanArray-hex-unoccupied-by-seed (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, occupiedBy: { kind: landmark.kind, id: landmark.id }, anchorSystemId: a.anchorSystemId } });
     }
     if (outpostAt.has(key)) {
       out.push({ rule: 'deepScanArray-hex-unoccupied-by-outpost (§4)', where: `${where}.coords`, detail: { coords: { q: c.q, r: c.r }, outpostId: outpostAt.get(key) } });

@@ -3697,6 +3697,10 @@ boundary so the later hex-map swap doesn't touch it.
   *(⤳ 15-10-26 — **slice 15, the array's placement REVISED + own arrays on the map, is BUILT**, the last entry below: an
   array may go inside the guild's own control as well as beside it, never inside a rival's (`rival-territory`); the
   guild's own arrays are drawn on its galaxy map; the 14b review's art, title and wording are wired.)*
+  *(⤳ 15-10-26 — **slice 16, a Deep Scan Array on its own system's centre hex, is BUILT**, the last entry below: an array
+  may stand on the centre of a system its guild holds, deployed from a craft berthed there (by hand, in place, or flown
+  and re-checked on arrival); the lane, the oracle, the invariants and the client follow; the CLI runbook's example is
+  re-verified live.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4262,6 +4266,59 @@ boundary so the later hex-map swap doesn't touch it.
     absent from the player's view — **27 checks, zero console errors**. The same walk with `main`'s client against this
     engine fails 13 checks, every client one. The harness lives outside the repo, as 14b's does. Sim 2,242 →
     **2,262**, tools **83** (unchanged). Checklist items below.
+  - **Slice 16 — a Deep Scan Array on its own system's centre hex (+ the CLI runbook tidy) — ⤳ AS-BUILT 15-10-26
+    (engine + client).** Built to `exploration-model.md` §5 "AMENDED 15-10-26 — the centre hex too" and the slice-15
+    checklist's ANSWERED note, items (3) and (10)(b); as-built detail in §5's "AS-BUILT 15-10-26 — the centre hex" note
+    and `territory-model.md` §5's "the centre-hex leg". **No new number.** **(1) The rule, in one place:** `deployCheck`
+    reads ONE value, `centre` — the system's id when a Deep Scan Array (`CENTRE_KIND`, `sim/deep-scan-arrays.js`) is
+    berthed AT a system some guild holds (`claimedCentreAt`, through `controlNear`) — in three lines: the ground check
+    lets that berth past `not-bare-hex`, the occupancy check asks only for another structure (`guildStructureAt`), and
+    the anchor is that system. Whose centre it is stays the placement rule's: own → legal, a rival's →
+    `rival-territory`. Check order unchanged. An Outpost still refuses every system, in its old words. **An unheld
+    centre refuses as `not-bare-hex`** (decided — checklist item 1). **(2) The flight:** no leg change — a deploy
+    waypoint may name the system and the leg ends berthed there; the dispatch's landmark gate now asks `deployCheck`'s
+    first check (its words kept). From a heavy already home the route acts in place (planted on the dispatch tick, no
+    fuel), the client's usual case. A failed deploy at a centre retreats by the unchanged rule and so stays AT the
+    system (S is 0 hexes away); the notice's `targetHex` now reads the resolved coords. **(3) One structure per hex:**
+    a second array on a centre is `occupied` (by hand, at dispatch, on arrival). `checkDeepScanArrayIntegrity` widened
+    to exactly this case (an array may share its hex with its own anchor system), and the route invariant (a
+    `CENTRE_KIND` deploy may stop at a system). **(4) The lane** keeps a landmark hex only when `claimedCentreAt` calls
+    it a held centre, then asks `attachedPlacement`: it now lists each held centre; the net was unchanged. The oracle
+    writes the amendment out on its own; the whole-galaxy equality holds. **(5) Client:** a system click is the target
+    where the lane lists its centre (`centreRefusal`); no "idle at berth" cue on a kit target; "Inside rival territory"
+    for a rival's centre (or ours in a rival's disk), "Not a bare hex" for an unheld one; the marker gains a dark
+    under-stroke (every array) and is half as big again on a star (look, not rule). **(6) `docs/cli-runbook.md`:** its
+    hexes were RIGHT — `seat-demo --seed 42` generates the seed-42 galaxy, where home `sys_0006` is at `104,55`;
+    `54,127` is `sys_0006` in `data/seed.json` (7331), a different galaxy. Every command was run once against a live
+    `seat-demo --seed 42` and works as written; the text now says whose hexes they are, starts the Deep Scan section
+    from a fresh seat-demo with fuel (the kit is `_02` only then — the kit serial is shared by every kind), names
+    `105,55` (inside the disk), and adds the centre example (`sys:$HOME@deploy:deepScan`, run live: the array on
+    `104,55`, a second refused `occupied`, an Outpost kit refused). `tools/admin.js` help names the new stop.
+    **Snapshot hashes:** no serialized byte moved — a galaxy with no array on a centre hashes as on `main` (pinned in the
+    new test, recorded on 8795070). The `deepScan` lane gained one hex per held system (the deploy-range fixture's home
+    16 → 17), so the raw god's-eye and own-view bytes moved by exactly that — the new test strips the centres and gets
+    `main`'s lens hash back — and every pinned golden asserts through the 14b strip, so none moved. Determinism and
+    save → restore hold. **Re-pointed** (they pinned the old rule): `deep-scan-array` (home is legal now; the dispatch
+    landmark refusal uses a waystation; the seed-landmark invariant case), `deep-scan-placement` (the centre case
+    moved out), `deploy-range-deep-scan` (the lane includes the centre; the paint-agrees check berths at a system for
+    a centre), the oracle. **Tripwires:** `sim/tests/deep-scan-centre.test.js` (+18): own centre by hand, in place and
+    flown; a second array refused three ways, the arrival retreat staying AT home with the notice; an Outpost kit, a
+    rival's centre, an unheld centre (even inside the own disk), a waystation, the Citadel and a bare hex on a centre's
+    coords refused; in flight, reachable — a rival founding on the adjacent starter → `rival-territory`; unreachable
+    — the system lost → HALT naming the tick; invariants every tick and the widened rules exact; the lane (own and
+    rival, occupancy-blind, next door, oracle-equal); the no-op pins; determinism. **Checked to fail:** the exception
+    removed from `deployCheck` → 14 red across the four deep-scan files; the lane's centre removed → 11 red; the
+    invariant not widened → 6 red. **Proved headless** (Playwright, preinstalled Chromium, a live `node sim/server.js`
+    with a persist volume on a `new-galaxy --seed 42`, the guild founded through the connect screen; the operator
+    surface for kit grants and the rival's founding only): the lane lists the home centre; IDLE → Deploy → carrier →
+    Plan Route → a click on the home system reads "deploy · deep scan array" with no refusal and no idle cue, Finalise
+    enabled; the popup reads "you are here — acts in place", Deploy enabled; the array lands on the home centre
+    anchored home, the heavy idle and berthed at home, its hold empty; the marker drawn over the star (teal pixels in
+    the ring around the star 5 → 57), screenshots at 3×, 20× and 60×; a second deploy refused on the map ("not a bare
+    hex", Finalise disabled) and by the engine (`occupied`); a rival's centre "inside rival territory"; an unheld
+    system and an Outpost kit at home "not a bare hex"; the rival's view without a `deepScanArrays` key — **20 checks,
+    zero console errors**. The harness lives outside the repo, as 15's does. Sim 2,262 → **2,280**, tools
+    **83** (unchanged). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5449,6 +5506,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   behaviour are confirmed. (7) **Keep** 14b's owner filter: the engine's fog tests catch a leak at the source. (8)
   The title-cased inbox row is confirmed. (9) `controlNear` stays in `sim/claims.js`. (10)(b) The stale
   `cli-runbook.md` example hexes are fixed in slice 16.
+  *(⤳ BUILT 15-10-26, slice 16 — (3) the array on its own held centre: the entry above. (10)(b) the runbook's hexes
+  turned out RIGHT for the galaxy it builds (`seat-demo --seed 42` generates seed 42; `54,127` is `data/seed.json`'s
+  `sys_0006`); the text now says so and every command was run live. The premise of (2) — "unreachable today" — does
+  not hold on the committed seed: slice-16 item 2 below.)*
   1. **The reason's name and label.** The new retreatable failure is `rival-territory`, labelled **"Rival territory"**
      in the notice's Reason fact (slice-local choices, as the build prompt said). Confirm or rename.
   2. **Overlapping disks.** Where the guild's disk and a rival's overlap, the hex is refused for BOTH guilds: the ruling's
@@ -5486,6 +5547,43 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
       `54,127` — pre-existing, left as it was. (c) No operator lever claims a system for a guild, so "a hex becomes a
       rival's control in flight" is driven by a guild FOUNDING on the covering system — the one claim writer today — in
       both the tests and the walk.
+- **A Deep Scan Array on its own centre, slice 16 (2.5) — items for a ruling or a confirm** — *surfaced 15-10-26 by the
+  build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **An unheld system's centre refuses as `not-bare-hex`** (the prompt asked for a decision). It is outside the
+     exception ("neither controlled nor deep space"), so it keeps the reason every landmark gets — even a system inside
+     the guild's own disk, which the placement rule alone would take. `not-attached` would misname it (an unheld centre
+     can sit right beside the disk). Consequence: `not-bare-hex` is not retreatable, so a held centre turning unheld in
+     flight HALTS the arrival. No play path removes a claim today; when un-settling is built (the Prefecture work),
+     rule whether that arrival should retreat instead. Confirm.
+  2. **The overlap premise is false on the committed seed.** `exploration-model.md` §5 "Overlapping disks" rests on
+     `territory-model.md` §6's starter spacing (≥ 3 hexes) — ruled, but its de-cluster repair was never built:
+     `data/seed.json` (7331) has **6 directly adjacent starter pairs** (`sys_0098`/`sys_1114`, `sys_0175`/`sys_1256`,
+     `sys_0408`/`sys_0460`, `sys_0417`/`sys_1218`, `sys_0460`/`sys_0878`, `sys_1069`/`sys_1375`) and 18 within 2 hexes,
+     and `foundGuild` has no spacing gate. So two guilds CAN hold home disks that reach each other's centres today.
+     As built ("refused for both", the prompt kept it), each is then refused an array on its OWN centre and on the
+     overlap — where the ruled own-centre override would award each its own centre — and an array flying home can
+     fail `rival-territory` when a guild founds next door (tested; it retreats and stays AT home). Rule one: build §6's
+     repair (regenerate the seed — every seed-derived golden moves), or a founding-time spacing gate, or the own-centre
+     override for arrays now, or accept "refused for both" until the control map.
+  3. **The anchor of a centre array is that system**, as ruled — not the lowest-id held system near the hex, which the
+     placement rule picks for other hexes. The two agree while a guild holds one system. Recorded.
+  4. **Only a berth AT the system reaches the centre.** A craft can sit on a bare `{ q, r }` that shares a system's
+     coordinates (any in-bounds hex is a legal location); a deploy from there is still `occupied` by the system. The
+     client always sends the system landmark. Confirm.
+  5. **A refusal names a rival's array.** At a rival's centre that already carries the rival's own array, the check
+     order (`occupied` before the placement) refuses as "occupied by deepScanArray <rival's id>" — telling the player a
+     rival array exists. The same leak exists for a bare hex since slice 15 (item 4 there); the centre makes it one more
+     place. Left as built (detection is deferred); flag for the detection work.
+  6. **The marker on a star (look, not rule):** every array's triangle now has a dark under-stroke (the slice-15 arrays
+     inside the disk included — it lifts the teal edge off the teal territory fill), and on a system's centre it is
+     drawn half as big again (`× 1.5`) so the star's own teal dot sits clear inside. Confirm or restyle.
+  7. **The deploy map's words for a system:** the own centre with our array on it "Not a bare hex" (as for any own
+     array's hex); a system nobody holds "Not a bare hex"; a rival's system, or ours where a rival's disk reaches it,
+     "Inside rival territory". Confirm.
+  8. **Seams — not decisions, recorded:** (a) the walk harness lives outside the repo, as slice 15's does. (b) The
+     runbook's Deep Scan section now re-runs `seat-demo` so its `asset_seat_demo_deepScan_02` is right; followed straight
+     on from the sections above, the grant prints `_03` (the kit serial is shared by every kind). (c) The route
+     invariant asks the kind and the anchor's form, not who holds the system — holding is the deploy rule's question.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

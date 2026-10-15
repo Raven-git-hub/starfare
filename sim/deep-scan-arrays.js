@@ -8,8 +8,9 @@
 // A Deep Scan Array is a SHARED, single-hex, guild-owned structure. It lives in its own top-level
 // list, `state.deepScanArrays`, beside `state.outposts` (NOT folded into it: an array has no stockpile,
 // no capacity and no dock, and keeping the lists apart leaves every Outpost row byte-identical). It is
-// placed only by a guild's DEPLOY — a heavy carrying a `deep_scan_array_kit` to a bare hex "attached" to
-// its own territory (the rule is `deployCheck`, sim/actions.js) — and nothing else mints one.
+// placed only by a guild's DEPLOY — a heavy carrying a `deep_scan_array_kit` to a bare hex in or beside
+// its own territory, or (slice 16) berthed at one of its own held systems, onto that system's centre (the
+// rule is `deployCheck`, sim/actions.js) — and nothing else mints one.
 //
 // SCOPE: placed (b1), and it scans (b2) — ONE job at a time, queued by the `queueScan` action
 // (sim/actions.js), completed here. Monitoring (the watch fan) is deferred, and the entity carries no fan
@@ -25,6 +26,13 @@ const { getPlanet, getSystem, getSystemLayout, roman } = require('./seed.js');
 const { systemControllers } = require('./claims.js');
 const { revealSystemArchetypes, revealPlanetSurface } = require('./exploration.js');
 const { recordEvent, SCAN_COMPLETE, SCAN_VOIDED } = require('./events.js');
+
+// CENTRE_KIND — the ONE kit kind that may deploy on the CENTRE hex of a system its guild holds: the Deep Scan
+// Array's own kit kind ('deepScan', its DEPLOYABLE_KITS key, sim/resources.js). docs/exploration-model.md §5,
+// AMENDED 15-10-26 (roadmap 2.5 slice 16): "the ONE exception to 'a deploy lands on a bare hex', and it is for
+// arrays only". Spelled here once, so the deploy rule (sim/actions.js `deployCheck`) and the route invariant
+// (sim/invariants.js) read the same name rather than two copies of the string.
+const CENTRE_KIND = 'deepScan';
 
 // The id scheme is `deepScanArray_<guildId>_NN`, 1-based and zero-padded to two digits — the exact mirror
 // of outposts.js's `outpost_<guildId>_NN`. STABLE and DETERMINISTIC (§15.2, invariant 9): two runs of the
@@ -181,6 +189,7 @@ function stepScanCompletions(state, tick) {
 }
 
 module.exports = {
+  CENTRE_KIND,
   deepScanArrayId,
   deepScanArrayNumberOf,
   nextDeepScanArraySerial,
