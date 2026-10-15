@@ -170,8 +170,11 @@ The second space-lane kind (`docs/exploration-model.md` §5): the same grant →
 kind `deepScan` and a different placement rule. The array must go on a bare hex **touching** territory the
 guild holds — exactly `claimRadius + 1` hexes from a held system's centre (the ring just outside its control
 disk; `claimRadius` is in the seed, 1 for every system today), or 1 hex from one of the guild's own Outposts.
-There is no range number. It scans nothing yet (slice (b2)). On the seat-demo galaxy above (home `sys_0006`
-at `104,55`, so `106,55` is on the ring and `107,55` is one hex past it):
+There is no range number. It scans nothing yet (slice (b2)). *(⤳ REVISED 15-10-26, roadmap 2.5 slice 15: a bare hex
+INSIDE the guild's own disk is legal too, and any hex inside a RIVAL's control is refused — exit 1,
+"is inside guild … 's territory"; a route whose target becomes a rival's while it flies retreats with
+`deployFailed: { reason: 'rival-territory' }`. `docs/exploration-model.md` §5.)* On the seat-demo galaxy above (home
+`sys_0006` at `104,55`, so `106,55` is on the ring and `107,55` is one hex past it):
 
     node tools/admin.js grant-kit --guild seat_demo --system $HOME --kind deepScan $B    # prints the minted asset id
     node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_deepScan_02 $B
@@ -181,8 +184,8 @@ at `104,55`, so `106,55` is on the ring and `107,55` is one hex past it):
 
 or fly there with `dispatch-vehicle` and place it by hand with `deploy-asset`, which prints the new array's id
 (`deepScanArray_<guild>_NN`), hex and anchor system. A hex that does not touch the guild's territory is refused,
-up front for a route, at once for `deploy-asset` (exit 1, "touches no footprint guild … holds"); so is one
-inside the disk, an occupied hex (one structure per hex, Outposts and arrays alike), and a deploy whose waypoint
+up front for a route, at once for `deploy-asset` (exit 1, "touches no footprint guild … holds" — *⤳ slice 15: "is in or
+beside no territory guild … holds"*); so is one inside the disk (*⤳ no longer — slice 15*), an occupied hex (one structure per hex, Outposts and arrays alike), and a deploy whose waypoint
 kind does not match the kit aboard. A route whose attachment is lost while it flies (the Outpost it touched was
 packed up) retreats exactly as an Outpost deploy does, flagged `deployFailed: { reason: 'not-attached' }`.
 `grant-kit`, `load-kit` and `unload-kit` list the guild's idle kits of every kind.

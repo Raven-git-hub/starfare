@@ -3,15 +3,16 @@
 // deploy-range-deep-scan.test.js — the `deployRange.deepScan` lane (roadmap 2.5, slice 14b; docs/territory-model.md
 // §5 "Painting the range (the snapshot contract)"; docs/exploration-model.md §5 "Deploy placement = attached").
 //
-// A Deep Scan Array is not placed within a radius: it goes on a hex "attached" to the guild's territory — one
-// hex outside a held system's control disk, or beside one of its Outposts (sim/actions.js `attachedPlacement`).
-// So the snapshot publishes the HEXES, on each guild row:
+// A Deep Scan Array is not placed within a radius: it goes on a hex in or beside the guild's territory — inside a
+// held system's control disk, one hex outside it, or beside one of its Outposts — and never inside a rival's
+// control (sim/actions.js `attachedPlacement`; REVISED 15-10-26, slice 15). So the snapshot publishes the HEXES,
+// on each guild row:
 //
 //     deployRange: { outpost?: { radius, anchors }, deepScan?: { hexes: [ { q, r } ] } }
 //
 // The snapshot finds them fast by asking the rule only about hexes near the guild's footprints. The danger is
-// that this shortcut and the rule drift apart, so the main tripwire compares the lane to the rule asked about
-// EVERY hex in the galaxy (attached-hexes-oracle.js). The tests:
+// that this shortcut and the rule drift apart, so the main tripwire compares the lane to the RULING written out
+// independently and asked about EVERY hex in the galaxy (attached-hexes-oracle.js). The tests:
 //   1. the oracle really scans the whole galaxy;
 //   2. EXACT — on a held system, with an Outpost, with an Outpost alone, and holding nothing (lane omitted);
 //   3. a rival's territory never counts;
@@ -19,7 +20,8 @@
 //   5. DERIVED, NOT STALE — an Outpost placed or removed shows in the very next snapshot;
 //   6. PURE — no state moves, and the published list does not alias state;
 //   7. THE PAINT AGREES WITH THE DEPLOY — every lane hex deploys an array; the hexes beside the lane do not;
-//   8. GUIDANCE — occupancy is ignored (deployCheck refuses an occupied lane hex);
+//   8. GUIDANCE — occupancy is ignored for the guild's own structures (deployCheck refuses an occupied lane hex);
+//      a rival's Outpost hex is not in the lane at all — it is the rival's control;
 //   9. the per-guild view carries only the viewer's own lane;
 //  10. a held system with no claimRadius HALTS the snapshot rather than publishing a lane that skipped it.
 // The "is this the only snapshot change" proof is the strip in tests/deep-scan-lane-strip.js, used by the goldens.
@@ -103,9 +105,13 @@ test('EXACT on a held system: the lane is every hex the deploy rule accepts — 
   const lane = laneOf(s, 'g1');
   assert.deepEqual(Object.keys(lane), ['hexes'], 'the lane is { hexes } and nothing else');
   assert.deepEqual(lane.hexes, attachedByRule(s, 'g1'));
-  // Not vacuous: a held system's lane is the ring of free hexes just outside its control disk.
+  // Not vacuous: a held system's lane is the free hexes of its control disk plus the ring just outside it
+  // (REVISED 15-10-26 — it was the ring alone).
   assert.ok(lane.hexes.length > 0);
-  assert.ok(lane.hexes.every((h) => hexDistance(h, HOME_HEX) === TOUCHING), 'today, every hex is on that ring');
+  assert.ok(lane.hexes.every((h) => hexDistance(h, HOME_HEX) >= 1 && hexDistance(h, HOME_HEX) <= TOUCHING),
+    'today, every hex is inside home\'s disk or on the ring around it');
+  assert.ok(lane.hexes.some((h) => hexDistance(h, HOME_HEX) < TOUCHING), 'the inside of the disk is in the lane');
+  assert.ok(lane.hexes.some((h) => hexDistance(h, HOME_HEX) === TOUCHING), 'and so is the ring');
   // The outpost lane beside it is unchanged by this slice.
   assert.deepEqual(rowOf(buildSnapshot(s), 'g1').deployRange.outpost.anchors, [HOME.id]);
 });
@@ -135,7 +141,9 @@ test('EXACT with an Outpost alone (no held system): the deepScan lane stands alo
   const range = rowOf(buildSnapshot(s), 'g1').deployRange;
   assert.deepEqual(Object.keys(range), ['deepScan'], 'holding no system, it has no outpost lane');
   assert.deepEqual(range.deepScan.hexes, attachedByRule(s, 'g1'));
-  assert.ok(range.deepScan.hexes.every((h) => hexDistance(h, hex) === 1));
+  // The six beside it, and its own hex (the guild's own control; occupancy-blind — deployCheck refuses it).
+  assert.ok(range.deepScan.hexes.every((h) => hexDistance(h, hex) <= 1));
+  assert.ok(range.deepScan.hexes.some((h) => keyOf(h) === keyOf(hex)));
 });
 
 test('EXACT holding nothing: no deepScan lane — and with no outpost lane either, no deployRange key at all', () => {
@@ -210,7 +218,7 @@ function verdictAt(state, hex) {
   return validateAction(s, createDeployAssetAction({ guildId: 'g1', vehicleId: craftId }));
 }
 
-test('THE PAINT AGREES WITH THE DEPLOY: every lane hex deploys an array; the free hexes just inside and outside it do not', () => {
+test('THE PAINT AGREES WITH THE DEPLOY: every lane hex deploys an array; the free hex just outside it does not', () => {
   const s = galaxy();
   const lane = laneOf(s, 'g1').hexes;
   for (const hex of lane) {
@@ -218,24 +226,35 @@ test('THE PAINT AGREES WITH THE DEPLOY: every lane hex deploys an array; the fre
     assert.equal(v.valid, true, `lane hex ${keyOf(hex)} must deploy, got: ${v.reason}`);
   }
   const listed = new Set(lane.map(keyOf));
-  for (const d of [TOUCHING - 1, TOUCHING + 1]) {
-    const hex = freeHexAt(HOME_HEX, d);
-    assert.equal(listed.has(keyOf(hex)), false);
-    const v = verdictAt(s, hex);
-    assert.equal(v.valid, false, `a hex ${d} from home is not in the lane, and must not deploy`);
-    assert.match(v.reason, /touches no footprint guild "g1" holds/);
-  }
+  // Inside the disk is in the lane now (REVISED 15-10-26); one hex past the ring is not.
+  assert.equal(listed.has(keyOf(freeHexAt(HOME_HEX, TOUCHING - 1))), true);
+  const outside = freeHexAt(HOME_HEX, TOUCHING + 1);
+  assert.equal(listed.has(keyOf(outside)), false);
+  const v = verdictAt(s, outside);
+  assert.equal(v.valid, false, `a hex ${TOUCHING + 1} from home is not in the lane, and must not deploy`);
+  assert.match(v.reason, /in or beside no territory guild "g1" holds/);
 });
 
 // --- 8. guidance: occupancy is ignored ----------------------------------------------------------------
 
-test('GUIDANCE: a structure on a lane hex leaves it in the lane — deployCheck is what refuses it, as occupied', () => {
-  const ringHex = laneOf(galaxy(), 'g1').hexes[0];
-  const s = spawnOutpost(galaxy(), 'g2', RIVAL, ringHex);   // a rival's Outpost, right on g1's ring
+test('GUIDANCE: the guild\'s own structure on a lane hex leaves it in the lane — deployCheck is what refuses it, as occupied', () => {
+  const ringHex = laneOf(galaxy(), 'g1').hexes.find((h) => hexDistance(h, HOME_HEX) === TOUCHING);
+  const s = spawnOutpost(galaxy(), 'g1', HOME.id, ringHex);   // g1's own Outpost, right on its ring
   assert.ok(laneOf(s, 'g1').hexes.some((h) => keyOf(h) === keyOf(ringHex)), 'still painted — the lane ignores occupancy');
   const v = verdictAt(s, ringHex);
   assert.equal(v.valid, false);
-  assert.match(v.reason, /already occupied by outpost/);
+  assert.match(v.reason, /already occupied by outpost "outpost_g1_01"/);
+});
+
+test('GUIDANCE: a RIVAL\'s Outpost on g1\'s ring takes that hex out of the lane — it is the rival\'s control; the deploy says occupied', () => {
+  const ringHex = laneOf(galaxy(), 'g1').hexes.find((h) => hexDistance(h, HOME_HEX) === TOUCHING);
+  const s = spawnOutpost(galaxy(), 'g2', RIVAL, ringHex);
+  assert.equal(laneOf(s, 'g1').hexes.some((h) => keyOf(h) === keyOf(ringHex)), false, 'a rival\'s control is never painted');
+  assert.deepEqual(laneOf(s, 'g1').hexes, attachedByRule(s, 'g1'));
+  // The one-structure-per-hex check runs before placement (the order is unchanged), so 'occupied' wins.
+  const v = verdictAt(s, ringHex);
+  assert.equal(v.valid, false);
+  assert.match(v.reason, /already occupied by outpost "outpost_g2_01"/);
 });
 
 // --- 9. the per-guild view -------------------------------------------------------------------------------

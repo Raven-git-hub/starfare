@@ -14,6 +14,11 @@
 // the SAME question, or a delivery could be legal to schedule and impossible to
 // land, or vice versa.
 
+// Seed geometry for `controlNear` below (the footprints' centres and radii). Both
+// modules are seed-only and never require this one, so there is no require cycle.
+const { getSystem, getClaimRadius } = require('./seed.js');
+const { hexDistance } = require('./transport.js');
+
 // The ONE match expression the two questions below share, so they are literally the
 // same question rather than two spellings of it that could drift apart.
 // `landmarkKind` is part of the match for the same reason getLandmark demands it:
@@ -63,4 +68,45 @@ function systemControllers(state) {
   return out;
 }
 
-module.exports = { guildHolds, heldSystemIds, systemControllers };
+// controlNear(state, coords, within) -> every guild CONTROL FOOTPRINT that reaches to within `within` hexes of
+// hex `coords`. THE ONE answer to "which guild, if any, controls this hex?" (`within` 0) and to "whose control
+// is this hex in or beside?" (`within` 1), so the two questions cannot drift apart (roadmap 2.5 slice 15; the
+// Deep Scan Array's placement rule, docs/exploration-model.md §5 REVISED 15-10-26, is its first caller).
+//
+// Today's footprints (docs/territory-model.md §2):
+//   - a held SYSTEM controls every hex within its seed `claimRadius` of its centre, the centre included;
+//   - a guild OUTPOST controls only its own hex: radius 0, because it has no aura yet. When the aura radii are
+//     ruled, "controlled" grows with them — here, and nowhere else.
+// So a hex is within `within` of a footprint exactly when it is within (radius + `within`) of its centre.
+//
+// Each footprint is { guildId, kind: 'system' | 'outpost', id, anchorSystemId }: a system is its own anchor, an
+// Outpost hangs off its stored `anchorSystemId`. Held systems come first, then Outposts, each in id order, so the
+// first one a caller picks is stable (invariant 9). Holding is read through `isSystemClaim`, the same match the
+// questions above use — never a second notion of holding.
+//
+// MORE THAN ONE GUILD can come back for a single hex: two held disks may overlap (§2 keeps overlap "as a
+// feature"). The seniority rule that would award such a hex to one guild is design-ahead and not built, so this
+// hands back every footprint and lets the caller decide.
+function controlNear(state, coords, within) {
+  const systems = new Map();   // "guild|system" -> footprint: a Map, so a repeated claim row counts once
+  for (const c of state.claims || []) {
+    if (!isSystemClaim(c)) continue;
+    const claimRadius = getClaimRadius(c.landmarkId);
+    if (claimRadius === null) {
+      // A held system with no footprint radius is a broken seed, not a hex that "happens to be outside" it —
+      // HALT rather than quietly answer (design.md §15.5: a silent violation is worse than a crash).
+      throw new Error(`hex control: guild ${JSON.stringify(c.ownerGuildId)} holds system ${JSON.stringify(c.landmarkId)}, whose seed row carries no whole-number claimRadius`);
+    }
+    if (hexDistance(coords, getSystem(c.landmarkId).coords) <= claimRadius + within) {
+      systems.set(`${c.ownerGuildId}|${c.landmarkId}`,
+        { guildId: c.ownerGuildId, kind: 'system', id: c.landmarkId, anchorSystemId: c.landmarkId });
+    }
+  }
+  const outposts = (state.outposts || [])
+    .filter((o) => hexDistance(coords, o.coords) <= within)
+    .map((o) => ({ guildId: o.ownerGuildId, kind: 'outpost', id: o.id, anchorSystemId: o.anchorSystemId }));
+  const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return [...[...systems.values()].sort(byId), ...outposts.sort(byId)];
+}
+
+module.exports = { guildHolds, heldSystemIds, systemControllers, controlNear };

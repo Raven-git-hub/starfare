@@ -293,7 +293,8 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
 - `cause` — `'occupied'` | `'out-of-range'` | `'not-attached'` (the retreatable reasons; the §5 `deployFailed`
   reason). *(⤳ `'not-attached'` added 06-10-26, roadmap 2.5 (b1): a Deep Scan Array whose attachment to held
   territory was lost in flight. The client's Reason fact has no label for it yet — it reads "—" — client slice.)*
-  *(⤳ 15-10-26, roadmap 2.5 slice 14b: labelled **"Not attached"**.)*
+  *(⤳ 15-10-26, roadmap 2.5 slice 14b: labelled **"Not attached"**.)* *(⤳ 15-10-26, slice 15: and
+  `'rival-territory'` — the array's target became a rival's control in flight — labelled **"Rival territory"**.)*
 - `kind` — the deployable kind, `'outpost'` or (2.5 (b1)) `'deepScan'`.
 - `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
 - `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map). *(⤳ Now the forks'
@@ -301,7 +302,8 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
 - `retreatSystemId` + `retreatSystemName` — the nearest held system it pulled back toward (its seed name).
 
 **The surface — the MESSAGES inbox + popup (§8 / §9), but with its OWN character.** The inbox row
-reads **"Deployment failed — {Kind}"** ({Kind} from `payload.kind`), newest-first, with the unread dot as
+reads **"Deployment failed — {Kind}"** ({Kind} from `payload.kind`) *(⤳ RULED 15-10-26, built slice 15: **"Deployment
+Failed — {Structure}"**, title case — "Deployment Failed — Deep Scan Array" / "Deployment Failed — Outpost")*, newest-first, with the unread dot as
 any notice. The popup is the same adviser-reel card, re-dressed for this type:
 - **the hero is the PILOT** (`client/assets/characters/pilot.jpg`), not the uniform adviser;
 - **the eyebrow is "Fleet — Dispatch"** (not "Syndicate Notice" / "Syndicate — Enforcement");

@@ -1,14 +1,23 @@
 'use strict';
 
 // attached-hexes-oracle.js — the slow, obviously-right answer the `deployRange.deepScan` lane is checked
-// against (roadmap 2.5, slice 14b; docs/territory-model.md §5 "Painting the range").
+// against (roadmap 2.5, slice 14b; REWRITTEN slice 15; docs/territory-model.md §5 "Painting the range";
+// docs/exploration-model.md §5 "Deploy placement", REVISED 15-10-26).
 //
 // The snapshot finds the lane's hexes FAST: it only asks the deploy rule about hexes near the guild's own
-// footprints (sim/snapshot.js `attachedHexes`, its "net"). This file asks the SAME rule about EVERY hex in the
-// galaxy, with no net at all. It shares no code with the snapshot's net, so if the net ever misses a hex the
-// rule accepts, the two lists differ and a test fails. It is far too slow for a live poll, and fine for a test.
+// footprints (sim/snapshot.js `attachedHexes`, its "net"), and the rule itself asks the one control helper
+// (sim/claims.js `controlNear`). This file shares NEITHER. It writes the ruled placement out again, in its own
+// words, and asks it of EVERY hex in the galaxy, with no net at all:
+//
+//   a hex is legal for guild G when no RIVAL controls it, and EITHER G controls it, OR nobody controls it and
+//   one of its six neighbours is a hex G controls.
+//   "Controls": a held system controls every hex within its claimRadius of its centre; an Outpost controls
+//   its own hex (no aura yet).
+//
+// It reads only the seed data and the state rows, and spells out its own hex distance and neighbours. So if
+// the net misses a hex, or the helper and the rule ever drift from the ruling, the lists differ and a test
+// fails. It is far too slow for a live poll, and fine for a test.
 
-const { attachedPlacement } = require('../actions.js');
 const { getBoard, isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
 
 let lattice = null;   // every in-bounds hex, built once per test process
@@ -37,11 +46,37 @@ function latticeIsWhole() {
   return latticeHexes().length === getBoard().stats.totalHexesInGalaxy;
 }
 
-// attachedByRule(state, guildId) -> [ { q, r } ] — every in-bounds hex with no seed landmark on it that
-// `attachedPlacement` accepts for this guild, sorted by q then r. What the lane must equal, exactly.
+// The oracle's own hex geometry — deliberately NOT sim/transport.js's: axial distance is the cube distance,
+// and a hex's six neighbours are the six axial unit steps.
+const distance = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
+const STEPS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+const neighbours = (h) => STEPS.map(([dq, dr]) => ({ q: h.q + dq, r: h.r + dr }));
+
+// footprintsOf(state) -> every control footprint in the galaxy as { guildId, centre, radius }: one per system
+// claim row (its seed centre and claimRadius, read straight off the seed board), one per guild Outpost (its own
+// hex, radius 0).
+function footprintsOf(state) {
+  const systems = new Map(getBoard().systems.map((s) => [s.id, s]));
+  const held = (state.claims || [])
+    .filter((c) => c.landmarkKind === 'system')
+    .map((c) => ({ guildId: c.ownerGuildId, centre: systems.get(c.landmarkId).coords, radius: systems.get(c.landmarkId).claimRadius }));
+  const outposts = (state.outposts || []).map((o) => ({ guildId: o.ownerGuildId, centre: o.coords, radius: 0 }));
+  return [...held, ...outposts];
+}
+
+// attachedByRule(state, guildId) -> [ { q, r } ] — every in-bounds hex with no seed landmark on it that the
+// RULED placement (above) accepts for this guild, sorted by q then r. What the lane must equal, exactly.
 function attachedByRule(state, guildId) {
+  const footprints = footprintsOf(state);
+  const controllers = (hex) => footprints.filter((f) => distance(hex, f.centre) <= f.radius).map((f) => f.guildId);
+  const legal = (hex) => {
+    const here = controllers(hex);
+    if (here.some((g) => g !== guildId)) return false;   // inside a rival's control: never
+    if (here.includes(guildId)) return true;             // inside the guild's own control
+    return neighbours(hex).some((n) => controllers(n).includes(guildId));   // nobody's, beside the guild's own
+  };
   return latticeHexes()
-    .filter((hex) => !seedLandmarkAtHex(hex.q, hex.r) && attachedPlacement(state, guildId, hex).ok)
+    .filter((hex) => !seedLandmarkAtHex(hex.q, hex.r) && legal(hex))
     .sort((a, b) => a.q - b.q || a.r - b.r);
 }
 

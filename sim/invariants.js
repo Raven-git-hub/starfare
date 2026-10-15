@@ -2246,8 +2246,10 @@ function checkOutpostIntegrity(state) {
 //   - ONE STRUCTURE PER HEX (§4 / §2): its hex holds no seed landmark, no guild Outpost and no OTHER array.
 //   - its `scan` job (2.5 (b2)), when it carries one, is well-formed — see `checkScanJob` below.
 // And per guild: `deepScanArraySerial` ≥ the highest live suffix, so a future mint can never reissue a live id.
-// NOT asserted: that the hex is STILL attached to held territory. Attachment is the deploy's rule, judged
-// when the array is placed; the Outpost it touched may later be packed up, and the array stays.
+// NOT asserted: that the hex is STILL in or beside held territory, or STILL clear of a rival's control.
+// Placement is the deploy's rule, judged at dispatch and on arrival only (docs/exploration-model.md §5 REVISED
+// 15-10-26: "It is NOT re-applied to arrays already standing"); the Outpost it touched may later be packed up,
+// or a rival may come to control its hex, and the array stays.
 function checkDeepScanArrayIntegrity(state) {
   const out = [];
   const arrays = state.deepScanArrays;

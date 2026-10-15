@@ -66,12 +66,16 @@ const DEPLOY_RETREAT_HEXES = 3;
 //                    Array placed first);
 //   'out-of-range' — (an Outpost) no system the guild holds is within OUTPOST_DEPLOY_RANGE of the hex
 //                    any more;
-//   'not-attached' — (a Deep Scan Array, roadmap 2.5 (b1)) the hex no longer touches a footprint the guild
-//                    holds — e.g. the Outpost it was attached to was packed up while the craft flew.
+//   'not-attached' — (a Deep Scan Array, roadmap 2.5 (b1)) the hex is no longer in or beside the guild's
+//                    territory — e.g. the Outpost it was attached to was packed up while the craft flew;
+//   'rival-territory' — (a Deep Scan Array, roadmap 2.5 slice 15) the hex is inside a RIVAL's control now —
+//                    a rival came to hold a system whose control disk covers it while the craft flew
+//                    (docs/exploration-model.md §5 REVISED 15-10-26). A rival Outpost planted ON the hex
+//                    reads 'occupied' instead: the one-structure-per-hex check runs first.
 // These are the deploy checks a craft's flight can change. The others cannot fail on arrival — the
 // dispatch proved the target is a bare hex (an anchor never moves) and the hold exactly one kit (a kit is
 // never manifested) — so they have no reason here; an arrival that trips one halts loudly instead.
-const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range', 'not-attached']);
+const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range', 'not-attached', 'rival-territory']);
 
 // OUTPOST_DOCK_TURNAROUND — the per-class load/unload time (ticks a craft holds a dock slot),
 // RULED 21-09-26 (design.md §4 "The dock model"; recorded in docs/phase-1-tuning.md): light 5,

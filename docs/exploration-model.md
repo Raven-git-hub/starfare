@@ -530,7 +530,9 @@ footprint and changes no territory.
 >   from the seed by `getClaimRadius`), or `hexDistance(hex, outpostHex) === 1` for an Outpost it owns
 >   (an Outpost has no aura, so its footprint is its own hex). A hex **inside** a footprint is not
 >   attached: the system's centre is a landmark (`not-bare-hex`), and a bare hex within `claimRadius` is
->   refused by the predicate itself (`not-attached`). A rival's territory never counts.
+>   refused by the predicate itself (`not-attached`). A rival's territory never counts. *(⤳ REVISED
+>   15-10-26, slice 15: the inside of the guild's own disk is legal now, and a hex inside a rival's control is
+>   refused as `rival-territory` — "AS-BUILT 15-10-26 — placement REVISED" below.)*
 > - **The anchor.** A held **system** first (the lowest id); else the lowest-id owned **Outpost**, and the
 >   array takes *that Outpost's* `anchorSystemId` — so `anchorSystemId` always names a system (a seed id
 >   that can never dangle), with the meaning it has on an Outpost.
@@ -550,9 +552,57 @@ footprint and changes no territory.
 > build path, the client (the deploy map's `deployRange.deepScan` paint lane, the array on the map).
 > *(⤳ 15-10-26: the dockyard build path and the Syndicate buy are BUILT (slice 14a), and so are the paint lane and the
 > client deploy (slice 14b — `territory-model.md` §5, "AS-BUILT — the `deepScan` paint lane"; §10's last note). The
-> array on the galaxy map is still not drawn.)*
+> array on the galaxy map is still not drawn.)* *(⤳ drawn since slice 15 — the next note.)*
 > *(⤳ 06-10-26, 2.5 (b2): the scan is BUILT, and so is an **operator** removal, `removeDeepScanArray` — see
 > the scan's AS-BUILT note below. A player teardown / reclaim is still not built.)*
+
+> **⤳ AS-BUILT 15-10-26 — placement REVISED + the guild's own arrays on its map (roadmap 2.5 slice 15; engine +
+> client).** Built to "Deploy placement" (REVISED 15-10-26) and "Map visibility — RULED 15-10-26" above. **No new
+> number:** the rule is geometry over the seed's `claimRadius`.
+> - **One control helper.** `controlNear(state, coords, within)` (`sim/claims.js`) lists every guild control
+>   footprint that reaches to within `within` hexes of a hex: a held system's disk (every hex within its
+>   `claimRadius` of the centre, the centre included; holding read through the same `isSystemClaim` match as
+>   `guildHolds` / `heldSystemIds`) and a guild Outpost's own hex (radius 0 — no aura yet). `within` 0 answers "who
+>   controls this hex?", 1 answers "whose control is it in or beside?". Each footprint carries its `anchorSystemId`;
+>   held systems come first, then Outposts, each in id order (invariant 9). Where two held disks overlap, more than one
+>   guild comes back: the seniority rule (`territory-model.md` §2) is design-ahead and not built, so the helper hands
+>   back every footprint and decides nothing.
+> - **The rule** (`attachedPlacement`, `sim/actions.js`, which now holds no distance check of its own): any RIVAL
+>   footprint on the hex → refused, **`rival-territory`** — a new retreatable reason in `DEPLOY_FAILED_REASONS`, beside
+>   `not-attached`; otherwise the guild's OWN footprints within 1 of the hex — none → `not-attached`; else legal,
+>   anchored to the first of them (a held system first, lowest id; else the lowest-id Outpost's own anchor — the order
+>   is unchanged). Once no rival controls the hex, "an own footprint within 1" is exactly the ruled pair: inside the
+>   guild's control, or nobody's and beside it.
+> - **Check order unchanged** (`not-bare-hex` → `kit` → `occupied` → placement). So a rival's Outpost hex beside the
+>   guild's territory reads **`occupied`** (the placement alone would say `rival-territory`), and a disk hex under the
+>   guild's own Outpost or array reads `occupied`. A hex inside BOTH the guild's disk and a rival's is refused for both:
+>   "always refused" read literally, as no seniority is built (decision checklist).
+> - **Arrival** re-runs the same check: a target that becomes a rival's control in flight — today only a guild
+>   founding on the system whose disk covers it, the one claim writer — fails `rival-territory` and retreats by the
+>   unchanged rule, the kit aboard, with the `deploy_failed` notice.
+> - **Not retroactive.** `checkDeepScanArrayIntegrity` never re-checked placement and still does not: an array whose
+>   hex later falls inside a rival's control stands, every invariant holding, tick after tick (tested).
+> - **The lane followed for free.** `attachedHexes` already cast its net over the whole `claimRadius + 1` disk, so
+>   `deployRange.deepScan` now carries the inside of the disk and the guild's own Outpost hexes (occupancy-blind, as
+>   before — `deployCheck` refuses those) and drops every hex in a rival's control. The test oracle
+>   (`sim/tests/attached-hexes-oracle.js`) now writes the ruling out on its own — its own distance, neighbours and
+>   footprints, read from the seed board and the state rows — and the lane equals it over the whole galaxy.
+> - **The client.** The array's portrait, `client/assets/units/deepscan.jpg`, in the kit-kinds row, the deploy popup
+>   and both "Building" heroes (TRADE → Constructed, the Production Console). The deploy map: "end on a dashed hex in
+>   or beside your territory"; a hex off the lane "Not in or beside your territory", or "Inside rival territory" when it
+>   lies in a rival's painted disk (words only — the lane decides). The failed-deploy title "Deployment Failed — Deep
+>   Scan Array" / "Deployment Failed — Outpost", and Reason "Rival territory".
+> - **Map visibility, as ruled.** Each of the guild's OWN arrays gets a hollow player-teal triangle on its hex (an
+>   Outpost is a filled diamond; an idle craft a smaller filled diamond, which the triangle frames when the craft that
+>   deployed it is still parked there) and, from the waystation-label zoom, a "DEEP SCAN ARRAY 01" tag hanging
+>   down-left; the map key lists "Your Deep Scan Array". Drawn from the view's own `deepScanArrays` rows with no client
+>   filter, never part of the territory paint, and no click panel (a click on the hex resolves as before). A rival's
+>   array is never drawn: it is not in the view (`sim/fog.js`; `fog.test.js`, `deep-scan-placement.test.js`).
+> **Proved** headless against a live server (`docs/roadmap.md`, slice 15): an array deployed on an inside-the-disk
+> hex from the client, its marker and tag on the map, the deploy map's three phrasings, and an in-flight
+> `rival-territory` failure read as "Deployment Failed — Deep Scan Array" / "Rival territory" — 27 checks, zero
+> console errors. **Not built** (out of scope): Outpost auras and semi-control, detection of a rival's array, a map
+> click panel for an array, the Deployed card's Manage wiring, monitoring.
 
 **Discovery — the scan (IN SCOPE).** *(⤳ BUILT 06-10-26, roadmap 2.5 (b2) — the AS-BUILT note
 follows the bullets.)* The throttle, now that distance is removed, is **time +
@@ -1265,4 +1315,5 @@ the two notes below.)*
 > Deploy → an attached hex → dispatch → arrival → Deployed → Survey → `queueScan`; an Outpost kit bought, delivered,
 > deployed and listed; and a forced `not-attached` failure recovered via Return — 58 checks, zero console errors
 > (`docs/roadmap.md`, slice 14b). The same walk with `main`'s client fails at its first client check. **Not built:** the
-> array on the galaxy map (only its running job's radar is drawn), an array teardown, monitoring.
+> array on the galaxy map (only its running job's radar is drawn), an array teardown, monitoring. *(⤳ 15-10-26, slice
+> 15: the guild's own arrays are drawn on its map now, and may be placed inside its own disk — §5's AS-BUILT note.)*

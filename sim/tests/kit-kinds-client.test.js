@@ -50,6 +50,27 @@ test('every engine kit kind has a client row, with the engine\'s kit good — an
   }
 });
 
+test('every kit row has its own portrait, and the file is in the repo (2.5 slice 15 — the array no longer falls back to a plain panel)', () => {
+  const w = clientKitTable();
+  for (const kind of Object.keys(DEPLOYABLE_KITS)) {
+    const art = w.__kitKind(kind).art;
+    assert.equal(typeof art, 'string', `kit kind ${JSON.stringify(kind)} has no art`);
+    assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'client', art)), `${art} is missing`);
+  }
+  assert.equal(w.__kitKind('deepScan').art, 'assets/units/deepscan.jpg');
+  assert.equal(w.__kitKind('outpost').art, 'assets/units/outpost.jpg');
+});
+
+test('the deploy map\'s words for the array follow its REVISED rule: in or beside your territory, and a rival refusal (slice 15)', () => {
+  const w = clientKitTable();
+  const array = w.__kitKind('deepScan');
+  assert.equal(array.target, 'a dashed hex in or beside your territory');
+  assert.equal(array.outside, 'Not in or beside your territory');
+  assert.equal(array.rival, 'Inside rival territory');
+  // The Outpost's rule does not refuse a rival's control, so it has no rival words: its refusal stays "outside".
+  assert.equal(w.__kitKind('outpost').rival, undefined);
+});
+
 test('every bill kind that finishes as a kit is labelled on the client, and maps to the same kit kind', () => {
   const w = clientKitTable();
   for (const [bill, kind] of Object.entries(KIT_KIND_FOR_BILL)) {

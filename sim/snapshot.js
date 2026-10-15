@@ -877,9 +877,9 @@ function orderSnapshot(order) {
 //
 //   { deepScan: { hexes: [ { q, r } ] } }        — roadmap 2.5, slice 14b (exploration-model.md §5)
 //     hexes   — attachedHexes(state, guildId): every hex a Deep Scan Array may be deployed on. An array is not
-//               placed within a RADIUS but "attached" (one hex outside a held system's control disk, or beside
-//               one of the guild's Outposts), so the lane publishes the hexes themselves, not a number to draw
-//               disks with. Sorted by q then r, deduped.
+//               placed within a RADIUS: it goes in or beside the guild's own territory and never inside a
+//               rival's (exploration-model.md §5, REVISED 15-10-26 — slice 15), so the lane publishes the hexes
+//               themselves, not a number to draw disks with. Sorted by q then r, deduped.
 //
 // LANE-KEYED: each lane is a sibling key, and each is OMITTED when it is empty — `outpost` when the guild holds
 // no system, `deepScan` when no hex is attached to anything it holds. null (so the caller omits `deployRange`)
@@ -903,16 +903,18 @@ function deployRangeFor(state, guildId) {
 // THE RULE IS NOT COPIED HERE. Every hex is put to `attachedPlacement` itself, so the paint and the deploy can
 // never disagree about which hex is attached. What this function adds is only WHERE TO ASK — a "net" of hexes
 // near the guild's own footprints, because asking about all ~100,000 hexes of the galaxy on every poll would be
-// far too slow. The net must hold every hex the rule could accept, and it does: the rule accepts only a hex
-// touching a held system's control disk (within claimRadius + 1 of its centre) or touching an owned Outpost
-// (within 1 of it). The net is those two disks, whole — so if the rule is ever widened to the inside of the
-// disk (decision checklist, 2.5 (b1) item 1) the net still covers it. A test compares this list to the rule asked
-// of EVERY hex in the galaxy, so a net that ever misses a hex fails loudly.
+// far too slow. The net must hold every hex the rule could accept, and it does: the rule accepts only a hex in
+// or beside the guild's own control — within claimRadius + 1 of a held system's centre, or within 1 of an owned
+// Outpost. The net is those two disks, whole, inside included (the rule's REVISED 15-10-26 widening, slice 15,
+// needed no change here). The rule then drops any hex inside a rival's control. A test compares this list to the
+// rule written out independently and asked of EVERY hex in the galaxy, so a net that ever misses a hex fails
+// loudly.
 //
 // "Bare" means no SEED landmark (a system, a Syndicate waystation, the Citadel) on the hex: those never change,
 // and a deploy can never land on one. Guild structures (Outposts, other arrays) are NOT filtered out — like the
 // outpost lane, this lane ignores occupancy: they come and go between polls, the client already draws them, and
-// deployCheck's 'occupied' check is the authority.
+// deployCheck's 'occupied' check is the authority. (A RIVAL's Outpost hex is absent all the same — not for being
+// occupied, but because it is the rival's control, which the rule itself refuses.)
 function attachedHexes(state, guildId) {
   const net = new Map();   // "q,r" -> { q, r }: a Map, so a hex near two footprints is asked about once
   const cast = (centre, reach) => {
@@ -1077,7 +1079,7 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     ...(v.laneEnded ? { laneEnded: { ...v.laneEnded } } : {}),
     // deployFailed (roadmap 2.2 deploy pipeline slice 2 — the laneEnded pattern). PRESENT only when the
     // craft's on-arrival deploy FAILED and it pulled back — `{ reason: 'occupied' | 'out-of-range' |
-    // 'not-attached', tick }` (the last a Deep Scan Array's, 2.5 (b1)) —
+    // 'not-attached' | 'rival-territory', tick }` (the last two a Deep Scan Array's, 2.5 (b1) / slice 15) —
     // so the client can later say "deploy failed — hex taken / out of range; craft pulled back". A fresh
     // copy; cleared by the craft's next dispatch. Omit-when-absent.
     ...(v.deployFailed ? { deployFailed: { ...v.deployFailed } } : {}),
