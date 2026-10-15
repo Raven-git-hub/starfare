@@ -34,6 +34,7 @@ const { intake, createApplyForLicenceAction } = require('../actions.js');
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { getRecipe } = require('../recipes.js');
 const { getStock } = require('../stock.js');
 const { getWindow } = require('../windows.js');
@@ -464,7 +465,9 @@ function isolationOne() {
   for (let i = 0; i < 1200; i += 1) {
     s = tick(s);
     state.update(hashState(s));
-    if (s.tick % 10 === 0) snaps.update(hashState(withoutTier3Contract(buildSnapshot(s))));
+    // ⤳ 15-10-26: also through the installation-quote strip (tests/installation-quote-strip.js) — the pin
+    // stays main's, and only the two new assetPurchaseQuote rows are taken out to meet it.
+    if (s.tick % 10 === 0) snaps.update(hashState(withoutInstallationQuotes(withoutTier3Contract(buildSnapshot(s)))));
   }
   return { state: state.digest('hex'), snaps: snaps.digest('hex'), invariants: checkInvariants(s, s.tick) };
 }

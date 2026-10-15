@@ -42,6 +42,7 @@ const {
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { previewProduction } = require('../production.js');
 const { getStock } = require('../stock.js');
 const { getWindow } = require('../windows.js');
@@ -326,7 +327,9 @@ function isolationRun(rows, actions) {
     s = tick(s);
     everyTick.update(hashState(withoutTopUpSwitch(s)));
     if (s.tick % ISO_DAY !== 0) return;
-    snapshots.update(hashState(withoutTopUpSwitch(buildSnapshot(s))));
+    // ⤳ 15-10-26: also through the installation-quote strip (tests/installation-quote-strip.js) — the
+    // snapshot pins below are main's, and only the two new assetPurchaseQuote rows are taken out to meet them.
+    snapshots.update(hashState(withoutInstallationQuotes(withoutTopUpSwitch(buildSnapshot(s)))));
     for (const g of s.guilds) {
       const fee = g.lastLicenceFee;
       if (fee && fee.tick === s.tick) for (const row of Object.values(fee.ventures)) counts[row.status] += 1;

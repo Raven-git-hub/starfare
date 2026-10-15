@@ -1617,7 +1617,7 @@ test('GET /asset-recipes returns the FULL build catalog, matching sim/asset-reci
   // 200 regardless. This is the tripwire that the served catalog never drifts from the
   // engine's own — a bill typo or a retuned BUILD_TICKS/MAX_QUEUE would fail here.
   // The Console builds every recipe (2.1d/2.2), so the route serves the FULL BUILDABLE_KINDS
-  // (all six, spycraft INCLUDED) and ALL_BILLS — the build catalog, not the sell catalog.
+  // (all eight, spycraft INCLUDED) and ALL_BILLS — the build catalog, not the sell catalog.
   const { ALL_BILLS, BUILD_TICKS, MAX_QUEUE, BUILDABLE_KINDS } = require('../asset-recipes.js');
   const { SPYCRAFT } = require('../vehicles.js');
   const { status, body } = await req('GET', '/asset-recipes');
@@ -1627,9 +1627,14 @@ test('GET /asset-recipes returns the FULL build catalog, matching sim/asset-reci
   assert.deepEqual(body.buildTicks, BUILD_TICKS);
   assert.equal(body.maxQueue, MAX_QUEUE);
   assert.deepEqual(body.buildable, [...BUILDABLE_KINDS]);
-  // And a spot-check on the shape: all six buildable kinds, spycraft among them, each with a bill.
-  assert.equal(body.buildable.length, 6, 'the full build catalog is served (six kinds)');
+  // And a spot-check on the shape: all eight buildable kinds, spycraft among them, each with a bill.
+  // ⤳ 15-10-26 (docs/asset-purchase.md §"Installation kits"): six → eight — the deep scan array and the outpost
+  // joined the build catalog, by their BILL kinds. The data-only toll gate did not.
+  assert.equal(body.buildable.length, 8, 'the full build catalog is served (eight kinds)');
   assert.ok(body.buildable.includes(SPYCRAFT), 'spycraft IS in the build catalog (guild-buildable)');
+  assert.deepEqual(body.buildable.slice(-2), ['deep_scan_array', 'outpost'], 'the two installation kits, last');
+  assert.equal(body.buildable.includes('toll_gate'), false, 'the toll gate is not buildable');
+  assert.equal(body.bills.toll_gate, undefined, 'and its bill is not served as a build recipe');
   for (const kind of body.buildable) {
     assert.ok(body.bills[kind], `bill served for buildable kind ${kind}`);
   }

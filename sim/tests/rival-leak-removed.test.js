@@ -40,6 +40,7 @@ const { createHash } = require('node:crypto');
 
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { getSite } = require('../seed.js');
 const { reveal, isOnPublicRegister } = require('../exploration.js');
@@ -50,8 +51,11 @@ const { stripRecordSlots, stripKnownSlots, withoutRecordSlots, withoutKnownSlots
 const { withSystemsBlock } = require('./systems-block.js');
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
-const godsEye = (s) => sha(JSON.stringify(buildSnapshot(s)));
-const viewOf = (s, guildId) => buildSnapshot(s, guildId);
+// ⤳ 15-10-26: both through the installation-quote strip (tests/installation-quote-strip.js). The installation
+// kit acquire slice added two public assetPurchaseQuote rows to every lens and view and nothing else, so every
+// pin in this file stays the bytes it was, with exactly those two rows taken out.
+const godsEye = (s) => sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(s))));
+const viewOf = (s, guildId) => withoutInstallationQuotes(buildSnapshot(s, guildId));
 const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 
 // Recorded on main at 41fe84c — BEFORE the cleanup — by copying tests/rival-leak-script.js into a checkout of

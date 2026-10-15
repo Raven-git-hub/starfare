@@ -18,8 +18,8 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
-| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,202 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); the guild↔guild contest (a rival, territory, the market) is not built yet |
+| 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,226 tests, deterministic) |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries (engine; the client half is next); the guild↔guild contest (a rival, territory, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3687,6 +3687,9 @@ boundary so the later hex-map swap doesn't touch it.
   *(⤳ 14-10-26 — **the scan edges are BUILT**, the last entry below: a finished scan writes a `scan_complete` /
   `scan_voided` notice the client shows in MESSAGES (3b's deferred notice, checklist item 9(a)), and `queueScan`
   refuses a target another of the guild's arrays is already scanning (item 8, ruled: refuse).)*
+  *(⤳ 15-10-26 — **the Deep Scan Array acquire half, ENGINE slice (14a), is BUILT**, the last entry below: a guild
+  can build (dockyard) or buy (Syndicate) a `deep_scan_array` or `outpost`, and what lands is one idle kit the
+  existing load → ferry → deploy loop carries. The client half (14b) is next.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4133,6 +4136,38 @@ boundary so the later hex-map swap doesn't touch it.
     "Survey voided — HAL-4611" newest-first, "Third Guild claimed it before it finished.", and the claimer told
     nothing; a repeat survey → "Nothing new — already charted.", 0 new readings. Sim 2,177 → **2,202**, tools **83**
     (unchanged). Checklist items below.
+  - **The Deep Scan Array acquire half — installation-kit build and buy, ENGINE slice (14a) — ⤳ AS-BUILT 15-10-26
+    (engine + snapshot + `GET /asset-recipes`; no client change).** Ruled the same day (`docs/asset-purchase.md`
+    §"Installation kits", RULED 15-10-26, with its as-built note); `phase-1-tuning.md` §"Installation kits — build
+    and buy". **No new number:** the two buy baselines are human-given, and the bills and build times were ruled
+    27-09-26. **(1) The vocabularies** (`sim/asset-recipes.js`): `deep_scan_array` and `outpost` join `ALL_BILLS`,
+    `BUILDABLE_KINDS` and the explicit `SYNDICATE_SELLABLE_KINDS`. Spycraft is still the one buildable kind that is
+    not sold. `toll_gate` stays data only. **(2) The bridge:** `KIT_KIND_FOR_BILL` (`deep_scan_array` → `deepScan`,
+    `outpost` → `outpost`) is the one place the two spellings meet, guarded at load by `assertKitBridge`: every
+    value is a real kit kind, every key buildable, and every buildable installation has a row. **(3) The baselines:**
+    `INSTALLATION_KIT_BUY_BASELINE` (array 100M, outpost 150M), read through `assetPurchaseBaseline`, so the price
+    and the cancel refund agree. **(4) The mint:** `mintFinishedKind` (`sim/tick.js`, the seam the dockyard and the
+    Syndicate arrival share) sends a bridged kind to `mintKitAsset`, now exported from `sim/actions.js` over the
+    existing tick → actions edge (no move, no copy). The kit takes the next `kitAssetSerial`. **(5) Gates and
+    invariants:** no special case. Commission, buy, both cancels and `checkBuildQueues` read the vocabularies; the
+    minted kit is a kit kind `checkAssetOccupancy` already accepts. No check widened. **(6) Snapshot / HTTP:** the
+    quote gains two rows (each `priceAssetForPurchase` + `BUILD_TICKS`), and `/asset-recipes` serves eight buildable
+    kinds. **No serialized byte moved:** every state golden is unchanged. The 12 snapshot/view goldens that moved
+    (by exactly the two public quote rows) are still asserted against their pre-slice hashes, through the new
+    `sim/tests/installation-quote-strip.js`: `fog`, `rival-leak-removed` (×3), `scan-notice`, `deep-scan-job`,
+    `deep-scan-array`, `settlement-rescue`, `settlement-rescue-fix`, `syndicate-top-up`, `tier3-contract`,
+    `tier3-payment`. **Re-pointed to the ruling:** the four tests that pinned the old catalogue
+    (`asset-recipes-final`'s "DATA ONLY", `deep-scan-array`'s "NOT buildable", `kit-asset`'s outpost-buy refusal,
+    `server`'s six-kind `/asset-recipes`). **Doc correction:** `asset-purchase.md`'s 26-09-26 "Observation"
+    (that the parts branch cannot bind at the ceiling) is untrue under today's bands. At band ceiling it binds for
+    the miner, factory, medium, heavy and the array (3,206,688,000 vs 100M); only the light transport and the outpost
+    (46,080,000 vs 150M) keep the baseline. Corrected there, from code. **Tripwires:**
+    `sim/tests/installation-kit-acquire.test.js` (+21) and `sim/tests/installation-kit-round-trip.test.js` (+3: a
+    built array and a bought array, each built → loaded → flown → deployed attached → L1-scanned → revealed, and a
+    built outpost deployed into a live Outpost; every tick through `advance()`). **Checked to fail:** without the mint
+    fork (5 red: a built outpost reissues the loaded kit's id `asset_g1_outpost_01`, and a bought array halts on
+    `asset-kind-known`), without the sell entries (13 red), without the baseline table (5 red). Sim 2,202 →
+    **2,226**, tools **83** (unchanged). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5244,6 +5279,25 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   5. **No invariant for "two of a guild's arrays on one target".** A save from before this slice could legally hold a double-booking, and an every-tick invariant would halt that galaxy on load; the refusal at the queue is the guard. Confirm, or rule a tripwire (and how an old double-booking is treated).
   6. **The claimer is not told.** A voided scan writes only to the scanning guild's log; the guild whose claim voided it hears nothing, because the scan was private (a rival's array and its jobs never reach another guild's view). Confirm.
   7. **Seams — not decisions, recorded:** (a) **the client does not pre-empt the duplicate refusal** — it needs no change: while an array of ours is on a target, that target's Survey control already reads "Surveying · <eta>" and opens nothing, so the refusal is reachable only from a popup opened before another array started on the same target (it then shows the engine's reason in the popup, as any refusal). (b) The client proof harness still lives outside the repo (3a item 8(c)). (c) In `docs/event-log.md` §2's opening list, `outpost_packed` still read "client half next", though §12 records the client half BUILT 05-10-26; corrected in passing with this slice's line.
+- **The Deep Scan Array acquire half, ENGINE slice 14a (2.5 — installation-kit build and buy) — items for a ruling or a
+  confirm** — *surfaced 15-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **The client offers both kinds before 14b.** The TRADE tab's Constructed menu iterates `assetPurchaseQuote` and the
+     Production Console's commission dropdown iterates `/asset-recipes` `buildable`, so both now list "Deep Scan Array"
+     and "Outpost" with no client edit (the generic label, the fallback build art), and their Add posts a buy or a
+     commission the engine accepts. A built or bought **outpost** kit already has the idle-kit Deploy. A built or
+     bought **array** kit has none until 14b (the operator `load-kit` lever reaches it meanwhile), and an array in
+     flight reads "Deep_scan_array Asset" in Operations (`craftManifestLabel` keeps the underscores). Confirm it is
+     fine to merge 14a before 14b, or hold it until 14b lands.
+  2. **A kit bought into an unheld system can be collected but not put back there.** The ruled destination rule (no
+     presence needed) lands it idle anywhere; `loadKit` then needs only a heavy berthed in that system, while
+     `unloadKit` needs the system held. No new rule was added. Confirm that is the intended combination.
+  3. **The duplicate-id tripwire runs after the mint for a kit.** `mintKitAsset` builds the id itself, so
+     `mintFinishedKind` checks for a duplicate after it mints (and halts), rather than copying the id rule to check
+     before. Built that way to keep one id rule; flagged because the other two branches check before they push.
+  4. **Seams — not decisions, recorded:** (a) `GET /asset-recipes`'s `buildTicks` is the whole `BUILD_TICKS` table,
+     so it still carries the data-only toll gate's inert 8,640 (unchanged from before). (b) `assetPurchaseBaseline`
+     still answers the 12M floor for a kind with no baseline row, the toll gate included; nothing reaches it, because
+     `priceAssetForPurchase` returns null for a kind with no bill and both gates refuse first.
 - **Droids:** the production-boost mechanic + numbers.
 
 **Carried from Phase 1 / earlier:**

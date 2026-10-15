@@ -2147,9 +2147,11 @@ function buildGodsEyeSnapshot(state) {
       });
     })(),
     // The ASSET-PURCHASE QUOTE (docs/asset-purchase.md "Price") — for each Syndicate-buildable
-    // SELLABLE kind (the two ground assets and the three CARGO transports — SYNDICATE_SELLABLE_KINDS,
-    // spycraft excluded as guild-build-only, docs/asset-purchase.md §"What the Syndicate sells"), the
-    // credit price a purchase would cost right now and the ticks it builds over.
+    // SELLABLE kind (the two ground assets, the three CARGO transports and the two installation kits —
+    // SYNDICATE_SELLABLE_KINDS, spycraft excluded as guild-build-only, docs/asset-purchase.md §"What the
+    // Syndicate sells" / §"Installation kits"), the credit price a purchase would cost right now and the
+    // ticks it builds over. An installation's row is keyed by its BILL kind (`deep_scan_array`), the
+    // kind a buy names, not the kit kind it lands as.
     // Published so the TRADE tab's "4 · Constructed" buy view can SHOW the price and the build
     // time without the browser ever pricing an asset or knowing a build duration (§5: the client
     // renders the snapshot, computes no game number). The price is the engine's own

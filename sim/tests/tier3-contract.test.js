@@ -34,6 +34,7 @@ const {
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { getRecipe } = require('../recipes.js');
 const { ticksPerUnitFor, MINE_BASELINE } = require('../baseline.js');
 const { TIER3_GOODS } = require('../resources.js');
@@ -543,7 +544,9 @@ function isolationRun() {
     }
     s = tick(s);
     stateHash.update(hashState(s));
-    if (s.tick % 10 === 0) snapHash.update(hashState(withoutTier3Contract(buildSnapshot(s))));
+    // ⤳ 15-10-26: also through the installation-quote strip (tests/installation-quote-strip.js) — the pin
+    // stays main's, and only the two new assetPurchaseQuote rows are taken out to meet it.
+    if (s.tick % 10 === 0) snapHash.update(hashState(withoutInstallationQuotes(withoutTier3Contract(buildSnapshot(s)))));
   }
   return { state: stateHash.digest('hex'), snaps: snapHash.digest('hex') };
 }

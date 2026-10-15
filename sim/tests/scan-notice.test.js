@@ -22,6 +22,7 @@ const { createHash } = require('node:crypto');
 const { advance } = require('../run.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { reveal, revealPlanetSurface } = require('../exploration.js');
 const { SCAN_COMPLETE, SCAN_VOIDED } = require('../events.js');
@@ -265,9 +266,11 @@ test('GOLDENS DELTA: strip the scan notices and every finished scan is main\'s b
     const { state: stripped, dropped } = withoutScanNotices(s);
     assert.deepEqual(dropped.map((e) => [e.guildId, e.type]), EXPECTED_NOTICES[name].map((t) => [A, t]), `${name}: exactly the expected notices, all A's`);
     assert.equal(hashState(stripped), pins.state, `${name}: the state moved OUTSIDE the notice (the reveal or the job-clear changed)`);
-    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(buildSnapshot(s)))), pins.godsEye, `${name}: the god's-eye lens moved outside the notice`);
-    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(buildSnapshot(s, A)))), pins[A], `${name}: A's view moved outside the notice`);
-    assert.equal(sha(JSON.stringify(buildSnapshot(s, B))), pins[B], `${name}: B's view moved at all`);
+    // ⤳ 15-10-26: every lens/view hash here goes through the installation-quote strip (tests/installation-quote-strip.js) —
+    // the installation kit acquire slice added two public assetPurchaseQuote rows and nothing else, so the pins stay as they were.
+    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutInstallationQuotes(buildSnapshot(s))))), pins.godsEye, `${name}: the god's-eye lens moved outside the notice`);
+    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutInstallationQuotes(buildSnapshot(s, A))))), pins[A], `${name}: A's view moved outside the notice`);
+    assert.equal(sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(s, B)))), pins[B], `${name}: B's view moved at all`);
   }
 });
 

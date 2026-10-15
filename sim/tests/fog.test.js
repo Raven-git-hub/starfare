@@ -49,6 +49,7 @@ const { advance } = require('../run.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const A_ = require('../actions.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const {
   TOP_LEVEL, OMIT_WHEN_EMPTY_TOP_LEVEL, RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS,
   RIVAL_SYSTEM_LANDMARK_FIELDS, GALAXY_FUEL_FIELDS,
@@ -151,7 +152,10 @@ function godsEyeScript() {
 test('god\'s-eye: buildSnapshot(state) is byte-identical to pre-slice main, for every scripted state', () => {
   const states = godsEyeScript();
   for (const [name, golden] of Object.entries(GODS_EYE_ON_MAIN)) {
-    assert.equal(sha(bytes(buildSnapshot(states[name]))), golden, `the god's-eye bytes moved at "${name}"`);
+    // ⤳ 15-10-26: through the installation-quote strip (tests/installation-quote-strip.js). The installation
+    // kit acquire slice added two public assetPurchaseQuote rows to every snapshot and nothing else; take them
+    // out and these must still be main's bytes.
+    assert.equal(sha(bytes(withoutInstallationQuotes(buildSnapshot(states[name])))), golden, `the god's-eye bytes moved at "${name}"`);
   }
 });
 

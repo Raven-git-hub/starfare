@@ -33,7 +33,8 @@ catalogs deliberately DIVERGE at spycraft:
   full `BUILDABLE_KINDS` — miner, factory, light / medium / heavy transport, **and spycraft**.
 - **Sell catalog** — the Syndicate buy (the `assetPurchaseQuote` snapshot block + the
   `buyAssetFromSyndicate` gate): a new **`SYNDICATE_SELLABLE_KINDS`** = `BUILDABLE_KINDS` **minus
-  `spycraft`** — miner, factory, light / medium / heavy transport (five kinds).
+  `spycraft`** — miner, factory, light / medium / heavy transport (five kinds). *(⤳ 15-10-26: seven kinds — the deep
+  scan array and outpost kits joined both catalogs, §"Installation kits". Spycraft is still the one exception.)*
 
 `SYNDICATE_SELLABLE_KINDS` is the one authoritative set for "what the Syndicate sells": the buy
 gate **refuses** any kind outside it (a spycraft buy is refused loudly, not merely hidden from
@@ -89,6 +90,59 @@ something the guild acquired itself.
   is the 9-day build or the 150M price, one heavy per kit, and the deploy placement rules. Whether
   a guild should be capped is a play question, logged on the roadmap decision checklist, not
   ruled here (pressure over prohibition).
+
+### As built — installation-kit acquire (2.5, ENGINE slice, 15-10-26)
+
+✅ **BUILT — the ruling above, engine + snapshot + `GET /asset-recipes` (no client change).** **No new number**:
+the only values are the two human-given baselines and the 27-09-26 bills and build times.
+
+- **The vocabularies** (`sim/asset-recipes.js`). A new `BUILDABLE_INSTALLATION_KINDS = [deep_scan_array, outpost]`
+  feeds `ALL_BILLS` and `BUILDABLE_KINDS`, and both kinds are spelled into the explicit
+  `SYNDICATE_SELLABLE_KINDS` list (seven kinds; spycraft is still the only buildable kind that is not sold).
+  `toll_gate` stays in `INSTALLATION_BILLS` only: `assetBill` returns null for it, so both paths refuse it.
+- **The bridge.** `KIT_KIND_FOR_BILL = { deep_scan_array: 'deepScan', outpost: 'outpost' }` (frozen, exported, read
+  through `kitKindForBill`) is the only place the two spellings meet. A load-time tripwire, `assertKitBridge`,
+  halts the process if a value is not a kit kind in `DEPLOYABLE_KITS`, if a key is not buildable, or if a
+  buildable installation has no row. The third rule is the one that stops the toll gate being made buildable
+  before it has a kit.
+- **The baselines.** `INSTALLATION_KIT_BUY_BASELINE = { deep_scan_array: 100,000,000, outpost: 150,000,000 }`, beside
+  `VEHICLE_BUY_BASELINE`. `assetPurchaseBaseline(kind)` reads the vehicle table, then this one, then
+  `ASSET_PURCHASE_FLOOR`, so the price and the cancel refund share one definition. Neither number is written
+  anywhere else.
+- **The mint** (`sim/tick.js` `mintFinishedKind`, the one seam the dockyard completion and the Syndicate arrival
+  share). Before the vehicle and ground-asset branches, a kind with a bridge row mints through
+  `mintKitAsset(guild, kitKind, systemId)`, which is now exported from `sim/actions.js`. `tick.js` already
+  imported from `actions.js` (the chained-route hooks), and `actions.js` does not require `tick.js`, so this needed
+  no move and no copy. The kit takes the next `kitAssetSerial`. It is checked first because the outpost's bill
+  kind is spelled like its kit kind and must not fall through to `nextAssetNumber`. Without the fork, a built
+  outpost minted after a loaded one would reissue the loaded kit's id, which a test pins. The duplicate-id tripwire
+  runs after the mint for this branch, so the id rule stays inside `mintKitAsset`.
+- **Gates and invariants: no special case.** `commissionBuild`, `buyAssetFromSyndicate`, both cancels and
+  `checkBuildQueues` already read the vocabularies, so they accept the two kinds unchanged. Only their refusal
+  texts were updated to name the kits. A queue entry or a commission keeps the BILL kind; the minted asset has the
+  KIT kind, which `checkAssetOccupancy` already accepts (`isKitAssetKind`), and `kit-asset-serial-monotonic` holds
+  because the mint bumps the serial. No check needed widening. `syndicateBuilds` and shipments carry no kind check
+  to widen.
+- **Delivery.** A kit is not a vehicle, so a bought one rides the Syndicate hauler (`arrivalTickFor`) and its
+  buy burns the heavy-hold asset fuel (`routeFuelCost(dest, ASSET_CARGO_VOLUME)`), like a miner. It lands at the
+  chosen system whether or not the guild holds it, under the existing rule. After that the existing kit rules
+  apply unchanged: a heavy berthed there can load it (`loadKit` asks only "same system"), but it cannot be
+  unloaded back into an unheld system (`unloadKit` asks "held"). No new rule.
+- **Snapshot / HTTP.** `assetPurchaseQuote` gains `deep_scan_array` and `outpost` rows, keyed by the bill kind,
+  each priced by `priceAssetForPurchase` (100M / 150M at rest) with `buildTicks` 10,080 / 12,960. `GET
+  /asset-recipes` serves eight buildable kinds. Because the quote is public, every god's-eye snapshot and
+  per-guild view grew by exactly those two rows. **No serialized byte moved**: every state golden is unchanged.
+  The 12 snapshot/view goldens are still asserted against their pre-slice hashes through
+  `sim/tests/installation-quote-strip.js`, which removes just those two rows (and refuses to strip nothing).
+- **Not built (slice 14b, client):** the client already iterates the quote and `buildable`, so the TRADE tab's
+  Constructed menu and the Console's commission dropdown will list the two kinds with no edit (labelled by the
+  generic `pretty` / `prettyGood`, with the fallback build art). The idle-array Deploy, `KIT_GOOD`, the Deployed
+  card and `deployRange.deepScan` are 14b's.
+
+Tripwires: `sim/tests/installation-kit-acquire.test.js` (21: the bridge and its tripwire, the baselines, wrong and
+right paths, ids, reserve-and-wait, cancel and premium, the scale check, destination, conservation, the snapshot,
+determinism) and `sim/tests/installation-kit-round-trip.test.js` (3 end-to-end runs: built array, bought array,
+built outpost; every tick through `advance()`).
 
 ## The two phases
 
@@ -154,7 +208,8 @@ dockyard's `cancelCommission` precedent, `build-yard.md` §3).
 On cancel:
 
 - **Credits — refund the kind's BASELINE, not the price paid.** The guild is returned
-  `VEHICLE_BUY_BASELINE[kind]` for a transport, else `ASSET_PURCHASE_FLOOR` (12M) for miner/factory
+  `VEHICLE_BUY_BASELINE[kind]` for a transport, *(⤳ 15-10-26: `INSTALLATION_KIT_BUY_BASELINE[kind]` for an
+  installation kit,)* else `ASSET_PURCHASE_FLOOR` (12M) for miner/factory
   — the same `baseline` term the purchase price is `max(baseline, …)` of. When the pricing formula
   ever lifts the paid price above the baseline (the `partsCost × 0.8` branch), the Syndicate KEEPS
   that premium; at today's parts scale the baseline binds, so the refund equals what was paid. The
@@ -402,6 +457,17 @@ from the existing baselines. None was invented.
   to about 0.8M against the 12M floor). So the `partsCost × 0.8` branch cannot bind today, and a cancel
   refund always equals the price paid. The premium rule is live in code and pinned by a test that
   hand-sets out-of-band prices.
+  *(⤳ **CORRECTED 15-10-26** (the installation-kit acquire slice), from the code's own bands. It is not true
+  under today's bands (the 27-09-26 Tier-3 sub-tier and specialist bands, every ceiling 100× base): ~0.8M is
+  what a miner's parts × 0.8 come to at **base** prices, not at the ceiling. What holds: at **base** prices the baseline
+  binds for every sellable kind. At **band-ceiling** prices, parts × 0.8 exceeds the baseline for five of the
+  seven sellable kinds: miner ≈ 84.3M and factory ≈ 84.3M (vs 12M), medium ≈ 324M (vs 15M), heavy ≈ 8.0B
+  (vs 200M), deep scan array **3,206,688,000** (vs 100M). Only the light transport (≈ 2.5M vs 5M) and the
+  outpost (**46,080,000** vs 150M) keep the baseline at the ceiling. At base, the array's parts × 0.8 are
+  **32,066,880** and the outpost's **460,800**. So the parts branch **can** bind today if module prices climb
+  far enough, and then a cancel refunds the baseline, less than was paid: the premium rule above, working as
+  ruled. No decision changes. `sim/tests/installation-kit-acquire.test.js` pins these figures and which
+  kinds bind.)*
 
 Tripwires: `sim/tests/syndicate-queue-cancel.test.js` (23 tests: the cap, stable ids, cancel and
 refund, fuel forfeit, FIFO order kept, the empty key deleted, underway and non-owner refusals,
