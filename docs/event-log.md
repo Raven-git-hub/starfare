@@ -293,6 +293,7 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
 - `cause` — `'occupied'` | `'out-of-range'` | `'not-attached'` (the retreatable reasons; the §5 `deployFailed`
   reason). *(⤳ `'not-attached'` added 06-10-26, roadmap 2.5 (b1): a Deep Scan Array whose attachment to held
   territory was lost in flight. The client's Reason fact has no label for it yet — it reads "—" — client slice.)*
+  *(⤳ 15-10-26, roadmap 2.5 slice 14b: labelled **"Not attached"**.)*
 - `kind` — the deployable kind, `'outpost'` or (2.5 (b1)) `'deepScan'`.
 - `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
 - `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map). *(⤳ Now the forks'
@@ -314,7 +315,9 @@ any notice. The popup is the same adviser-reel card, re-dressed for this type:
   > decision from you.
 
 - **the facts block**: `Craft` = `craftClass · NN`; `Target` = `hex {q}, {r}`; `Reason` = Hex taken /
-  Out of range (from `cause`); `Pulled back to` = `retreatSystemName`; `Failed` = the event `whenDay`.
+  Out of range (from `cause`); `Pulled back to` = `retreatSystemName`; `Failed` = the event `whenDay`. *(⤳ 15-10-26,
+  slice 14b: `Reason` = Not attached for `'not-attached'`; and the title's {Kind} is the STRUCTURE's player name from
+  the client's kit-kinds table — "Outpost", "Deep Scan Array" — where it printed the raw kind for the array.)*
 - **a SHOW ON MAP button** beside Dismiss: closes the popup and flies the map to the **craft’s CURRENT
   hex**, looked up live by `craftId` in the snapshot. A retreated craft sits on its hex INDEFINITELY until
   the player acts on it, so "current" is reliable; if the craft is gone, fall back to `payload.targetHex`.

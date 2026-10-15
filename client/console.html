@@ -3026,7 +3026,7 @@ function renderDockyardTab(){
         : '<button class="dk-x" title="cancel this commission" data-cancel="' + esc(e.commissionId) + '">&#10005;</button>';
       return '<div class="dk-qitem' + (isHead ? ' cur' : '') + '">' +
         '<span class="pos">' + pos + '</span>' +
-        '<span class="kind">' + esc(e.assetKind) + '<span class="sub">' + sub + '</span></span>' + x +
+        '<span class="kind">' + esc(dkKindLabel(e.assetKind, e.assetKind)) + '<span class="sub">' + sub + '</span></span>' + x +
       '</div>';
     }).join('');
   }
@@ -3099,7 +3099,7 @@ function renderDockyardTab(){
   // --- the art: current-build construction art (dims when idle) + the dockyard art.
   //     The two hero panels are SIBLINGS in the 4-column .dk-body grid (no .dk-heroes column
   //     wrapper), so they sit side by side per docs/mockups/dockyard-tab.html. ---
-  var role = headState === 'idle' ? '&mdash;' : esc(head.assetKind);
+  var role = headState === 'idle' ? '&mdash;' : esc(dkKindLabel(head.assetKind, head.assetKind));
   // The hero art follows the head build's kind (via DKC_ART) so a transport build shows its own
   // portrait, not the factory image; when idle it keeps the dimmed construction fallback.
   var buildingArt = (headState === 'idle' ? DKC_ART_FALLBACK : (DKC_ART[head.assetKind] || DKC_ART_FALLBACK));
@@ -3138,9 +3138,19 @@ var DKC_ART = {
   lightTransport: 'assets/units/lighttransport.jpg',
   mediumTransport: 'assets/units/mediumtransport.jpg',
   heavyTransport: 'assets/units/heavytransport.jpg',
-  spycraft: 'assets/units/spycraft.jpg'
+  spycraft: 'assets/units/spycraft.jpg',
+  outpost: 'assets/units/outpost.jpg'   // (2.5 slice 14b) the Deep Scan Array has no art yet: the fallback
 };
 var DKC_ART_FALLBACK = 'assets/industrial/factoryConstruction.jpg';
+
+// The two installations a dockyard builds finish as a KIT, not the structure (docs/asset-purchase.md
+// §"Installation kits"), so the picker, the queue and the hero name them as kits. Keyed by the BILL kind the
+// commission names. This page is its own document, so it keeps these two labels itself; client/game.html's
+// kit-kinds table is the one the rest of the client reads, and must say the same.
+var DK_KIT_LABEL = { deep_scan_array: 'Deep Scan Array kit', outpost: 'Outpost kit' };
+// dkKindLabel(kind, plain) -> the kit label for an installation, else `plain` (what the screen showed before).
+function dkKindLabel(kind, plain){ return Object.prototype.hasOwnProperty.call(DK_KIT_LABEL, kind) ? DK_KIT_LABEL[kind] : plain; }
+
 // 1,440 ticks/day (docs/cycle-and-calendar.md) — the same conversion the catalog's comment uses;
 // the mockup's "3 days / 5 days" are buildTicks/1440. Not a game number of ours: a display unit.
 var DKC_TICKS_PER_DAY = 1440;
@@ -3172,8 +3182,8 @@ function renderCommissionOverlay(){
 
   document.getElementById('dkc-days').textContent = fmtRate(days);
   document.getElementById('dkc-modcount').textContent = modules.length;
-  document.getElementById('dkc-stitle').textContent = 'Tier-4 Construction · ' + prettyGood(kind);
-  document.getElementById('dkc-go').textContent = 'Commission ' + prettyGood(kind);
+  document.getElementById('dkc-stitle').textContent = 'Tier-4 Construction · ' + dkKindLabel(kind, prettyGood(kind));
+  document.getElementById('dkc-go').textContent = 'Commission ' + dkKindLabel(kind, prettyGood(kind));
   document.getElementById('dkc-art').style.backgroundImage =
     "url('" + (DKC_ART[kind] || DKC_ART.miner) + "')";
 
@@ -3216,7 +3226,7 @@ function openCommission(){
   DKC.kind = buildable[0];
   // (Re)build the dropdown from the buildable kinds each open, so a catalog change is reflected.
   document.getElementById('dkc-kind').innerHTML = buildable.map(function(k){
-    return '<option value="' + esc(k) + '">' + esc(prettyGood(k)) + '</option>';
+    return '<option value="' + esc(k) + '">' + esc(dkKindLabel(k, prettyGood(k))) + '</option>';
   }).join('');
   document.getElementById('dkc-kind').value = DKC.kind;
   renderCommissionOverlay();

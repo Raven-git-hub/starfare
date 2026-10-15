@@ -528,6 +528,9 @@ footprint and changes no territory.
 >   god's-eye hashes of 2.5 (a) still hold.
 > **Not built:** the scan (below — slice (b2)), monitoring, teardown or removal of an array, a dockyard
 > build path, the client (the deploy map's `deployRange.deepScan` paint lane, the array on the map).
+> *(⤳ 15-10-26: the dockyard build path and the Syndicate buy are BUILT (slice 14a), and so are the paint lane and the
+> client deploy (slice 14b — `territory-model.md` §5, "AS-BUILT — the `deepScan` paint lane"; §10's last note). The
+> array on the galaxy map is still not drawn.)*
 > *(⤳ 06-10-26, 2.5 (b2): the scan is BUILT, and so is an **operator** removal, `removeDeepScanArray` — see
 > the scan's AS-BUILT note below. A player teardown / reclaim is still not built.)*
 
@@ -1226,3 +1229,20 @@ the two notes below.)*
 >   the planet at L2 — 15 node and 15 slot pips, 15 resource rows). The same script against the pre-slice client
 >   fails at the first survey check (the disabled button). Sim **2,163** and tools unchanged. The harness lives
 >   outside the repo, as 3a's does (3a checklist item 8(c)).
+>
+> **⤳ AS-BUILT 15-10-26 — the array reaches the player: acquire, deploy, see it (roadmap 2.5 slice 14b; engine
+> read-path + client).** Until now a Deep Scan Array came only from the operator's `grant-kit`, so the survey flow above
+> was proved on an operator-placed array. Now the player gets one end to end, from the client: **commission** it at a
+> dockyard (the Production Console's picker, "Deep Scan Array kit", 7 days) or **buy** it from the Syndicate (TRADE →
+> Constructed, the quote's price as sent) — `asset-purchase.md` §"Installation kits"; see it land under OPERATIONS →
+> IDLE as "Deep Scan Array kit" with a **Deploy** button; pick a carrier and a hex on the deploy map, which paints the
+> engine's own `deployRange.deepScan` hexes (the hexes the "attached" rule accepts — `territory-model.md` §5); and see
+> the placed array under OPERATIONS → **Deployed**, read-only off its row: its name, its hex, and "idle · anchored to
+> <system>" or "surveying <target> · <time left>". The survey popup's picker then offers it, unchanged. A deploy that
+> fails on arrival (e.g. **not-attached**, the Outpost it touched packed up in flight) is resolved from the pilot's
+> notice by Redeploy or Return, which now reach an array kit. **No new number**; the client computes none (§18).
+> **Proved** headless against a live server, the guild founded through the connect screen: commission → ticks → idle →
+> Deploy → an attached hex → dispatch → arrival → Deployed → Survey → `queueScan`; an Outpost kit bought, delivered,
+> deployed and listed; and a forced `not-attached` failure recovered via Return — 58 checks, zero console errors
+> (`docs/roadmap.md`, slice 14b). The same walk with `main`'s client fails at its first client check. **Not built:** the
+> array on the galaxy map (only its running job's radar is drawn), an array teardown, monitoring.

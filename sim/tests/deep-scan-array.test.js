@@ -34,6 +34,7 @@ const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
+const { withoutDeepScanLanes } = require('./deep-scan-lane-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { computeGalacticSupply } = require('../supply.js');
 const {
@@ -537,7 +538,9 @@ test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placemen
     assert.equal(hashState(noSlots), OUTPOST_PATH_ON_MAIN[name].state, `"${name}" moved outside the record's slots`);
     // ⤳ 15-10-26: every lens/view hash here goes through the installation-quote strip (tests/installation-quote-strip.js) —
     // the installation kit acquire slice added two public assetPurchaseQuote rows and nothing else, so the pins stay as they were.
-    assert.equal(sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(steps[name])))), OUTPOST_PATH_ON_MAIN[name].godsEye, `the god's-eye lens moved at "${name}"`);
+    // ⤳ 15-10-26 (slice 14b): and through the deepScan-lane strip (tests/deep-scan-lane-strip.js) — every guild row
+    // holding a system gained `deployRange.deepScan` and nothing else moved, so the pins still stand.
+    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(steps[name]))))), OUTPOST_PATH_ON_MAIN[name].godsEye, `the god's-eye lens moved at "${name}"`);
   }
   assert.equal(sha(JSON.stringify(reasons)), OUTPOST_PATH_ON_MAIN.reasons, 'an outpost refusal moved');
   // The script really did exercise each branch, so the hashes are guarding something.

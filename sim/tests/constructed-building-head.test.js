@@ -39,8 +39,12 @@ const html = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'game.ht
 // display-name helper; taking the real one means the labels checked below are the real labels.
 const viewSrc = html.match(/\n  function cnDur\(ticks\)\{[\s\S]*?(?=\n  \/\/ Add a commission:)/);
 const prettySrc = html.match(/\n  function pretty\(key\)\{[\s\S]*?\n  \}\n/);
+// ⤳ 15-10-26 (2.5 slice 14b): the view names an installation through the page's kit-kinds table
+// (window.__kitLabelForBill), so the sandbox runs that real script first, on a stub `window`.
+const kitKindsSrc = html.match(/<script id="kit-kinds">([\s\S]*?)<\/script>/);
 assert.ok(viewSrc, 'the Constructed view source (cnDur … renderConstructed) is present in game.html');
 assert.ok(prettySrc, 'the TRADE pretty() helper is present in game.html');
+assert.ok(kitKindsSrc, 'the kit-kinds table script is present in game.html');
 
 // Render the view for `guildId` off `snapshot` and return the HTML it would put on the page.
 // The snapshot goes through JSON first, exactly as the browser receives it from GET /snapshot.
@@ -53,8 +57,9 @@ function renderFor(snapshot, guildId) {
     snap: () => s,
     meGuild: () => s.guilds.find((g) => g.id === guildId) || null,
     fmt: (n) => String(Math.round(n)),
+    window: {},
   };
-  vm.runInNewContext(prettySrc[0] + viewSrc[0] + '\nrenderConstructed();', sandbox);
+  vm.runInNewContext(kitKindsSrc[1] + prettySrc[0] + viewSrc[0] + '\nrenderConstructed();', sandbox);
   return container.innerHTML;
 }
 

@@ -84,6 +84,17 @@ each entry an **ID + descriptor button → the Manage popup**.
 
 DEPLOYED's entities (map structures) don't exist yet, so it stays an **empty scaffold**; **IDLE goes live with the ground-asset inventory (2.1b client)** — founding-granted miners/factories exist from turn one — and gains idle transports and kits as those slices land.
 
+**AS-BUILT 15-10-26 — DEPLOYED goes live, read-only (roadmap 2.5 slice 14b; `client/game.html`).** The card lists the
+guild's own **Outposts** and **Deep Scan Arrays** off their snapshot rows (`outposts`, `deepScanArrays` — the per-guild
+view carries the guild's own), **grouped by type under collapsible headers** in the IDLE tree's own idiom (its classes
+and caret; the collapse survives a poll). Each entry is its name — an Outpost's "<anchor system> Outpost", an array's
+"Deep Scan Array NN" — with its **hex coordinate as the descriptor** (the 10-09-26 ruling above), over one state line:
+"anchored to <system>"; an array adds what its row says, "idle" or "surveying <target> · <time left>" (the job's own
+`completeTick`). An honest empty state ("Nothing deployed yet") replaces the old "from the build yard, 2.1" scaffold copy.
+**Not built:** the Manage popup and an Outpost's stored-manifest expansion (the Outpost Manager, opened from the map,
+remains where an Outpost is inspected); toll gates (no entity yet). IDLE now also labels kits by kind ("Deep Scan Array
+kit", grouped "Deep Scan Array kits") and gives every kit kind a Deploy button.
+
 ## 6. LEASED — future (Phase 4)
 
 Transports leased to the Syndicate under the lease/recall contract (`transport-model.md` §10 open q —

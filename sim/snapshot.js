@@ -55,8 +55,12 @@ const { usedSpace, copyManifestLine } = require('./manifest.js');
 const { copyRouteWaypoint } = require('./routes.js');
 // The one home of a lap's price (beside dispatchRoute), so a lane's row shows what its laps really burn.
 // No require cycle: nothing actions.js loads requires this file.
-const { perLapCost } = require('./actions.js');
-const { getSite, getLandmark, getStarterSystems, getTerranHomeworld } = require('./seed.js');
+// attachedPlacement: the Deep Scan Array's deploy rule, which the `deployRange.deepScan` lane asks hex by hex.
+const { perLapCost, attachedPlacement } = require('./actions.js');
+const {
+  getSite, getLandmark, getStarterSystems, getTerranHomeworld,
+  getSystem, getClaimRadius, isHexInBounds, seedLandmarkAtHex,
+} = require('./seed.js');
 const { guildTotals, cloneStockpiles } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
@@ -764,9 +768,11 @@ function computeAttention(state) {
 //                                                                   //   (deploy pipeline slice 2)
 //                 savedRoutes?: [ { id, name,                     // §11.9 saved routes (2.2 automation 2a),
 //                                   waypoints: [ { anchor, action? } ] } ], // omit-when-empty, stored order
-//                 deployRange?: { outpost: { radius,              // territory-model.md §5 (deploy slice 3):
-//                                            anchors: [ systemId ] } }, // radius = OUTPOST_DEPLOY_RANGE, anchors =
+//                 deployRange?: { outpost?: { radius,             // territory-model.md §5 (deploy slice 3):
+//                                            anchors: [ systemId ] }, // radius = OUTPOST_DEPLOY_RANGE, anchors =
 //                                                                //   held systems, sorted; lane-keyed; omit-when-empty
+//                                 deepScan?: { hexes: [ {q,r} ] } }, // 2.5 slice 14b: the hexes attachedPlacement
+//                                                                //   accepts, sorted q then r; omit-when-empty
 //                 productionProfile: { ... } } ],               // §5 profile, sparse as stored
 //     production: [ { guildId,                                  // previewProduction(state)
 //       systems: [ { systemId, mines, goods, lines, refineries,     // resolved per-system
@@ -869,15 +875,78 @@ function orderSnapshot(order) {
 //               measures the range to, so the paint and the rule read one set. Already sorted and deduped at
 //               the source (invariant 9), so it is not re-sorted here; a fresh array, so no aliasing.
 //
-// LANE-KEYED so `tollGate` / `deepScan` can join as sibling keys when their lanes are built, with no reshape.
-// Only the outpost lane is built, so only `outpost` is filled. null for a guild that holds nothing: it can
-// deploy nowhere, so there is no range to paint (the omit-when-empty discipline `savedRoutes` keeps).
+//   { deepScan: { hexes: [ { q, r } ] } }        — roadmap 2.5, slice 14b (exploration-model.md §5)
+//     hexes   — attachedHexes(state, guildId): every hex a Deep Scan Array may be deployed on. An array is not
+//               placed within a RADIUS but "attached" (one hex outside a held system's control disk, or beside
+//               one of the guild's Outposts), so the lane publishes the hexes themselves, not a number to draw
+//               disks with. Sorted by q then r, deduped.
+//
+// LANE-KEYED: each lane is a sibling key, and each is OMITTED when it is empty — `outpost` when the guild holds
+// no system, `deepScan` when no hex is attached to anything it holds. null (so the caller omits `deployRange`)
+// when both are: the guild can deploy nowhere, so there is nothing to paint (the omit-when-empty discipline
+// `savedRoutes` keeps). `tollGate` joins the same way when its lane is built.
 // GUIDANCE, not a verdict — `deployCheck` stays the sole authority on legality. Pure derived telemetry, like
 // `fuelCost`: reads state, mutates nothing, no serialized byte, no determinism hash.
 function deployRangeFor(state, guildId) {
+  const range = {};
   const anchors = heldSystemIds(state, guildId);
-  if (anchors.length === 0) return null;
-  return { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors } };
+  if (anchors.length > 0) range.outpost = { radius: OUTPOST_DEPLOY_RANGE, anchors };
+  const hexes = attachedHexes(state, guildId);
+  if (hexes.length > 0) range.deepScan = { hexes };
+  return Object.keys(range).length > 0 ? range : null;
+}
+
+// attachedHexes(state, guildId) -> [ { q, r } ] — the in-bounds, bare hexes the Deep Scan Array's deploy rule
+// (`attachedPlacement`, sim/actions.js) ACCEPTS for this guild, sorted by q then r (invariant 9). The `deepScan`
+// lane above.
+//
+// THE RULE IS NOT COPIED HERE. Every hex is put to `attachedPlacement` itself, so the paint and the deploy can
+// never disagree about which hex is attached. What this function adds is only WHERE TO ASK — a "net" of hexes
+// near the guild's own footprints, because asking about all ~100,000 hexes of the galaxy on every poll would be
+// far too slow. The net must hold every hex the rule could accept, and it does: the rule accepts only a hex
+// touching a held system's control disk (within claimRadius + 1 of its centre) or touching an owned Outpost
+// (within 1 of it). The net is those two disks, whole — so if the rule is ever widened to the inside of the
+// disk (decision checklist, 2.5 (b1) item 1) the net still covers it. A test compares this list to the rule asked
+// of EVERY hex in the galaxy, so a net that ever misses a hex fails loudly.
+//
+// "Bare" means no SEED landmark (a system, a Syndicate waystation, the Citadel) on the hex: those never change,
+// and a deploy can never land on one. Guild structures (Outposts, other arrays) are NOT filtered out — like the
+// outpost lane, this lane ignores occupancy: they come and go between polls, the client already draws them, and
+// deployCheck's 'occupied' check is the authority.
+function attachedHexes(state, guildId) {
+  const net = new Map();   // "q,r" -> { q, r }: a Map, so a hex near two footprints is asked about once
+  const cast = (centre, reach) => {
+    for (const hex of hexesWithin(centre, reach)) net.set(`${hex.q},${hex.r}`, hex);
+  };
+  for (const systemId of heldSystemIds(state, guildId)) {
+    const claimRadius = getClaimRadius(systemId);
+    if (claimRadius === null) {
+      // The deploy rule halts on this too. Halting here as well means the snapshot never quietly publishes a
+      // lane that skipped a broken system (§15.5: a silent violation is worse than a crash).
+      throw new Error(`deployRange.deepScan: guild ${JSON.stringify(guildId)} holds system ${JSON.stringify(systemId)}, whose seed row carries no whole-number claimRadius`);
+    }
+    cast(getSystem(systemId).coords, claimRadius + 1);
+  }
+  for (const outpost of state.outposts || []) {
+    if (outpost.ownerGuildId === guildId) cast(outpost.coords, 1);
+  }
+  return [...net.values()]
+    .filter((hex) => isHexInBounds(hex.q, hex.r) && !seedLandmarkAtHex(hex.q, hex.r))
+    .filter((hex) => attachedPlacement(state, guildId, hex).ok)
+    .sort((a, b) => a.q - b.q || a.r - b.r);
+}
+
+// hexesWithin(centre, reach) -> every axial hex within `reach` hexes of `centre`, the centre included — the
+// standard axial disk (for each q-offset dq, the r-offsets that keep |dq|, |dr| and |dq + dr| all within reach).
+// Pure geometry, no game number; the caller filters for the galaxy's bounds.
+function hexesWithin(centre, reach) {
+  const out = [];
+  for (let dq = -reach; dq <= reach; dq += 1) {
+    const lo = Math.max(-reach, -dq - reach);
+    const hi = Math.min(reach, -dq + reach);
+    for (let dr = lo; dr <= hi; dr += 1) out.push({ q: centre.q + dq, r: centre.r + dr });
+  }
+  return out;
 }
 
 // routeQuoteFor(hex, fuelPrice) -> one `fuelCost` entry — what a Syndicate trade through the node on
@@ -1203,8 +1272,8 @@ function buildGodsEyeSnapshot(state) {
     // day in the snapshot (docs/event-log.md §9). Derived on read, no stored byte.
     const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
     const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
-    // The legal deploy range (deploy slice 3), computed once so the omit-when-empty test and the field read
-    // one value. null when the guild holds no system.
+    // The legal deploy range (deploy slice 3; the deepScan lane, 2.5 slice 14b), computed once so the
+    // omit-when-empty test and the field read one value. null when no lane has anything to paint.
     const deployRange = deployRangeFor(state, g.id);
     // This guild's own Outposts, sorted by id (invariant 9), for `outpostFuelCost`. Outposts are
     // SHARED (state.outposts), so the owner is picked out here.
@@ -1537,11 +1606,13 @@ function buildGodsEyeSnapshot(state) {
             })),
           }
         : {}),
-      // deployRange: where the guild may deploy an Outpost — `{ outpost: { radius, anchors } }` (see
-      // deployRangeFor), so the client's range paint reads the engine's numbers instead of computing them
-      // (§18). PRESENT ONLY when the guild holds a system (omit-when-empty), so a galaxy whose guilds hold
-      // nothing snapshots byte-identically to pre-slice. ADDITIVE, NO schema bump — nothing existing changed
-      // shape, the same call `savedRoutes` made. Pure derived telemetry: no serialized byte, no determinism hash.
+      // deployRange: where the guild may deploy each kit kind — `{ outpost: { radius, anchors }, deepScan:
+      // { hexes } }` (see deployRangeFor), so the client's range paint reads the engine's numbers and the
+      // engine's rule instead of computing either (§18). PRESENT ONLY when a lane has something to paint
+      // (omit-when-empty, per lane), so a galaxy whose guilds hold nothing snapshots byte-identically to
+      // pre-slice. ADDITIVE, NO schema bump — nothing existing changed shape, the same call `savedRoutes`
+      // made; the deepScan lane (2.5 slice 14b) is a sibling key. Pure derived telemetry: no serialized byte,
+      // no determinism hash.
       ...(deployRange ? { deployRange } : {}),
       // buyOrder / sellOrder: the guild's HELD Syndicate orders, echoed with the engine-computed
       // per-line `space`, the Σ `totalUnits`/`totalSpace`, the `haulerTier` and the `overCap` flag

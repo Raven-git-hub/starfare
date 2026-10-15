@@ -226,11 +226,13 @@ test('the head is found by the `building` flag — the donut, art and label all 
   // Panel 3 — the donut's countdown, its delivery sub-note and its header tag all come from `head`.
   assert.match(render, /if\(head\)\{\s*var bt = head\.buildTicks \|\| 0, rem = head\.remaining \|\| 0;/);
   assert.match(render, /cnDur\(head\.deliver\) \+ ' delivery &middot; arrives in ' \+ cnDur\(head\.arrive\)/);
-  assert.match(render, /hn = pretty\(head\.kind\) \+ ' &middot; building';/);
+  // ⤳ 15-10-26 (2.5 slice 14b): the label goes through cnLabel, which names an installation as its kit and every
+  // other kind exactly as `pretty` did — still read off `head`.
+  assert.match(render, /hn = cnLabel\(head\.kind\) \+ ' &middot; building';/);
   // Panel 4 — the art, the dim-when-idle, and the role label all come from `head`.
   assert.match(render, /var p4art = \(head && CN_BUILD_ART\[head\.kind\]\) \|\| CN_BUILD_ART_FALLBACK;/);
   assert.match(render, /'<div class="dk-card dk-hero' \+ \(head \? '' : ' dim'\) \+ '">'/);
-  assert.match(render, /'<div class="role">' \+ \(head \? pretty\(head\.kind\) : 'Idle'\) \+ '<\/div><\/div>'/);
+  assert.match(render, /'<div class="role">' \+ \(head \? cnLabel\(head\.kind\) : 'Idle'\) \+ '<\/div><\/div>'/);
 });
 
 test('In Progress highlights the `building` row (not row 0) and labels the rest "queued", not 0%', () => {

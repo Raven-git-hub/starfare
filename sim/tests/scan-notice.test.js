@@ -23,6 +23,7 @@ const { advance } = require('../run.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
+const { withoutDeepScanLanes } = require('./deep-scan-lane-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { reveal, revealPlanetSurface } = require('../exploration.js');
 const { SCAN_COMPLETE, SCAN_VOIDED } = require('../events.js');
@@ -268,9 +269,11 @@ test('GOLDENS DELTA: strip the scan notices and every finished scan is main\'s b
     assert.equal(hashState(stripped), pins.state, `${name}: the state moved OUTSIDE the notice (the reveal or the job-clear changed)`);
     // ⤳ 15-10-26: every lens/view hash here goes through the installation-quote strip (tests/installation-quote-strip.js) —
     // the installation kit acquire slice added two public assetPurchaseQuote rows and nothing else, so the pins stay as they were.
-    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutInstallationQuotes(buildSnapshot(s))))), pins.godsEye, `${name}: the god's-eye lens moved outside the notice`);
-    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutInstallationQuotes(buildSnapshot(s, A))))), pins[A], `${name}: A's view moved outside the notice`);
-    assert.equal(sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(s, B)))), pins[B], `${name}: B's view moved at all`);
+    // ⤳ 15-10-26 (slice 14b): and through the deepScan-lane strip (tests/deep-scan-lane-strip.js) — every guild row
+    // holding a system gained `deployRange.deepScan` and nothing else moved, so the pins still stand.
+    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s)))))), pins.godsEye, `${name}: the god's-eye lens moved outside the notice`);
+    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s, A)))))), pins[A], `${name}: A's view moved outside the notice`);
+    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s, B))))), pins[B], `${name}: B's view moved at all`);
   }
 });
 
