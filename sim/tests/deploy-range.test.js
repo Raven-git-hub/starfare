@@ -5,7 +5,10 @@
 //
 //     deployRange: { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors: heldSystemIds(state, guildId) } }
 //
-// omitted entirely when the guild holds no system. It is what lets the client paint the legal deploy range
+// omitted entirely when the guild holds no system. *(⤳ 15-10-26, 2.5 slice 14b: a sibling lane joined,
+// `deepScan: { hexes }` — the hexes the Deep Scan Array's deploy rule accepts. Each lane is omitted when it is
+// empty, and `deployRange` when both are. This file's tripwire now checks both lanes; the deepScan lane's own
+// tests are tests/deploy-range-deep-scan.test.js.)* It is what lets the client paint the legal deploy range
 // without computing a game number (§18). It is DERIVED telemetry, so the danger is DRIFT: a field that
 // quietly stops agreeing with the state it mirrors. The tripwires:
 //   - SHAPE: a guild holding N systems gets `{ outpost: { radius, anchors } }` — the engine's constant and
@@ -39,6 +42,7 @@ const { hexDistance } = require('../transport.js');
 const { getSystem, getStarterSystems, isHexInBounds, seedLandmarkAtHex } = require('../seed.js');
 const { HEAVY_TRANSPORT } = require('../vehicles.js');
 const { kitAboard, placeCraft } = require('./kit-fixtures.js');
+const { attachedByRule } = require('./attached-hexes-oracle.js');
 const {
   validateAction, applyAction,
   createFoundGuildAction, createSpawnVehicleAction, createDeployAssetAction,
@@ -47,29 +51,35 @@ const {
 // --- the tripwire ------------------------------------------------------------------------------------
 
 // deployRangeViolations(state, snap) -> [ { rule, where, detail } ]. Every guild row is checked against the
-// state it was built from: the field must be ABSENT when the guild holds nothing, and otherwise exactly
-// `{ outpost: { radius, anchors } }` with the engine's radius and every anchor a system the guild holds, in
-// `heldSystemIds` order.
+// state it was built from. Each lane is present exactly when it has something to paint — `outpost` when the guild
+// holds a system, `deepScan` when the deploy rule accepts at least one hex for it — and the field is ABSENT when
+// neither does. The outpost lane is exactly `{ radius, anchors }` with the engine's radius and every anchor a
+// system the guild holds, in `heldSystemIds` order. The deepScan lane is exactly `{ hexes }`, the hexes the
+// rule accepts when asked about EVERY hex in the galaxy (attached-hexes-oracle.js), in q-then-r order.
 function deployRangeViolations(state, snap) {
   const out = [];
   for (const row of snap.guilds) {
     const where = `guild:${row.id}.deployRange`;
     const held = heldSystemIds(state, row.id);
+    const attached = attachedByRule(state, row.id);
     const present = Object.prototype.hasOwnProperty.call(row, 'deployRange');
-    if (held.length === 0) {
+    if (held.length === 0 && attached.length === 0) {
       if (present) out.push({ rule: 'deploy-range-omit-when-empty', where, detail: { deployRange: row.deployRange } });
       continue;
     }
     if (!present) {
-      out.push({ rule: 'deploy-range-present-when-held', where, detail: { held } });
+      out.push({ rule: 'deploy-range-present-when-held', where, detail: { held, attached: attached.length } });
       continue;
     }
-    // Only the outpost lane is built. When `tollGate` / `deepScan` land, their checks join this function —
-    // until then a new key fails here rather than riding along unchecked.
+    // Exactly the lanes that have something to paint, in their fixed order — so an unbuilt lane (`tollGate`)
+    // fails here rather than riding along unchecked, and so does a lane that should have been omitted.
     const lanes = Object.keys(row.deployRange);
-    if (lanes.length !== 1 || lanes[0] !== 'outpost') {
-      out.push({ rule: 'deploy-range-lanes', where, detail: { lanes } });
+    const expectedLanes = [...(held.length > 0 ? ['outpost'] : []), ...(attached.length > 0 ? ['deepScan'] : [])];
+    if (JSON.stringify(lanes) !== JSON.stringify(expectedLanes)) {
+      out.push({ rule: 'deploy-range-lanes', where, detail: { lanes, expected: expectedLanes } });
     }
+    if (attached.length > 0) out.push(...deepScanLaneViolations(row.deployRange.deepScan, attached, `${where}.deepScan`));
+    if (held.length === 0) continue;
     const lane = row.deployRange.outpost || {};
     // radius + anchors and nothing else: the "fat" enumerated-hex shape was ruled OUT (territory-model.md §5).
     const keys = Object.keys(lane);
@@ -88,6 +98,30 @@ function deployRangeViolations(state, snap) {
     if (anchors && JSON.stringify(anchors) !== JSON.stringify(held)) {
       out.push({ rule: 'deploy-range-anchors-match-held', where: `${where}.outpost.anchors`, detail: { anchors, expected: held } });
     }
+  }
+  return out;
+}
+
+// deepScanLaneViolations(lane, attached, where) -> [ { rule, where, detail } ] for the deepScan lane: exactly one
+// key, `hexes`, and the list EQUAL to `attached` — the rule's answer over the whole galaxy, already sorted.
+// Equality covers every way it could drift: a hex missing (the snapshot's net too small), a hex too many (one the
+// rule refuses, or off the galaxy, or on a landmark), a duplicate, or the order.
+function deepScanLaneViolations(lane, attached, where) {
+  const out = [];
+  const keys = Object.keys(lane || {});
+  if (keys.length !== 1 || keys[0] !== 'hexes') {
+    out.push({ rule: 'deploy-range-deep-scan-keys', where, detail: { keys } });
+  }
+  const hexes = lane && Array.isArray(lane.hexes) ? lane.hexes : null;
+  if (!hexes || JSON.stringify(hexes) !== JSON.stringify(attached)) {
+    const listed = new Set((hexes || []).map((h) => `${h.q},${h.r}`));
+    const accepted = new Set(attached.map((h) => `${h.q},${h.r}`));
+    out.push({ rule: 'deploy-range-deep-scan-hexes', where: `${where}.hexes`, detail: {
+      missing: [...accepted].filter((k) => !listed.has(k)),
+      extra: [...listed].filter((k) => !accepted.has(k)),
+      published: hexes ? hexes.length : null,
+      expected: attached.length,
+    } });
   }
   return out;
 }
@@ -138,7 +172,9 @@ test('a guild holding N systems: anchors are heldSystemIds verbatim, radius is O
   const s = galaxy(['g1'], [systemClaim('g1', SYS_C, 1), systemClaim('g1', SYS_A, 2), systemClaim('g1', SYS_B, 3)]);
   const snap = buildSnapshot(s);
   const { deployRange } = rowOf(snap, 'g1');
-  assert.deepEqual(deployRange, { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors: heldSystemIds(s, 'g1') } });
+  assert.deepEqual(deployRange.outpost, { radius: OUTPOST_DEPLOY_RANGE, anchors: heldSystemIds(s, 'g1') });
+  // (2.5 slice 14b) beside it, its sibling lane — checked in full by assertDeployRange below.
+  assert.deepEqual(Object.keys(deployRange), ['outpost', 'deepScan']);
   assert.equal(deployRange.outpost.anchors.length, 3, 'all three held systems anchor');
   assert.equal(deployRange.outpost.radius, OUTPOST_DEPLOY_RANGE, 'the engine constant, not a literal');
   assertDeployRange(s, snap);
@@ -199,7 +235,7 @@ test('derived, not stale: a guild founded through the real foundGuild apply anch
   assert.equal(buildSnapshot(s).guilds.length, 0);
   s = accept(s, createFoundGuildAction({ guildId: 'g1', name: 'G1', credits: 100, homeSystemId: SYS_A }));
   const snap = buildSnapshot(s);
-  assert.deepEqual(rowOf(snap, 'g1').deployRange, { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors: [SYS_A] } });
+  assert.deepEqual(rowOf(snap, 'g1').deployRange.outpost, { radius: OUTPOST_DEPLOY_RANGE, anchors: [SYS_A] });
   assertDeployRange(s, snap);
 });
 
@@ -231,9 +267,11 @@ test('pure: building it mutates no state, and the published anchors do not alias
 
   first.guilds[0].deployRange.outpost.anchors.push('sys_bogus');   // a consumer scribbling on its copy
   first.guilds[0].deployRange.outpost.radius = 99;
+  first.guilds[0].deployRange.deepScan.hexes[0].q += 1000;          // (14b) and on the deepScan lane's hexes
+  first.guilds[0].deployRange.deepScan.hexes.push({ q: 0, r: 0 });
   assert.equal(hashState(s), before, 'the scribble did not reach state');
   const second = buildSnapshot(s);
-  assert.deepEqual(rowOf(second, 'g1').deployRange, { outpost: { radius: OUTPOST_DEPLOY_RANGE, anchors: [SYS_A, SYS_B] } });
+  assert.deepEqual(rowOf(second, 'g1').deployRange.outpost, { radius: OUTPOST_DEPLOY_RANGE, anchors: [SYS_A, SYS_B] });
   assertDeployRange(s, second);
 });
 
@@ -299,6 +337,15 @@ test('the tripwire fires loudly — tick and offending values — on every kind 
   drift('deploy-range-present-when-held', (g1) => { delete g1.deployRange; });
   drift('deploy-range-lanes', (g1) => { g1.deployRange.tollGate = { radius: 1, anchors: [] }; });
   drift('deploy-range-outpost-keys', (g1) => { g1.deployRange.outpost.hexes = [{ q: 0, r: 0 }]; });
+  // (2.5 slice 14b) the deepScan lane, each way it could drift.
+  drift('deploy-range-lanes', (g1) => { delete g1.deployRange.deepScan; });
+  drift('deploy-range-lanes', (g1) => { g1.deployRange = { deepScan: g1.deployRange.deepScan, outpost: g1.deployRange.outpost }; });
+  drift('deploy-range-deep-scan-keys', (g1) => { g1.deployRange.deepScan.radius = 1; });
+  drift('deploy-range-deep-scan-hexes', (g1) => { g1.deployRange.deepScan.hexes.pop(); });
+  drift('deploy-range-deep-scan-hexes', (g1) => { g1.deployRange.deepScan.hexes.push({ q: 0, r: 0 }); });
+  drift('deploy-range-deep-scan-hexes', (g1) => { g1.deployRange.deepScan.hexes.reverse(); });
+  drift('deploy-range-deep-scan-hexes', (g1) => { g1.deployRange.deepScan.hexes.push({ ...g1.deployRange.deepScan.hexes[0] }); });
+  drift('deploy-range-deep-scan-hexes', (g1) => { delete g1.deployRange.deepScan.hexes; });
 });
 
 test('the tripwire holds on every tick of a founded galaxy', () => {

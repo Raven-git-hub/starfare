@@ -6174,6 +6174,9 @@ module.exports = {
   // THE ONE kit-asset mint — also called by sim/tick.js's mintFinishedKind, when a dockyard build or a
   // Syndicate delivery of an installation finishes as a kit (docs/asset-purchase.md §"Installation kits").
   mintKitAsset,
+  // THE Deep Scan Array's placement rule — also asked, read-only, by sim/snapshot.js's `deployRange.deepScan`
+  // lane, which publishes the hexes it accepts so the client paints the rule itself, never a copy of it.
+  attachedPlacement,
   validateAction,
   applyAction,
   intake,

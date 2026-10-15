@@ -209,7 +209,11 @@ end of this file). It must **NOT** render `galacticSupply` totals, the `syndicat
 or any other guild's `stockpiles`/`stockpilesBySystem`/`production`. Occupancy of
 *other* guilds' sites (a site is taken) is visible; their economic internals are
 not. This list is the working contract; it may be refined as panels are wired
-(refinements are doc-and-code in the same commit).
+(refinements are doc-and-code in the same commit). *(⤳ 15-10-26, roadmap 2.5 slice 14b: the
+player's OWN guild row's `deployRange` — both lanes, `outpost: { radius, anchors }` and
+`deepScan: { hexes }` — which the deploy map paints; and the player's own `deepScanArrays` and
+`outposts` rows, which OPERATIONS → Deployed lists. All are already confined to the player by
+the per-guild view; see the revision at the end of this file.)*
 
 ## The walk (five deployable slices — each ends in something real)
 
@@ -1420,3 +1424,21 @@ BUY wiring — no test added or removed). Verified end to end in headless Chromi
 server: both popups render from a live snapshot; the treasury-short and fuel-short gates disable confirm
 and the engine refuses the same trades; a real SELL raised the treasury and burned the route fuel; a real
 BUY debited credits + fuel and scheduled the arrival — every receipt figure the engine's own.
+
+## Revision — installation kits reach the player *(15-10-26, roadmap 2.5 slice 14b, engine read-path + client)*
+
+The full as-built is `docs/territory-model.md` §5, "AS-BUILT — the `deepScan` paint lane"; this is the client's view of it.
+
+- **One new snapshot read:** the own guild row's `deployRange.deepScan.hexes`, the hexes the engine's "attached" rule
+  accepts for a Deep Scan Array. The deploy map draws exactly those; it works out no placement itself (§18). The map follows
+  the lane's published SHAPE (`{ radius, anchors }` → disks, `{ hexes }` → those hexes), so a later lane needs no new code.
+- **One client copy of an engine vocabulary, guarded.** The kit kinds (their goods, the bill kinds that finish as them) are
+  not published, so `client/game.html` keeps one `kit-kinds` table, and `client/console.html` its two dockyard labels. A
+  sim test runs the table and checks it against the engine's `DEPLOYABLE_KITS` and `KIT_KIND_FOR_BILL`, so the copy cannot
+  drift silently. It holds names and art only — no game number.
+- **What the player sees:** the two installations as "Deep Scan Array kit" / "Outpost kit" everywhere they are acquired or
+  carried (the dockyard picker and queue, TRADE → Constructed, the confirm, In Progress, Operations' in-transit row); a
+  Deploy button on every idle kit; a deploy popup and map that name the kind; the failed-deploy forks reaching an array kit,
+  its Reason reading "Not attached"; and OPERATIONS → Deployed listing the guild's Outposts and arrays. Every duration and
+  price is the catalog's or the quote's as sent.
+- **Proved** headless against a live server — 58 checks, zero console errors (`docs/roadmap.md`, slice 14b).

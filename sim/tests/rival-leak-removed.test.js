@@ -41,6 +41,7 @@ const { createHash } = require('node:crypto');
 const { hashState, canonicalStringify } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
+const { withoutDeepScanLanes } = require('./deep-scan-lane-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { getSite } = require('../seed.js');
 const { reveal, isOnPublicRegister } = require('../exploration.js');
@@ -54,8 +55,10 @@ const sha = (text) => createHash('sha256').update(text).digest('hex');
 // ⤳ 15-10-26: both through the installation-quote strip (tests/installation-quote-strip.js). The installation
 // kit acquire slice added two public assetPurchaseQuote rows to every lens and view and nothing else, so every
 // pin in this file stays the bytes it was, with exactly those two rows taken out.
-const godsEye = (s) => sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(s))));
-const viewOf = (s, guildId) => withoutInstallationQuotes(buildSnapshot(s, guildId));
+// ⤳ 15-10-26 (slice 14b): and through the deepScan-lane strip (tests/deep-scan-lane-strip.js) — every guild row
+// holding a system gained `deployRange.deepScan` and nothing else moved, so the pins still stand.
+const godsEye = (s) => sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s)))));
+const viewOf = (s, guildId) => withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s, guildId)));
 const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 
 // Recorded on main at 41fe84c — BEFORE the cleanup — by copying tests/rival-leak-script.js into a checkout of

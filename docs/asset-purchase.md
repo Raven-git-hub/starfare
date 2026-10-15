@@ -137,7 +137,12 @@ the only values are the two human-given baselines and the 27-09-26 bills and bui
 - **Not built (slice 14b, client):** the client already iterates the quote and `buildable`, so the TRADE tab's
   Constructed menu and the Console's commission dropdown will list the two kinds with no edit (labelled by the
   generic `pretty` / `prettyGood`, with the fallback build art). The idle-array Deploy, `KIT_GOOD`, the Deployed
-  card and `deployRange.deepScan` are 14b's.
+  card and `deployRange.deepScan` are 14b's. *(⤳ **BUILT 15-10-26, slice 14b**: the two kinds read as their kits —
+  "Deep Scan Array kit" / "Outpost kit" — in the Console's picker and queue, the TRADE menu, In Progress, the confirm
+  and the Operations in-transit row, through one client kit-kinds table checked against the engine's by a test; the
+  durations and prices are the catalog's and the quote's as sent. The outpost gets its own art there; the array still
+  has none. The idle-array Deploy, the forks' kit lookup, the Deployed card and the `deepScan` paint lane are built —
+  `territory-model.md` §5, "AS-BUILT — the `deepScan` paint lane".)*
 
 Tripwires: `sim/tests/installation-kit-acquire.test.js` (21: the bridge and its tripwire, the baselines, wrong and
 right paths, ids, reserve-and-wait, cancel and premium, the scale check, destination, conservation, the snapshot,

@@ -1237,7 +1237,7 @@ select.field{appearance:none; cursor:pointer;}
 /* a bare zsub — the zhead + .m subtitle were dropped, so the serif title needs its own top pad */
 #tp-ops .ops-hero .zsub.bare{padding-top:13px;}
 
-/* CENTRE: IN TRANSIT on top (grows + scrolls), DEPLOYED + IDLE side by side below (scaffolds) */
+/* CENTRE: IN TRANSIT on top (grows + scrolls), DEPLOYED + IDLE side by side below */
 #tp-ops .ops-centre{display:flex; flex-direction:column; min-width:0; min-height:0; gap:16px;}
 #tp-ops .ops-transit{display:flex; flex-direction:column; flex:1 1 auto; min-height:0;}
 #tp-ops .ops-list{flex:1 1 auto; min-height:0; overflow-y:auto; padding:12px 14px;}
@@ -1301,7 +1301,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-notice-x{flex:0 0 auto; font-family:var(--ops-mono); font-size:11px; line-height:1; color:var(--ops-ink3); background:transparent; border:1px solid var(--ops-line2); border-radius:6px; padding:4px 7px; cursor:pointer;}
 #tp-ops .ops-notice-x:hover{color:var(--ops-ink); border-color:var(--ops-amber-dim);}
 
-/* the calm empty states — IN TRANSIT when idle, and the LEASED/DEPLOYED/IDLE scaffolds. The
+/* the calm empty states — IN TRANSIT when idle, the LEASED scaffold, and an empty DEPLOYED / IDLE. The
    soon-panel idiom from guild-hall.html (a centred glyph + line), muted so a populated section
    later reads as the arrival of something, not the fixing of an error. */
 #tp-ops .ops-empty{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; flex:1 1 auto; min-height:120px; padding:34px 18px; color:var(--ops-ink4); gap:12px;}
@@ -1313,8 +1313,8 @@ select.field{appearance:none; cursor:pointer;}
    collapsible headers (the same tree idiom the Deuterium rail uses, ops-prefixed). Both header
    levels toggle a `collapsed` class on their container; CSS alone hides the body and rotates the
    caret, so the click handler only flips the class (no re-render). Read-only this slice — the
-   machine rows are plain (no Manage popup, that is §8) — bar an idle outpost's row, which carries
-   DEPLOY (2.2 deploy pipeline; its rule sits with the Dispatch / Dock buttons below). */
+   machine rows are plain (no Manage popup, that is §8) — bar an idle kit's row (an Outpost's or, 2.5 slice 14b,
+   a Deep Scan Array's), which carries DEPLOY (2.2 deploy pipeline; its rule sits with the Dispatch / Dock buttons below). */
 #tp-ops #ops-idle-list{padding:10px;}
 #tp-ops .ops-idle-sys{margin-bottom:8px;}
 #tp-ops .ops-idle-sys:last-child{margin-bottom:0;}
@@ -1344,6 +1344,19 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-idle-machine:first-child{margin-top:0;}
 #tp-ops .ops-idle-machine .mid{font-family:var(--ops-mono); font-size:11px; color:var(--ops-ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 #tp-ops .ops-idle-machine .mkind{font-size:10px; color:var(--ops-ink4); letter-spacing:.03em; text-transform:capitalize; flex:0 0 auto;}
+
+/* DEPLOYED (2.5 slice 14b) — the guild's own placed structures, read-only, grouped by type under the IDLE tree's
+   collapsible kind headers (the same classes): each row its name and hex over one line of state (an array: idle,
+   or surveying in the teal of a running job). The idle machine row's look, two lines tall. */
+#tp-ops #ops-deployed-list{padding:10px;}
+#tp-ops #ops-deployed-list .ops-idle-kind + .ops-idle-kind{margin-top:8px;}
+#tp-ops .ops-dep{padding:7px 9px; margin-top:4px; background:rgba(232,223,200,.03); border:1px solid var(--ops-line); border-radius:5px;}
+#tp-ops .ops-dep:first-child{margin-top:0;}
+#tp-ops .ops-dep .hd{display:flex; align-items:baseline; justify-content:space-between; gap:12px;}
+#tp-ops .ops-dep .nm{font-size:12px; color:var(--ops-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+#tp-ops .ops-dep .kd{font-size:10px; color:var(--ops-ink4); letter-spacing:.03em; flex:0 0 auto;}
+#tp-ops .ops-dep .st{margin-top:3px; font-size:10.5px; color:var(--ops-ink3); letter-spacing:.02em;}
+#tp-ops .ops-dep .st.busy{color:var(--ops-teal);}
 
 /* IDLE TRANSPORTS — the guild's own idle guild-transports (design.md §15.4), grouped by SYSTEM
    (the ops-idle tree idiom, tp-prefixed) then ONE COLLAPSIBLE TAB per craft. A craft tab collapsed
@@ -1387,7 +1400,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-tp-dispatch:hover,
 #tp-ops .ops-tp-dock:hover,
 #tp-ops .ops-idle-deploy:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
-/* An idle OUTPOST's row in IDLE (2.2 deploy pipeline) carries DEPLOY — the Dispatch / Dock button above, sized
+/* An idle KIT's row in IDLE (2.2 deploy pipeline; every kit kind, 2.5 slice 14b) carries DEPLOY — the Dispatch / Dock button above, sized
    to its label because it shares one line with the kit's id and kind. The id takes the slack, so the kind stays
    beside the button (on a two-item miner / factory row that is the layout it already had). */
 #tp-ops .ops-idle-deploy{width:auto; flex:0 0 auto; padding:3px 10px;}
@@ -2028,7 +2041,7 @@ select.field{appearance:none; cursor:pointer;}
    the Planned Route section (a scrollable waypoint list beside Time-over-Cost). Every game number here
    is the engine's — the manifest reads the craft's published cargo/used/capacity, and the route's
    time/cost come from POST /vehicle/quote (§18). ===== */
-/* (the Deploy Outpost popup's Carrier section sits where the Onboard Manifest does, so it shares its spacing) */
+/* (the Deploy popup's Carrier section sits where the Onboard Manifest does, so it shares its spacing) */
 #dispatch-overlay .dp-manifest, #deploy-overlay .kd-carrier{margin-top:22px}
 #dispatch-overlay .dp-manifest .mbox{height:92px; overflow-y:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px}
 #dispatch-overlay .dp-manifest .mbox .empty{font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink2)}
@@ -2046,7 +2059,7 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-btn.primary, #deploy-overlay .dp-btn.primary{background:var(--amber); border:1px solid var(--amber); color:var(--void)}
 #dispatch-overlay .dp-btn.primary:hover:not(:disabled), #deploy-overlay .dp-btn.primary:hover:not(:disabled){background:#DCB43A; border-color:#DCB43A}
 #dispatch-overlay .dp-btn:disabled, #deploy-overlay .dp-btn:disabled{opacity:.4; cursor:not-allowed}
-/* the Planned Route section — two equal-height boxes: list | time-over-cost. The Deploy Outpost popup's
+/* the Planned Route section — two equal-height boxes: list | time-over-cost. The Deploy popup's
    post-finalise view (2.2 deploy pipeline) is the same section, so the rules it uses name #deploy-overlay too. */
 #dispatch-overlay .dp-route, #deploy-overlay .dp-route{margin-top:22px; display:grid; grid-template-columns:1fr 148px; gap:12px}
 #dispatch-overlay .dp-route .wp-wrap, #deploy-overlay .dp-route .wp-wrap{position:relative}
@@ -3014,12 +3027,12 @@ select.field{appearance:none; cursor:pointer;}
 
   <!-- The OPERATIONS tab (docs/operations-hub.md §2) — the out-of-system operations hub, renamed
        from Transport. A Guild-Hall three-column layout: LEASED hero (left) | IN TRANSIT + DEPLOYED
-       + IDLE (centre) | the pilot hero (right). IN TRANSIT and IDLE are LIVE — the operations-tab-wire
-       block fills #ops-transit-list (own snapshot shipments, §4) and #ops-idle-list (the guild's idle
-       ground assets, grouped by system then kind, §5) on open and every poll. LEASED / DEPLOYED are
-       EMPTY SCAFFOLDS this slice (§7): their entities (leased craft, deployed structures) don't exist
-       yet, so they carry only a section header + a calm empty state — no rows, no Manage popups. It
-       fills the viewport exactly like #tp-deut. -->
+       + IDLE (centre) | the pilot hero (right). IN TRANSIT, DEPLOYED and IDLE are LIVE — the operations-tab-wire
+       block fills #ops-transit-list (own snapshot shipments, §4), #ops-deployed-list (the guild's own Outposts
+       and Deep Scan Arrays, 2.5 slice 14b) and #ops-idle-list (the guild's idle ground assets and kits, grouped
+       by system then kind, §5) on open and every poll. LEASED is an EMPTY SCAFFOLD (§7): leased craft don't exist
+       yet, so it carries only a section header + a calm empty state — no rows, no Manage popups. It fills the
+       viewport exactly like #tp-deut. -->
   <div id="tp-ops">
     <div class="ops-body">
       <!-- LEFT: a herostack of two EQUAL-size hero panels — IDLE TRANSPORTS (the guild's own idle
@@ -3047,7 +3060,7 @@ select.field{appearance:none; cursor:pointer;}
         </aside>
       </div>
 
-      <!-- CENTRE: IN TRANSIT (live) on top; DEPLOYED + IDLE (scaffolds) below -->
+      <!-- CENTRE: IN TRANSIT (live) on top; DEPLOYED + IDLE (both live) below -->
       <div class="ops-centre">
         <div class="ops-card ops-transit">
           <div class="ops-card-h"><span class="t">In Transit</span><span class="ops-tag live">Live</span></div>
@@ -3060,14 +3073,10 @@ select.field{appearance:none; cursor:pointer;}
 
         <div class="ops-grid2">
           <div class="ops-card">
-            <div class="ops-card-h"><span class="t">Deployed</span></div>
-            <div class="ops-list">
-              <div class="ops-empty">
-                <div class="glyph">&#9633;</div>
-                <h3>Nothing deployed yet</h3>
-                <p>Outposts, toll gates and scan arrays you place on the map will list here (from the build yard, 2.1).</p>
-              </div>
-            </div>
+            <div class="ops-card-h"><span class="t">Deployed</span><span class="ops-tag live">Live</span></div>
+            <!-- filled by operations-tab-wire (2.5 slice 14b): the guild's own Outposts and Deep Scan Arrays,
+                 read-only, off their snapshot rows — an array idle or surveying, as its row says. -->
+            <div class="ops-list" id="ops-deployed-list"></div>
           </div>
           <div class="ops-card">
             <div class="ops-card-h"><span class="t">Idle</span><span class="ops-tag live">Live</span></div>
@@ -3194,7 +3203,7 @@ select.field{appearance:none; cursor:pointer;}
        turning point with reorder/remove; Finalise/Cancel are the two deliberate exits; the chip is
        glued to the candidate hex by the JS each frame (ADD, then Confirm/Cancel). The DEPLOY map
        (territory-model.md §5) is the same overlays, retitled by startPlanning, with the range ring
-       drawn and no Load Route; its Finalise hands the route to the Deploy Outpost popup. -->
+       drawn and no Load Route; its Finalise hands the route to the Deploy popup. -->
   <div id="plan-ui">
     <div id="plan-banner">
       <div class="bt" id="plan-banner-title">Planning Route</div>
@@ -3625,8 +3634,9 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
-<!-- The DEPLOY OUTPOST popup (2.2 deploy pipeline, asset-initiated — territory-model.md §5 REVISED). Opened from
-     an idle outpost's Deploy button in OPERATIONS, for ONE kit. The Dispatch popup's markup and classes, with the
+<!-- The DEPLOY popup (2.2 deploy pipeline, asset-initiated — territory-model.md §5 REVISED). Opened from an idle
+     kit's Deploy button in OPERATIONS, for ONE kit — an Outpost's or (2.5 slice 14b) a Deep Scan Array's; the
+     eyebrow, headings and art name the kit's kind (the kit-kinds table). The Dispatch popup's markup and classes, with the
      kit as the subject, and the Dispatch popup's two states: pre-plan (the Carrier dropdown, and Plan Route → the
      deploy map for the chosen carrier) and post-finalise (the Planned Route the map's Finalise hands back, with
      Edit Route / Deploy). Filled by the deploy-kit-wire IIFE. -->
@@ -3634,14 +3644,14 @@ select.field{appearance:none; cursor:pointer;}
   <div class="est">
     <div class="est-head">
       <div>
-        <div class="eyebrow">Deploy Outpost</div>
+        <div class="eyebrow" id="kdEyebrow">Deploy</div>
         <h2 id="kdName">—</h2>
       </div>
       <button class="est-close" id="kdClose" title="Close (Esc)">✕</button>
     </div>
     <div class="est-body">
       <div class="est-main">
-        <div class="dp-sechead">Outpost</div>
+        <div class="dp-sechead" id="kdSechead">—</div>
         <div class="dp-sum">
           <div class="row"><span class="k">Kind</span><span class="v" id="kdKind">—</span></div>
           <div class="row"><span class="k">Stored at</span><span class="v" id="kdStored">—</span></div>
@@ -3655,9 +3665,10 @@ select.field{appearance:none; cursor:pointer;}
         <div class="dp-actions" id="kdActions"></div>
       </div>
       <div class="est-side">
-        <div class="art" style="background-image:url('assets/units/outpost.jpg')"></div>
+        <!-- the kit's portrait, set per kind on open; a kind with no art yet leaves the panel plain -->
+        <div class="art" id="kdArt"></div>
         <div class="dp-foot">
-          <div class="stitle">Outpost Kit</div>
+          <div class="stitle" id="kdStitle">—</div>
         </div>
       </div>
     </div>
@@ -3898,6 +3909,47 @@ select.field{appearance:none; cursor:pointer;}
   </div>
 </div>
 
+<script id="kit-kinds">
+/* ============================================================================
+   THE KIT KINDS — the one client table of the installation kits a guild can buy, build, hold and deploy
+   (roadmap 2.5, slice 14b; docs/asset-purchase.md §"Installation kits"). The engine's own vocabulary is two
+   tables: DEPLOYABLE_KITS (sim/resources.js — kit kind → the good a heavy's hold carries it as) and
+   KIT_KIND_FOR_BILL (sim/asset-recipes.js — the kind a dockyard commission or a Syndicate buy names → the kit
+   kind it finishes as). NEITHER IS PUBLISHED — not in the snapshot, not by GET /asset-recipes — so the client
+   keeps this ONE copy, keyed by kit kind, and every screen asks it rather than spelling a kind itself. A kit kind
+   the engine adds later (the toll gate) needs one row here. PRESENTATION ONLY (§18): it names things and picks
+   art; it holds no game number and decides no rule — the engine re-checks every deploy, load and buy.
+     good      — the kit good it rides a hold as (DEPLOYABLE_KITS), so a fork can find it aboard a heavy;
+     bill      — the kind a commission or a buy names (KIT_KIND_FOR_BILL), so those screens can label it;
+     label     — what the player reads for the kit itself;
+     structure — what it deploys as, for the deploy popup and the planner banner;
+     art       — the deploy popup's portrait, or null where none has been drawn yet (the array has none);
+     target    — the deploy map's hint for where the route must end;
+     outside   — the deploy map's reason for refusing a hex outside the kind's painted lane.
+   (client/console.html, a separate page, keeps its own two labels for the dockyard picker.)
+   ============================================================================ */
+(function(){
+  // Frozen, so no screen can edit a row it was handed.
+  var KITS = Object.freeze({
+    outpost:  Object.freeze({ good: 'outpost_kit', bill: 'outpost', label: 'Outpost kit', structure: 'Outpost',
+                art: 'assets/units/outpost.jpg',
+                target: 'a bare hex inside the dashed ring', outside: 'Outside the deploy range' }),
+    deepScan: Object.freeze({ good: 'deep_scan_array_kit', bill: 'deep_scan_array', label: 'Deep Scan Array kit', structure: 'Deep Scan Array',
+                art: null,
+                target: 'a dashed hex touching your territory', outside: 'Not attached to your territory' })
+  });
+  // __kitKind(kind) -> the row for a kit kind ('outpost' | 'deepScan'), or null for anything else (a miner).
+  // An own-property read, so an inherited name ('toString') is never a kit — the engine's kitGoodFor discipline.
+  window.__kitKind = function(kind){ return Object.prototype.hasOwnProperty.call(KITS, kind) ? KITS[kind] : null; };
+  // __kitLabelForBill(billKind) -> the player label for a commission/buy kind that finishes as a kit
+  // ('deep_scan_array' → "Deep Scan Array kit"), or null for a kind that does not (a miner, a transport).
+  window.__kitLabelForBill = function(billKind){
+    var kind = Object.keys(KITS).filter(function(k){ return KITS[k].bill === billKind; })[0];
+    return kind ? KITS[kind].label : null;
+  };
+})();
+</script>
+
 <script>
 (function () {
   const canvas = document.getElementById('map');
@@ -4071,7 +4123,11 @@ select.field{appearance:none; cursor:pointer;}
   // manifest, only its kind: "deploy · outpost". An unload action carries nothing at all (the engine reads
   // the kit off the hold): "unload · kit".
   function actionSummary(action) {
-    if (action && action.type === 'deploy') return 'deploy · ' + action.kind;
+    // A deploy names the structure it places ("deploy · outpost", "deploy · deep scan array" — the kit-kinds table).
+    if (action && action.type === 'deploy') {
+      const kit = window.__kitKind && window.__kitKind(action.kind);
+      return 'deploy · ' + (kit ? kit.structure.toLowerCase() : action.kind);
+    }
     if (action && action.type === 'unload') return 'unload · kit';
     if (!action || !action.manifest) return '';
     return action.type + ' · ' + action.manifest.map(l =>
@@ -4212,11 +4268,11 @@ select.field{appearance:none; cursor:pointer;}
     app.classList.add('planning');
     app.classList.toggle('kitroute', kitMode);
     document.getElementById('plan-banner-title').textContent = PLAN.deploy
-      ? 'Deploying ' + prettyClass(PLAN.deploy) + ' · ' + prettyClass(vehicle.class)
+      ? 'Deploying ' + deployWords().structure + ' · ' + prettyClass(vehicle.class)
       : PLAN.unload ? 'Returning Kit · ' + prettyClass(vehicle.class)
       : 'Planning Route · ' + prettyClass(vehicle.class);
     document.getElementById('plan-banner-sub').textContent = PLAN.deploy
-      ? 'Click a hex to add a turning point · end on a bare hex inside the dashed ring · arrow keys pan'
+      ? 'Click a hex to add a turning point · end on ' + deployWords().target + ' · arrow keys pan'
       : PLAN.unload ? 'Click a hex to add a turning point · end on a system you hold · arrow keys pan'
       : 'Click a hex to add a turning point · arrow keys pan';
     if (c) window.__flyTo(c.q, c.r, kitMode ? DEPLOY_MAP_ZOOM : Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
@@ -4249,8 +4305,8 @@ select.field{appearance:none; cursor:pointer;}
   // is (canFinalise). (Nothing else blocks Finalise — a stop the popup can fix, like an idle one-stop
   // route at the berth, is gated at Dispatch instead, so the player can always REACH the popup to fix it.)
   // A KIT route (territory-model.md §5 REVISED) goes out with its kit action on the last stop (kitWaypoints),
-  // and where it goes depends on where the kit is. A FRESH deploy (fromInventory) goes to the Deploy Outpost
-  // popup instead: that popup holds the kit, shows the same Planned Route, and loads the kit at its commit. A
+  // and where it goes depends on where the kit is. A FRESH deploy (fromInventory) goes to the Deploy popup
+  // instead: that popup holds the kit, shows the same Planned Route, and loads the kit at its commit. A
   // kit already aboard (Redeploy / Return) goes to the Dispatch popup like any route: nothing to load.
   function finalisePlanning() {
     if (!canFinalise()) return;
@@ -4318,7 +4374,7 @@ select.field{appearance:none; cursor:pointer;}
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
     // A KIT route (territory-model.md §5) with no stop yet: a quiet prompt for where the route must end.
     if (isKitPlan() && !PLAN.waypoints.length) {
-      const where = PLAN.deploy ? 'a bare hex inside the ring' : 'a system you hold';
+      const where = PLAN.deploy ? deployWords().target : 'a system you hold';
       box.appendChild(mkRow({ ix: '1', name: '—', note: 'no stops yet — end the route on ' + where }));
       return;
     }
@@ -4510,44 +4566,65 @@ select.field{appearance:none; cursor:pointer;}
     return { act: actionSummary(kitAction()), note: quote.note, warn: quote.warn };
   }
 
-  // deployReach(kind) -> { radius, centres:[{q,r}] } — the player's guild's legal range for lane `kind`,
-  // read off its live snapshot row (`deployRange[kind] = { radius, anchors }`, "Painting the range"), with
-  // the anchor system ids resolved to the seed coords the map already draws. null when the row carries no
-  // such lane (a guild that holds no system can deploy nowhere, so the snapshot omits it).
+  // deployReach(kind) -> a Set of "q,r" keys: every hex the player's guild's lane `kind` paints as legal, read
+  // off its live snapshot row (`deployRange[kind]`, "Painting the range"). null when the row carries no such
+  // lane (the snapshot omits a lane with nothing to paint). The engine publishes a lane in one of two SHAPES,
+  // and this follows the shape, not the kind, so a later lane needs nothing new here:
+  //  - { radius, anchors } (the Outpost): every hex within `radius` of an anchor system — the anchor ids resolved
+  //    to the seed coords the map already draws, and the disks drawn with hexesInRadius. Geometry only: the
+  //    radius is the engine's.
+  //  - { hexes } (the Deep Scan Array, 2.5 slice 14b): the hexes themselves — the engine asked its own
+  //    "attached" rule of each, so the client draws exactly those and works nothing out.
   function deployReach(kind) {
     const snap = window.__snapshot ? window.__snapshot() : null;
     const me = snap && (snap.guilds || []).find((g) => g.id === PLAYER_GUILD.guildId);
     const lane = me && me.deployRange && me.deployRange[kind];
     if (!lane) return null;
-    const centres = lane.anchors.map((id) => systemById.get(id)).filter(Boolean).map((s) => s.coords);
-    return { radius: lane.radius, centres: centres };
+    const inside = new Set();
+    if (Array.isArray(lane.hexes)) {
+      lane.hexes.forEach((h) => inside.add(h.q + ',' + h.r));
+    } else {
+      const centres = (lane.anchors || []).map((id) => systemById.get(id)).filter(Boolean).map((s) => s.coords);
+      centres.forEach((c) => hexesInRadius(c, lane.radius).forEach((h) => inside.add(h.q + ',' + h.r)));
+    }
+    return inside;
+  }
+
+  // deployWords() -> the kit-kinds row for the kind the deploy map is placing (its hint and refusal words), or
+  // a neutral stand-in, so a kind the table does not know still reads sensibly.
+  function deployWords() {
+    return (window.__kitKind && window.__kitKind(PLAN.deploy)) || { structure: 'Kit', target: 'a bare hex inside the dashed line', outside: 'Outside the deploy range' };
   }
 
   // deployRefusal(anchor) -> why the deploy map refuses this hex as the target, or '' when it may be picked.
   // GUIDANCE from what the map already draws, never the verdict (that is the engine's deployCheck). It asks
   // deployCheck's questions in deployCheck's order:
   //  - open ground: not a system or a Syndicate waystation (a click there makes a landmark anchor), not the
-  //    Citadel's hex, not a hex any guild's Outpost stands on — one structure per hex (design.md §4);
+  //    Citadel's hex, not a hex any guild's Outpost or one of our own Deep Scan Arrays stands on — one structure
+  //    per hex (design.md §4);
   //  - on the galaxy: a hex off the disc is not one a craft can be sent to (the engine's bounds check);
-  //  - in range: within the engine's radius of one of the guild's anchors — inside the dashed ring.
+  //  - in the lane: one of the hexes the kind's lane paints (deployReach) — inside the dashed line. The refusal
+  //    names the kind's own rule (the kit-kinds table): "Outside the deploy range", "Not attached to your territory".
   function deployRefusal(a) {
     if (!a || typeof a.q !== 'number' || typeof a.r !== 'number') return 'Not a bare hex';
     if (guildOutpostByKey.has(a.q + ',' + a.r) || sameHex(a, galaxy.citadel.coords)) return 'Not a bare hex';
+    // …nor one of the guild's own Deep Scan Arrays (the view carries only our own; a rival's is the engine's to refuse).
+    const myArrays = (window.__myArrays && window.__myArrays()) || [];
+    if (myArrays.some((arr) => arr.coords && sameHex(a, arr.coords))) return 'Not a bare hex';
     const p = hexToPixel(a.q, a.r, galaxy.galaxyParams.hexSize);
     if (Math.hypot(p.x, p.y) > galaxy.galaxyParams.radius) return 'Off the galaxy';
     const reach = deployReach(PLAN.deploy);
-    if (!reach || !reach.centres.some((c) => hexDistAxial(a, c) <= reach.radius)) return 'Outside the deploy range';
+    if (!reach || !reach.has(a.q + ',' + a.r)) return deployWords().outside;
     return '';
   }
 
-  // drawDeployRing(reach) — the legal range as a dashed OUTER-BORDER ring, not filled hexes (§5): the union
-  // of the hexesInRadius disks around every anchor, and only the edges of it whose neighbour is outside the
-  // union. Drawn in the player teal with the toll path's dash, on the same hex geometry as every other
+  // drawDeployRing(inside) — the legal hexes (deployReach) drawn as a dashed OUTER BORDER, not filled hexes
+  // (§5): only the edges whose neighbour is outside the set. For the Outpost's disks that is one ring; for the
+  // Deep Scan Array's ring of attached hexes it is a band, an inner and an outer line, with the legal hexes
+  // between. Drawn in the player teal with the toll path's dash, on the same hex geometry as every other
   // layer. A few hundred hexes per anchor, so it is simply recomputed each frame (as the territory map is).
-  function drawDeployRing(reach) {
+  function drawDeployRing(inside) {
     const hs = galaxy.galaxyParams.hexSize;
-    const inside = new Set();
-    reach.centres.forEach((c) => hexesInRadius(c, reach.radius).forEach((h) => inside.add(h.q + ',' + h.r)));
     ctx.save();
     ctx.setLineDash([5, 5]);
     ctx.strokeStyle = col('player', 0.85);
@@ -4574,7 +4651,7 @@ select.field{appearance:none; cursor:pointer;}
   // re-render or a candidate click asks nothing, and a route ending on a refused hex asks nothing. The ask is
   // captured, as openCandidateAction captures its candidate, so a late answer for a route since edited is
   // dropped, never shown against the wrong one. Informational only: Finalise never waits on it — the popup the
-  // route goes to (the Deploy Outpost popup, or the Dispatch popup for a Redeploy) asks its own at Finalise and
+  // route goes to (the Deploy popup, or the Dispatch popup for a Redeploy) asks its own at Finalise and
   // gates its commit on that, and the engine re-checks and re-costs at dispatch.
   function requestDeployQuote() {
     if (!deployTarget()) return;
@@ -6027,7 +6104,7 @@ select.field{appearance:none; cursor:pointer;}
   // the popup receives a copy ({ anchor, action? } each) on Finalise and hands it back on Edit.
   // (automation 3c) `loop` is the popup saying its launch picker has a repeating mode on (Edit Route).
   window.__planRoute = function (vehicle, waypoints, loop) { startPlanning(vehicle, waypoints, '', loop); };
-  // 2.2 deploy pipeline: the Deploy Outpost popup's Plan Route / Edit Route open the DEPLOY map for a FRESH deploy —
+  // 2.2 deploy pipeline: the Deploy popup's Plan Route / Edit Route open the DEPLOY map for a FRESH deploy —
   // planning mode for the chosen carrier and the kit's lane (`kind`, e.g. 'outpost'), the kit still in inventory,
   // with no waypoints (Plan Route) or the finalised route (Edit Route). Its Finalise hands the route back to the
   // popup (__kitDeployFinalise), which loads the kit at its commit.
@@ -6045,7 +6122,7 @@ select.field{appearance:none; cursor:pointer;}
   // line as the map chip / left list — one copy of each, shared across the two IIFEs like __fmtETA.
   window.__routeActionAllowed = routeActionAllowed;
   window.__routeActionSummary = actionSummary;
-  // 2.2 deploy pipeline: the Deploy Outpost popup's Planned Route names its stops with the planner's own anchorLabel.
+  // 2.2 deploy pipeline: the Deploy popup's Planned Route names its stops with the planner's own anchorLabel.
   window.__anchorLabel = anchorLabel;
   // Automation 2b: the route checks, shared the same way. The popup passes its OWN finalised route
   // ({ vehicle, origin, waypoints }), so the planner and the Finalise list judge a route by one rule.
@@ -9367,9 +9444,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     lightTransport: 'assets/units/lighttransport.jpg',
     mediumTransport: 'assets/units/mediumtransport.jpg',
     heavyTransport: 'assets/units/heavytransport.jpg',
-    spycraft: 'assets/units/spycraft.jpg'
+    spycraft: 'assets/units/spycraft.jpg',
+    outpost: 'assets/units/outpost.jpg'   // (2.5 slice 14b) the Deep Scan Array has no art yet: the fallback
   };
   var CN_BUILD_ART_FALLBACK = 'assets/industrial/factoryConstruction.jpg';
+  // cnLabel(kind) -> what the Constructed view calls a kind: an installation kit's player label ("Deep Scan
+  // Array kit", the kit-kinds table — what lands is a kit, not the structure), else the plain `pretty` name.
+  function cnLabel(kind){ return (window.__kitLabelForBill && window.__kitLabelForBill(kind)) || pretty(kind); }
+  // cnA(kind) -> cnLabel with its article: "a Miner", "an Outpost kit".
+  function cnA(kind){ var l = cnLabel(kind); return (/^[aeiou]/i.test(l) ? 'an ' : 'a ') + l; }
 
   function renderConstructed(){
     var cn = el('tw-cn'); if(!cn) return;
@@ -9402,7 +9485,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       var q = quote[kind] || {}, open = kind === T.cnOpen;
       var price = q.price, buildT = q.buildTicks || 0;
       return '<div class="am-item' + (open ? ' open' : '') + '" data-kind="' + kind + '">'
-        + '<div class="anm">' + pretty(kind) + '</div>'
+        + '<div class="anm">' + cnLabel(kind) + '</div>'
         + '<div class="apr"><span class="amt"><span class="c">&#162;</span>'
           + (price == null ? '&mdash;' : fmt(price)) + '</span>'
           + '<span class="abt">' + cnDur(buildT) + '</span></div>'
@@ -9431,7 +9514,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         // rather than a clamped 0%. Both the highlight and the label read the snapshot flag.
         var cell = b.building ? pct + '%' : 'queued';
         return '<div class="ip-item' + (b.building ? ' cur' : '') + '">'
-          + '<span class="k">' + pretty(b.kind) + '<span class="sub">arrives in ' + cnDur(b.arrive) + '</span></span>'
+          + '<span class="k">' + cnLabel(b.kind) + '<span class="sub">arrives in ' + cnDur(b.arrive) + '</span></span>'
           + '<span class="eta">' + cell + '</span>' + x + '</div>';
       }).join('');
     } else {
@@ -9457,7 +9540,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           + '<div class="u">hrs : min left</div><div class="pct">' + pct + '%</div></div>';
       sub = '<div class="dk-note">Building at the Syndicate foundry</div>'
         + '<div class="dk-note small">then ~' + cnDur(head.deliver) + ' delivery &middot; arrives in ' + cnDur(head.arrive) + '</div>';
-      hn = pretty(head.kind) + ' &middot; building';
+      hn = cnLabel(head.kind) + ' &middot; building';
     } else {
       donut = '<svg viewBox="0 0 120 120" width="158" height="158">'
         + '<circle cx="60" cy="60" r="52" fill="none" stroke="#1C212B" stroke-width="13"/></svg>'
@@ -9477,7 +9560,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var p4 = '<div class="dk-card dk-hero' + (head ? '' : ' dim') + '">'
       + '<div class="art" style="background-image:url(\'' + p4art + '\')"></div>'
       + '<div class="scrim"></div><div class="ttop"><div class="zhead">Building</div></div>'
-      + '<div class="role">' + (head ? pretty(head.kind) : 'Idle') + '</div></div>';
+      + '<div class="role">' + (head ? cnLabel(head.kind) : 'Idle') + '</div></div>';
 
     // ---- panel 5: SYNDICATE BUILDYARD hero ----
     var p5 = '<div class="dk-card dk-hero">'
@@ -9509,7 +9592,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       if(!window.__adviserConfirm){ return; }
       window.__adviserConfirm({
         title: 'Insufficient credits',
-        body: 'We cannot afford a ' + pretty(kind) + ' right now. We need <b>&#162;' + fmt(price) + '</b>.',
+        body: 'We cannot afford ' + cnA(kind) + ' right now. We need <b>&#162;' + fmt(price) + '</b>.',
         confirmLabel: 'Close',
         singleButton: true,
         onConfirm: function(){}   // closes the reel; nothing happens
@@ -9517,14 +9600,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       return;
     }
     var destName = (window.__systemName && window.__systemName(dest)) || dest;
-    var body = 'Commission a ' + pretty(kind) + ' from the Syndicate for '
+    var body = 'Commission ' + cnA(kind) + ' from the Syndicate for '
       + '<b>&#162;' + (price == null ? '&mdash;' : fmt(price)) + '</b> (paid up front, with the delivery '
       + 'fuel). It builds in ~' + cnDur(buildT) + ', then ~' + cnDur(deliver) + ' delivery to '
       + destName + ' &mdash; arrives in ~' + cnDur(buildT + deliver) + '.';
     var fire = function(){ cnPostCommission(kind, dest, issueTick); };
     if(!window.__adviserConfirm){ fire(); return; }
     window.__adviserConfirm({
-      title: 'Commission a ' + pretty(kind) + '?',
+      title: 'Commission ' + cnA(kind) + '?',
       body: body,
       confirmLabel: 'Commission ▸',
       onConfirm: fire
@@ -9545,7 +9628,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           if(T.tier === 4) renderConstructed();
           return;
         }
-        cnNote('Commission placed — ' + pretty(kind) + ' is now building.', 'ok');
+        cnNote('Commission placed — ' + cnLabel(kind) + ' is now building.', 'ok');
         if(window.__refreshNow) window.__refreshNow(); else if(T.tier === 4) renderConstructed();
       })
       .catch(function(err){ if(T.tier === 4) renderConstructed(); });
@@ -9570,7 +9653,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var fire = function(){ cnPostCancel(kind, commissionId); };
     if(!window.__adviserConfirm){ fire(); return; }
     window.__adviserConfirm({
-      title: 'Cancel this ' + pretty(kind) + ' commission?',
+      title: 'Cancel this ' + cnLabel(kind) + ' commission?',
       body: 'You\'ll be refunded the baseline (minimum) price in credits; '
         + 'the prepaid delivery fuel is not returned.',
       confirmLabel: 'Cancel commission ▸',
@@ -9587,7 +9670,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           if(T.tier === 4) renderConstructed();
           return;
         }
-        cnNote('Commission cancelled — ' + pretty(kind) + ' withdrawn.', 'ok');
+        cnNote('Commission cancelled — ' + cnLabel(kind) + ' withdrawn.', 'ok');
         if(window.__refreshNow) window.__refreshNow(); else if(T.tier === 4) renderConstructed();
       })
       .catch(function(err){ if(T.tier === 4) renderConstructed(); });
@@ -10439,8 +10522,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
    client already holds (__systemName / __outpostName), exactly as the map resolves them.
 
    Its own open/close/poll lifecycle mirrors the Deuterium dashboard's (__opsOpen / __opsClosed /
-   __opsRefresh). IN TRANSIT is the only LIVE section this slice; LEASED / DEPLOYED / IDLE are empty
-   scaffolds whose entities don't exist yet (§7) — their markup is static above, nothing to wire. ==== -->
+   __opsRefresh). IN TRANSIT, IDLE, IDLE TRANSPORTS and (2.5 slice 14b) DEPLOYED are LIVE; LEASED is an empty
+   scaffold whose entity doesn't exist yet (§7) — its markup is static above, nothing to wire. ==== -->
 <script id="operations-tab-wire">
 (function(){
   "use strict";
@@ -10451,6 +10534,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     expanded: {},     // which rows are expanded (by ship key) — survives a poll's re-render
     idleSig: null,    // last rendered idle signature; null forces a rebuild ('' is a real, empty sig)
     idleCollapsed: {}, // which IDLE groups are collapsed (by group key) — survives a poll's re-render
+    deployedHtml: null, // (2.5 slice 14b) the DEPLOYED list as last drawn; rebuilt only when its text changes
+    depCollapsed: {},   // (2.5 slice 14b) which DEPLOYED type groups are collapsed — survives a poll's rebuild
     tpSig: null,       // last rendered IDLE-TRANSPORTS signature; null forces a rebuild
     tpSysCollapsed: {}, // which transport SYSTEM groups are collapsed (default open) — survives a poll
     tpOpen: {},        // which craft tabs are EXPANDED (default collapsed) — survives a poll
@@ -10526,8 +10611,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // TRANSPORT reads its own name ("Light Transport", NOT "Lighttransport Asset") — a craft is a
   // Vehicle, not an asset, so it drops the suffix. `craftManifestLabel` splits a camelCase class id
   // into words for the `.ops-manrow .g` capitalize rule to title-case; the class-vs-asset test is
-  // TP_SHORT's key set (the client's own transport vocabulary). PRICES NOTHING here (§5).
+  // TP_SHORT's key set (the client's own transport vocabulary). An INSTALLATION reads as the kit it lands as
+  // (2.5 slice 14b — "Deep Scan Array kit", the kit-kinds table; it read "Deep_scan_array Asset"). PRICES NOTHING
+  // here (§5).
   function craftManifestLabel(kind){
+    var kitLabel = window.__kitLabelForBill && window.__kitLabelForBill(kind);
+    if(kitLabel) return kitLabel;                             // deep_scan_array → "Deep Scan Array kit" → (CSS) "… Kit"
     return TP_SHORT.hasOwnProperty(kind)
       ? String(kind).replace(/([a-z0-9])([A-Z])/g, '$1 $2')   // lightTransport → "light Transport" → (CSS) "Light Transport"
       : (kind + ' asset');                                    // miner → "miner asset" → (CSS) "Miner Asset"
@@ -10903,7 +10992,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the section live as machines deploy (leave) and ventures tear down (return).
   var KIND_ORDER = ['miner', 'factory'];   // the two ground-asset kinds that exist this slice
   var KIND_PLURAL = { miner: 'Miners', factory: 'Factories' };
-  function kindPlural(k){ return KIND_PLURAL[k] || (esc(k) + 's'); }
+  // An idle KIT (an undeployed Outpost or Deep Scan Array) is headed by its kit-kinds label: "Outpost kits".
+  function kindPlural(k){
+    var kit = window.__kitKind && window.__kitKind(k);
+    return KIND_PLURAL[k] || (kit ? esc(kit.label) + 's' : esc(k) + 's');
+  }
 
   function myIdle(guild){
     return ((guild && guild.assets) || []).filter(function(a){ return a.deployedToVentureId == null; });
@@ -10919,15 +11012,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return known.concat(extra);
   }
 
-  // An idle OUTPOST — an undeployed kit (2.2 deploy pipeline, territory-model.md §5 asset-initiated) — carries a
-  // Deploy button that opens the Deploy Outpost popup for that kit. Miners and factories stay plain rows.
+  // An idle KIT — an undeployed Outpost or Deep Scan Array (2.2 deploy pipeline, territory-model.md §5 asset-
+  // initiated; the array, 2.5 slice 14b) — carries a Deploy button that opens the deploy popup for that kit, and
+  // reads as its kit label. Which kinds are kits is the kit-kinds table's answer, not a list kept here. Miners
+  // and factories stay plain rows.
   function machineHtml(a){
-    var deploy = a.kind === 'outpost'
+    var kit = window.__kitKind && window.__kitKind(a.kind);
+    var deploy = kit
       ? '<button class="ops-idle-deploy" type="button" data-kit-deploy="' + esc(a.id) + '">Deploy</button>'
       : '';
     return '<div class="ops-idle-machine">'
       +   '<span class="mid">' + esc(a.id) + '</span>'
-      +   '<span class="mkind">' + esc(a.kind) + '</span>'
+      +   '<span class="mkind">' + esc(kit ? kit.label : a.kind) + '</span>'
       +   deploy
       + '</div>';
   }
@@ -10981,7 +11077,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       O.idleCollapsed = {};
       host.innerHTML = '<div class="ops-empty"><div class="glyph">&#9675;</div>'
         + '<h3>Nothing idle</h3>'
-        + '<p>Every asset is deployed. Idle miners and factories &mdash; and, later, transports and kits &mdash; wait here, ready to send out.</p></div>';
+        + '<p>Every asset is deployed. Idle miners, factories and kits wait here, ready to send out.</p></div>';
       return;
     }
 
@@ -11199,9 +11295,67 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     host.innerHTML = keys.map(function(k){ return tpGroupHtml(k, byGroup[k].name, byGroup[k].craft); }).join('');
   }
 
-  // The whole hub, run on open and on every poll while open. IN TRANSIT, IDLE and IDLE TRANSPORTS
-  // are live; the LEASED / DEPLOYED scaffolds are static markup, so there is nothing else to re-read.
-  function render(){ var g = meGuild(); renderLaneNotices(g); renderTransit(g, snap()); renderIdle(g); renderIdleTransports(g); }
+  // ---- DEPLOYED (2.5 slice 14b): the guild's own placed structures, read-only ----------------------------
+  // The guild's Outposts and Deep Scan Arrays, straight off their snapshot rows (`outposts`, `deepScanArrays`;
+  // the per-guild view carries our own), grouped by type under collapsible headers as IDLE is (operations-hub.md
+  // §5). Each row is the structure's name and, as its descriptor, its HEX COORDINATE (RULED 10-09-26, §5), over
+  // one line of state: what it is anchored to and, for an array, what its row says — idle (no `scan`), or
+  // surveying a target with the time left read off the job's own `completeTick` (the survey button's eta). The
+  // names are the ones the rest of the client uses: an Outpost's from __outpostName, an array's from the serial
+  // on its id, as the survey popup names it. Nothing here acts — the Manage popup (§5) is not built; the Outpost
+  // Manager and the survey flow are where those acts live. Each group in id order. The client computes no game
+  // number.
+  function arrayLabel(a){ return 'Deep Scan Array ' + String(a.id).split('_').slice(-1)[0]; }
+  function scanTargetName(job){
+    if(job.level === 'L1') return systemName(job.targetSystemId);
+    return (window.__planetDesignation && window.__planetDesignation(job.targetPlanetId)) || job.targetPlanetId;
+  }
+  function deployedHtml(guild, s){
+    var mine = function(row){ return !!guild && row.ownerGuildId === guild.id; };
+    var byId = function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); };
+    var outposts = ((s && s.outposts) || []).filter(mine).sort(byId);
+    var arrays = ((s && s.deepScanArrays) || []).filter(mine).sort(byId);
+    if(!outposts.length && !arrays.length){
+      return '<div class="ops-empty"><div class="glyph">&#9633;</div>'
+        + '<h3>Nothing deployed yet</h3>'
+        + '<p>Outposts and Deep Scan Arrays your guild places list here. Deploy a kit from Idle to place one.</p></div>';
+    }
+    // One structure: its name and hex (the ruled descriptor), over its state line.
+    var row = function(name, coords, state, busy){
+      return '<div class="ops-dep"><div class="hd"><span class="nm">' + esc(name) + '</span>'
+        + '<span class="kd">hex ' + esc(coords.q) + ', ' + esc(coords.r) + '</span></div>'
+        + '<div class="st' + (busy ? ' busy' : '') + '">' + esc(state) + '</div></div>';
+    };
+    // One type's group — the IDLE tree's collapsible kind group (its classes, caret and CSS), keyed in
+    // O.depCollapsed so a poll's rebuild keeps the reader's choice. An empty type has no group.
+    var group = function(key, title, rows){
+      if(!rows.length) return '';
+      return '<div class="ops-idle-kind' + (O.depCollapsed[key] ? ' collapsed' : '') + '" data-dep-key="' + key + '">'
+        + '<div class="ops-idle-kindhd"><span class="ops-idle-caret">&#9660;</span>'
+        + '<span class="knm">' + title + '</span><span class="kct">' + rows.length + '</span></div>'
+        + '<div class="ops-idle-kindbody">' + rows.join('') + '</div></div>';
+    };
+    var tick = (s && typeof s.tick === 'number') ? s.tick : null;
+    var outpostRows = outposts.map(function(o){
+      return row(outpostName(o.id), o.coords, 'anchored to ' + systemName(o.anchorSystemId), false);
+    });
+    var arrayRows = arrays.map(function(a){
+      var state = !a.scan
+        ? 'idle · anchored to ' + systemName(a.anchorSystemId)
+        : 'surveying ' + scanTargetName(a.scan) + (tick == null ? '' : ' · ' + fmtETA(a.scan.completeTick - tick));
+      return row(arrayLabel(a), a.coords, state, !!a.scan);
+    });
+    return group('outposts', 'Outposts', outpostRows) + group('arrays', 'Deep Scan Arrays', arrayRows);
+  }
+  function renderDeployed(guild, s){
+    var host = el('ops-deployed-list'); if(!host) return;
+    var html = deployedHtml(guild, s);
+    if(html !== O.deployedHtml){ O.deployedHtml = html; host.innerHTML = html; }
+  }
+
+  // The whole hub, run on open and on every poll while open. IN TRANSIT, DEPLOYED, IDLE and IDLE TRANSPORTS
+  // are live; the LEASED scaffold is static markup, so there is nothing else to re-read.
+  function render(){ var g = meGuild(), s = snap(); renderLaneNotices(g); renderTransit(g, s); renderDeployed(g, s); renderIdle(g); renderIdleTransports(g); }
 
   // Delegated once on the panel. Two independent toggles:
   //  - an IN TRANSIT row expands its manifest (state in O.expanded, by ship key);
@@ -11233,7 +11387,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       if(window.__openDock) window.__openDock(dvid, null);
       return;
     }
-    // DEPLOY on an idle outpost (2.2 deploy pipeline, asset-initiated) — opens the Deploy Outpost popup for that
+    // DEPLOY on an idle kit (2.2 deploy pipeline, asset-initiated; any kit kind, 2.5 slice 14b) — opens the Deploy popup for that
     // kit, which re-reads the kit off the snapshot by id. Checked beside Dispatch / Dock, ahead of the toggles.
     var kitBtn = e.target.closest('.ops-idle-deploy');
     if(kitBtn){
@@ -11244,8 +11398,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(hd){
       var grp = hd.closest('.ops-idle-sys, .ops-idle-kind'); if(!grp) return;
       var gkey = grp.getAttribute('data-idle-key');
+      var dkey = grp.getAttribute('data-dep-key');   // a DEPLOYED type group wears the same classes (2.5 slice 14b)
       var isCollapsed = grp.classList.toggle('collapsed');
       if(gkey){ if(isCollapsed) O.idleCollapsed[gkey] = true; else delete O.idleCollapsed[gkey]; }
+      if(dkey){ if(isCollapsed) O.depCollapsed[dkey] = true; else delete O.depCollapsed[dkey]; }
       return;
     }
     // IDLE TRANSPORTS collapse toggles — mirrors the IDLE handler above, for the transport tree: a
@@ -11290,7 +11446,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The shell drives these three, mirroring the Deuterium dashboard's lifecycle: open, close, and
   // every poll — so an open hub re-reads each snapshot (new deliveries appear, bars advance, ETAs
   // decrement) driven by its own panel's lifecycle.
-  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; O.tpSig = null; O.endedSig = null; render(); };
+  window.__opsOpen = function(){ O.open = true; O.transitSig = ''; O.idleSig = null; O.tpSig = null; O.endedSig = null; O.deployedHtml = null; render(); };
   window.__opsClosed = function(){ O.open = false; };
   window.__opsRefresh = function(){ if(O.open) render(); };
 })();
@@ -11666,9 +11822,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the same card re-dressed (openNotice, below), and its pieces live here. Every value is still a
   // payload field or the engine's whenDay — the client types none and computes no game number (§18).
 
-  // The title's {Kind} — "Outpost" from payload.kind 'outpost'. Degrades to "Kit", the engine's own
-  // word for what was hauled, so the title never reads "null" or ends on a dash.
-  function deployKindLabel(p){ return p.kind ? prettyGood(p.kind) : 'Kit'; }
+  // The title's {Kind} — the structure the kit was to become, from the kit-kinds table: "Outpost" from
+  // payload.kind 'outpost', "Deep Scan Array" from 'deepScan' (2.5 slice 14b — it read the raw "DeepScan"). A
+  // kind the table does not know reads as itself; a missing one degrades to "Kit", the engine's own word for
+  // what was hauled, so the title never reads "null" or ends on a dash.
+  function deployKindLabel(p){
+    var kit = p.kind && window.__kitKind ? window.__kitKind(p.kind) : null;
+    return kit ? kit.structure : (p.kind ? prettyGood(p.kind) : 'Kit');
+  }
 
   // The pilot's report, verbatim from §10 — two beats, rendered as two paragraphs. Static copy: it
   // names no number and reads the same for both causes; the facts block carries the specifics.
@@ -11677,8 +11838,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     "I hate to pester you like this, Guildmaster, but we can’t float around out here forever. We need a decision from you."
   ];
 
-  // payload.cause -> the Reason fact: the two reasons a deploy retreats on (§10).
-  var DEPLOY_FAILED_REASON = { 'occupied':'Hex taken', 'out-of-range':'Out of range' };
+  // payload.cause -> the Reason fact: the reasons a deploy retreats on (§10) — the Outpost's two, and the Deep
+  // Scan Array's 'not-attached' (2.5 (b1); labelled in slice 14b — it read "—"): the hex no longer touches the
+  // guild's territory.
+  var DEPLOY_FAILED_REASON = { 'occupied':'Hex taken', 'out-of-range':'Out of range', 'not-attached':'Not attached' };
 
   // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
   // only (§18) — a local copy, the Dispatch popup's prettyClass is out of this IIFE's scope.
@@ -12022,10 +12185,6 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function closeNotice(){ el('notice-overlay').classList.remove('open'); }
   window.__openNotice = openNotice;   // the notice popup's single entry point (§9)
 
-  // The kit good each deployable kind packs: the engine's kitGoodFor ('outpost' -> 'outpost_kit'), the one
-  // pairing built. Read against a published hold (§18): the client looks for the key and computes nothing.
-  var KIT_GOOD = { outpost: 'outpost_kit' };
-
   // retreatedCraft(p) -> the live heavy a deploy_failed notice is about, or null when there is nothing to act
   // on. It is found by payload.craftId on the player's guild row, and counts only while it is still as the
   // retreat left it: idle, off any route, with the kit of payload.kind aboard. A craft that has moved on (a fork
@@ -12033,7 +12192,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function retreatedCraft(p){
     var me = meGuild();
     var craft = me ? (me.vehicles || []).filter(function(v){ return v.id === p.craftId; })[0] : null;
-    var good = KIT_GOOD[p.kind];
+    // The kit good the kind rides a hold as — the kit-kinds table's copy of the engine's kitGoodFor ('deepScan'
+    // -> 'deep_scan_array_kit'). Read against a published hold (§18): the client looks for the key, computes nothing.
+    var kit = window.__kitKind ? window.__kitKind(p.kind) : null;
+    var good = kit ? kit.good : null;
     if(!craft || craft.status !== 'idle' || craft.route || !good || !(craft.cargo || {})[good]) return null;
     return craft;
   }
@@ -12744,7 +12906,7 @@ function paintInventoryHero(d){
 
   // PRE-PLAN state (§A): the Onboard Manifest (the craft's real hold) + the Maintenance (disabled) /
   // Plan Route buttons. Re-read from DP.vehicle each call so the box reflects the current cargo (§18).
-  // (A deploy no longer starts here: it starts from the idle outpost — the Deploy Outpost popup — which picks
+  // (A deploy no longer starts here: it starts from the idle kit — the Deploy popup — which picks
   // this craft as its carrier; territory-model.md §5 REVISED removed the heavy-first entry.)
   function renderPrePlan(){
     $('dpSection').innerHTML =
@@ -12860,7 +13022,7 @@ function paintInventoryHero(d){
   // quoteFigures(q) -> { time, cost } — an engine quote's two figures as the player reads them: the trip
   // time (the map's fmtETA of totalTicks) and the fuel cost presented in CREDITS (§8.0), not units. A quote
   // with no figures (null, or { ok:false }) reads "—" for both. Formatting only (§18). ONE copy, shared with
-  // the deploy map's target row and the Deploy Outpost popup (window.__quoteFigures), so every view reads a
+  // the deploy map's target row and the Deploy popup (window.__quoteFigures), so every view reads a
   // quote the same way.
   function quoteFigures(q){
     var okQ = q && q.ok;
@@ -12877,7 +13039,7 @@ function paintInventoryHero(d){
   }
 
   // quoteAllows(q) — the engine's quote lets the route go: it is ok, and the guild can afford it. The quote half of
-  // canDispatch, shared with the Deploy Outpost popup's Deploy (window.__quoteAllows), so the two commits read the
+  // canDispatch, shared with the Deploy popup's Deploy (window.__quoteAllows), so the two commits read the
   // engine's answer by ONE rule. The client reacts to the engine's verdict and computes no number of its own (§18).
   function quoteAllows(q){
     return !!(q && q.ok && q.affordable !== false);
@@ -13167,7 +13329,7 @@ function paintInventoryHero(d){
   // — the only source of time / fuel / credits (§18). A network/HTTP failure comes back { ok:false }-
   // shaped, so the one render path shows a reason rather than throwing. Shared by Finalise and by a
   // Remove in the Finalise list (automation 2b), the two things that change the route's geometry — and
-  // by the deploy map and the Deploy Outpost popup (window.__fetchQuote), for the route a deploy will send.
+  // by the deploy map and the Deploy popup (window.__fetchQuote), for the route a deploy will send.
   // Only the anchors go (anchorsOf): an action never changes a leg, so a deploy route quotes as its bare flight.
   async function fetchQuote(v, waypoints){
     var player = window.__player ? window.__player() : null;
@@ -13241,7 +13403,7 @@ function paintInventoryHero(d){
     if(btn){ btn.disabled = false; btn.textContent = 'Dispatch'; }
     showDispatchRefuse('Refused: ' + ((out && out.reason) || 'the Syndicate declined'));
   }
-  // DEPLOY (territory-model.md §5) — called BY the Deploy Outpost popup's Deploy, once its kit is loaded, with
+  // DEPLOY (territory-model.md §5) — called BY the Deploy popup's Deploy, once its kit is loaded, with
   // the finalised route: one stop or many, the deploy action on the last. That popup is the deploy's Finalise
   // view, so there is no launch picker here (a kit never rides a lane — always once): the route goes out
   // through Dispatch's own send path, where dispatchActionFor sees the action and sends
@@ -13296,10 +13458,10 @@ function paintInventoryHero(d){
   window.__openDispatch = openDispatch;   // the ONE entry point both call sites use
   window.__dispatchClose = closeDispatch;
   window.__dispatchFinalise = dispatchFinalise;   // the map's Finalise Route calls this
-  window.__dispatchDeploy = dispatchDeploy;       // the Deploy Outpost popup's Deploy calls this
-  window.__fetchQuote = fetchQuote;               // the deploy map and the Deploy Outpost popup ask their quote through this…
+  window.__dispatchDeploy = dispatchDeploy;       // the Deploy popup's Deploy calls this
+  window.__fetchQuote = fetchQuote;               // the deploy map and the Deploy popup ask their quote through this…
   window.__quoteFigures = quoteFigures;           // …and format it the way the Finalise view does
-  window.__quoteAllows = quoteAllows;             // the Deploy Outpost popup's Deploy is gated on the quote by this, as Dispatch is
+  window.__quoteAllows = quoteAllows;             // the Deploy popup's Deploy is gated on the quote by this, as Dispatch is
 
   $('dpClose').addEventListener('click', closeDispatch);
   $('dispatch-overlay').addEventListener('click', function(e){ if(e.target === this) closeDispatch(); });
@@ -13309,9 +13471,11 @@ function paintInventoryHero(d){
 
 <script id="deploy-kit-wire">
 /* ============================================================================
-   THE DEPLOY OUTPOST POPUP (2.2 deploy pipeline, asset-initiated client slices 2a + 2b — territory-model.md §5
-   "The deploy flow, REVISED"). A deployment starts from the OUTPOST, not the carrier: an idle outpost's Deploy
-   button (OPERATIONS → IDLE) opens this popup for that one kit. It has the Dispatch popup's two states:
+   THE DEPLOY POPUP (2.2 deploy pipeline, asset-initiated client slices 2a + 2b — territory-model.md §5
+   "The deploy flow, REVISED"). A deployment starts from the KIT, not the carrier: an idle kit's Deploy button
+   (OPERATIONS → IDLE) opens this popup for that one kit. It serves every kit kind the kit-kinds table names — an
+   Outpost's, and (2.5 slice 14b) a Deep Scan Array's — and only its words and art change by kind: the carrier,
+   the planner and the commit are the same for both. It has the Dispatch popup's two states:
     - PRE-PLAN: the kit's summary, a Carrier dropdown of the heavies that can take it, and Plan Route → the
       planner's deploy map for the chosen carrier;
     - POST-FINALISE: the map's Finalise hands the route back here — the Planned Route beside the engine's Time /
@@ -13361,16 +13525,22 @@ function paintInventoryHero(d){
   }
 
   // openKitDeploy(assetId) — fill the popup for one idle kit and show it, pre-plan. The kit is re-read off the
-  // snapshot by id; one no longer idle (loaded, or gone, since the row was drawn) opens nothing. Opening abandons
-  // any in-progress route, as opening the Dispatch popup does (§B).
+  // snapshot by id; one no longer idle (loaded, or gone, since the row was drawn), or not a kit at all, opens
+  // nothing. Every word that names the kind comes from its kit-kinds row (`spec`). Opening abandons any
+  // in-progress route, as opening the Dispatch popup does (§B).
   function openKitDeploy(assetId){
     var g = myGuild();
     var kit = ((g && g.assets) || []).filter(function(a){ return a.id === assetId && a.deployedToVentureId == null; })[0];
-    if(!kit) return;
+    var spec = kit && window.__kitKind ? window.__kitKind(kit.kind) : null;
+    if(!kit || !spec) return;
     if(window.__abandonPlanning) window.__abandonPlanning();
     KD = freshKD(kit);
-    $('kdName').textContent = 'Outpost Kit · #' + idSuffix(kit.id);
-    $('kdKind').textContent = kit.kind.charAt(0).toUpperCase() + kit.kind.slice(1);
+    $('kdEyebrow').textContent = 'Deploy ' + spec.structure;
+    $('kdName').textContent = spec.label + ' · #' + idSuffix(kit.id);
+    $('kdSechead').textContent = spec.structure;
+    $('kdKind').textContent = spec.structure;
+    $('kdStitle').textContent = spec.label;
+    $('kdArt').style.backgroundImage = spec.art ? "url('" + spec.art + "')" : 'none';
     $('kdStored').textContent = (window.__systemName && window.__systemName(kit.systemId)) || kit.systemId;
     renderPrePlan();
     $('deploy-overlay').classList.add('open');
@@ -13406,7 +13576,7 @@ function paintInventoryHero(d){
   function syncPlanBtn(){ $('kdPlanBtn').disabled = !$('kdCarrier').value; }
 
   // Plan Route → the DEPLOY map for the chosen carrier (territory-model.md §5): the planner's deploy variant on
-  // the kit's lane (its kind, 'outpost'), centred on the carrier (which sits at the kit's system), with no stops
+  // the kit's lane (its kind, 'outpost' or 'deepScan'), centred on the carrier (which sits at the kit's system), with no stops
   // yet. Nothing loads here. The carrier is re-read off the live snapshot, so one that has left since the popup
   // opened is caught: the dropdown redraws without it and nothing opens. The popup is only HIDDEN, as the
   // Dispatch popup's Plan Route hides its own: it keeps the kit for the map's Finalise to come back to.

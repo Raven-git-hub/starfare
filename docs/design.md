@@ -294,6 +294,12 @@ guild knows its **home system fully + L0 everywhere**, nothing else.
 > new readings it logged (or that the target was already charted), or "survey voided", naming the guild that
 > claimed the target first. And an array can no longer be put on a target another of the guild's own arrays is
 > already surveying: a second would learn nothing.)*
+> *(⤳ 15-10-26, roadmap 2.5 — **installation kits reach the player** (slices 14a engine + 14b client;
+> `docs/asset-purchase.md` §"Installation kits", `docs/territory-model.md` §5): a guild can now commission a Deep
+> Scan Array or an Outpost at its own dockyard, or buy one from the Syndicate, and what arrives is a kit it deploys
+> from the client like any other. The deploy map paints where an array may go: the engine publishes the exact hexes
+> its "attached" rule accepts, so the client draws that rule and never works it out. Placed structures list under
+> OPERATIONS → Deployed, an array as idle or surveying. Arrays are not yet drawn on the galaxy map.)*
 
 > **The full exploration & fog model lives in `docs/exploration-model.md` (design-ahead,
 > 05-10-26).** The L0–L3 levels and the situation × method table, the two-source architecture, all

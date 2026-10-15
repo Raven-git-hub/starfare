@@ -42,6 +42,7 @@ const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
+const { withoutDeepScanLanes } = require('./deep-scan-lane-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { reveal } = require('../exploration.js');
 const { hexDistance } = require('../transport.js');
@@ -420,9 +421,11 @@ test('OMIT-WHEN-IDLE: a galaxy whose array is idle is byte-identical to main bef
     assert.equal(hashState(noSlots), pins.state, `the state moved OUTSIDE the record's slots at "${name}"`);
     // ⤳ 15-10-26: every lens/view hash here goes through the installation-quote strip (tests/installation-quote-strip.js) —
     // the installation kit acquire slice added two public assetPurchaseQuote rows and nothing else, so the pins stay as they were.
-    assert.equal(sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(s)))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
+    // ⤳ 15-10-26 (slice 14b): and through the deepScan-lane strip (tests/deep-scan-lane-strip.js) — every guild row
+    // holding a system gained `deployRange.deepScan` and nothing else moved, so the pins still stand.
+    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s))))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
     for (const guildId of [A, B]) {
-      const view = withoutInstallationQuotes(buildSnapshot(s, guildId));
+      const view = withoutDeepScanLanes(withoutInstallationQuotes(buildSnapshot(s, guildId)));
       assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_SLIM[name][guildId], `${guildId}'s view moved at "${name}"`);
       // Put `geography.systems` back and it is the 09-10-26 (settlement-surface) view…
       const legacy = withSystemsBlock(view);
