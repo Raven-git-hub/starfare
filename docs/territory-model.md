@@ -708,7 +708,9 @@ to meet a guarantee. *(Rule ruled; the repair is a generator build detail.)* *(�
 slice 16: **the repair is not built.** `tools/generate_seed.js` has no de-cluster step, and `data/seed.json` (7331)
 still has 6 directly adjacent starter pairs and 18 within 2 hexes; `foundGuild` has no spacing gate either. So two
 home disks CAN overlap today — `exploration-model.md` §5 "Overlapping disks" assumed they cannot. On the decision
-checklist.)*
+checklist.)* *(⤳ **RULED 15-10-26 — build the repair as specified here**, in the seed generator, so every NEW galaxy
+honours the ≥ 3-hex starter spacing; the 3-hex figure (2 × claimRadius + 1) is confirmed. No founding-time gate.
+A galaxy already created keeps its persisted seed and is not changed. Roadmap 2.5 slice 17.)*
 
 ## 7. The founding grant
 

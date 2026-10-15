@@ -5549,6 +5549,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
       both the tests and the walk.
 - **A Deep Scan Array on its own centre, slice 16 (2.5) — items for a ruling or a confirm** — *surfaced 15-10-26 by the
   build; each was built the way stated, and none is decided by the code beyond that.*
+  **⤳ ANSWERED 15-10-26 (the design room):** (1), (3), (4), (5), (6), (7) **accepted as built**; (8) recorded. (2) **RULED:
+  build `territory-model.md` §6's de-cluster repair in the seed generator** (no founding-time gate), so every new galaxy
+  honours the ≥ 3-hex starter spacing. The 3-hex figure is confirmed, which also closes "the starter separation" left
+  open in the Territory & deployment `[FIRST-CUT]` item above. Until the repair lands, "refused for both" stands on the
+  committed seed. That is slice 17 (`claude/cc-prompt-exploration-17-starter-spacing-repair.md`).
   1. **An unheld system's centre refuses as `not-bare-hex`** (the prompt asked for a decision). It is outside the
      exception ("neither controlled nor deep space"), so it keeps the reason every landmark gets — even a system inside
      the guild's own disk, which the placement rule alone would take. `not-attached` would misname it (an unheld centre
