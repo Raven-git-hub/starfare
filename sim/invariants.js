@@ -1862,7 +1862,9 @@ function checkBuildQueues(state) {
       v.buildQueue.forEach((entry, i) => {
         const at = `${where}.buildQueue[${i}]`;
 
-        // assetKind must be buildable — a ground asset OR a guild transport (2.2-foundation).
+        // assetKind must be buildable — a ground asset, a guild transport (2.2-foundation) or an
+        // installation kit (2.5, 15-10-26). The entry keeps the BILL kind (`deep_scan_array`); the kit
+        // it finishes as (`deepScan`) is an asset, checked by checkAssetOccupancy, not here.
         if (!BUILDABLE_KINDS.includes(entry.assetKind)) {
           out.push({ rule: 'build-entry-kind-buildable (build-yard.md §1)', where: `${at}.assetKind`, detail: { assetKind: entry.assetKind } });
         }
@@ -1880,7 +1882,7 @@ function checkBuildQueues(state) {
 
         // remainingTicks: null (not started) OR a non-negative integer ≤ BUILD_TICKS[kind]
         // (building — never more ticks left than the build takes). A bad kind already tripped
-        // above; it may still have a BUILD_TICKS entry (the three data-only installations do,
+        // above; it may still have a BUILD_TICKS entry (the data-only toll gate does,
         // sim/asset-recipes.js), so the cap check below can add a second violation for it.
         const rt = entry.remainingTicks;
         if (rt === null || rt === undefined) {

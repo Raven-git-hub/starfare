@@ -725,8 +725,10 @@ async function handleRequest(req, res) {
   // like /recipes for the refining catalog). Static and read-only, so the client fetches it
   // once; the System Production Console (build-yard.md §7 slice B) reads the bills + BUILD_TICKS
   // to render each dockyard's queue and the module shortfall. It serves the FULL BUILDABLE_KINDS
-  // (all six — miner, factory, the three cargo transports AND spycraft): a guild builds every
-  // recipe at its own dockyard. This is the build catalog, NOT the sell catalog — the Syndicate
+  // (all eight — miner, factory, the three cargo transports, spycraft AND the deep_scan_array /
+  // outpost installation kits, docs/asset-purchase.md §"Installation kits"): a guild builds every
+  // recipe at its own dockyard. `buildTicks` is the whole BUILD_TICKS table, so it also carries the
+  // data-only toll gate's time, which no build reads. This is the build catalog, NOT the sell catalog — the Syndicate
   // sells the narrower SYNDICATE_SELLABLE_KINDS (spycraft excluded, docs/asset-purchase.md
   // §"What the Syndicate sells"), surfaced separately via the snapshot's assetPurchaseQuote.
   // Changing a bill means editing asset-recipes.js + restarting, never a live mutation.

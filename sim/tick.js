@@ -30,7 +30,7 @@ const { assetId, nextAssetNumber } = require('./assets.js');
 const {
   isVehicleClass, vehicleId, nextVehicleSerial, vehicleSpec,
 } = require('./vehicles.js');
-const { assetBill, BUILD_TICKS } = require('./asset-recipes.js');
+const { assetBill, kitKindForBill, BUILD_TICKS } = require('./asset-recipes.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
@@ -69,8 +69,9 @@ const { stepScanCompletions } = require('./deep-scan-arrays.js');
 // actioned-route DISPATCH runs it too — a craft already sitting on its first waypoint resolves that stop
 // in place at dispatch (the §11.4 zero-length reposition skip). The two tick hooks below call the SAME
 // functions, so a stop resolves identically whichever way the craft reached it. actions.js does NOT
-// require tick.js, so this one-directional edge is cycle-free.
-const { resolveRouteArrival, advanceRoute, resumeWaitingLanes } = require('./actions.js');
+// require tick.js, so this one-directional edge is cycle-free. The same edge brings in `mintKitAsset`,
+// the one kit mint, which mintFinishedKind calls for an installation (below) rather than copying it.
+const { resolveRouteArrival, advanceRoute, resumeWaitingLanes, mintKitAsset } = require('./actions.js');
 
 // A total, deterministic string order for sort keys — used where a tie has to
 // break the same way every run (invariant 9) rather than however sort found it.
@@ -273,6 +274,13 @@ function refineDeuterium(state, guild) {
 // owned entity, idle at `systemId` (2.2-foundation). Both mint sites — the dockyard's own build
 // (buildDockyards, below) and the Syndicate delivery's arrival (stepArrivals) — route through
 // here, so the branch and the duplicate-id tripwire live once. It BRANCHES on the kind:
+//   - an INSTALLATION (a bill kind in KIT_KIND_FOR_BILL, sim/asset-recipes.js — the deep scan array,
+//     the outpost) → mint ONE idle KIT through `mintKitAsset` (sim/actions.js, the same mint grantKit
+//     and the unload use), of the KIT kind the bridge names (`deep_scan_array` → `deepScan`). Its id
+//     follows the kit serial (`guild.kitAssetSerial`), never the per-kind asset number, so it cannot
+//     collide with a granted, starter or unloaded kit (docs/asset-purchase.md §"Installation kits").
+//     Checked FIRST: the outpost's bill kind is spelled like its kit kind, and it must not fall through
+//     to the ground-asset branch below.
 //   - a VEHICLE class → mint a Vehicle into `guild.vehicles`, stamping the per-class spec
 //     (sim/vehicles.js VEHICLE_SPECS) + a SYSTEM-LANDMARK location for `systemId` (a bought/
 //     built craft always lands at a system — design.md §15.4); the id's `NN` is the per-GUILD
@@ -282,10 +290,20 @@ function refineDeuterium(state, guild) {
 // The finished thing is IDLE — referenced by no venture (assets) / carrying no leg (vehicles) —
 // which is derived, so it stores no status flag beyond the vehicle's default `idle`.
 //
-// THE DUPLICATE-ID TRIPWIRE (rule 4) holds for both families: a minted id cannot collide (the
-// vehicle serial only ever climbs; the asset max + 1 is above every existing suffix), so a hit
-// means the id scheme itself has been corrupted — halt loudly rather than share an id.
+// THE DUPLICATE-ID TRIPWIRE (rule 4) holds for all three families: a minted id cannot collide (the
+// kit and vehicle serials only ever climb; the asset max + 1 is above every existing suffix), so a
+// hit means the id scheme itself has been corrupted — halt loudly rather than share an id.
 function mintFinishedKind(guild, kind, systemId) {
+  const kitKind = kitKindForBill(kind);
+  if (kitKind !== null) {
+    const kit = mintKitAsset(guild, kitKind, systemId);
+    // The tripwire runs AFTER the mint here (mintKitAsset builds the id itself, and copying that here
+    // would be a second id rule to keep in step). Exactly one asset may carry the new id.
+    if (guild.assets.filter((a) => a.id === kit.id).length !== 1) {
+      throw new Error(`mintFinishedKind: guild ${guild.id} minted duplicate kit id ${kit.id} — kit serial corrupted`);
+    }
+    return;
+  }
   if (isVehicleClass(kind)) {
     // Bump the per-guild serial and mint from it (design.md §15.4 "Ids never repeat"): the
     // caller writes the new value back so it survives removal, which the max-based derivation
@@ -347,8 +365,8 @@ function buildDockyards(state, guild) {
       head.remainingTicks -= 1;
       venture.updatedAtTick = state.tick;
       if (head.remainingTicks === 0) {
-        // Emit the finished kind IDLE at the dockyard's OWN system (§4/§6): a ground asset into
-        // guild.assets, a guild transport into guild.vehicles — the branch, the id sequence and
+        // Emit the finished kind IDLE at the dockyard's OWN system (§4/§6): a ground asset or an
+        // installation KIT into guild.assets, a guild transport into guild.vehicles — the branch, the id sequence and
         // the duplicate-id tripwire all live in mintFinishedKind (above), shared with the
         // Syndicate-delivery arrival so the two mint sites can never diverge.
         mintFinishedKind(guild, head.assetKind, venture.systemId);
@@ -1055,7 +1073,7 @@ function stepSyndicateBuilds(state) {
     if (!near) return false;
     // TWO delivery clocks, by kind (phase-1-tuning §"Guild transports"):
     //   - a VEHICLE flies ITSELF in at its OWN `speed` (ticks/hex): thisTick + ceil(distance × speed).
-    //   - a GROUND asset rides a Syndicate hauler at CRAFT_SPEED (arrivalTickFor).
+    //   - a GROUND asset (or an installation kit) rides a Syndicate hauler at CRAFT_SPEED (arrivalTickFor).
     // Either way the arrival is an ABSOLUTE tick, so a save reloaded mid-flight still lands right.
     const arrivalTick = isVehicleClass(b.assetKind)
       ? thisTick + Math.ceil(near.distance * vehicleSpec(b.assetKind).speed)
@@ -1248,8 +1266,8 @@ function stepArrivals(state, _actions) {
     if (ship.assetKind) {
       if (!guild) continue;
       // The dockyard's EXACT mint (mintFinishedKind, shared with buildDockyards): the finished kind
-      // — a ground asset into guild.assets, a guild transport into guild.vehicles — IDLE at the
-      // destination system, on the per-(guild, kind) id sequence, guarded by the duplicate-id
+      // — a ground asset or an installation KIT into guild.assets, a guild transport into guild.vehicles — IDLE at the
+      // destination system, on the kind's own id sequence (the kit serial for a kit), guarded by the duplicate-id
       // tripwire. The mint's tick is `thisTick`; like the dockyard, the entity carries no birth-tick
       // field of its own (the shapes are shared and immutable — stamping one here would diverge it,
       // invariant 5) — the emission tick lives in the step, not on the entity.

@@ -8,9 +8,9 @@
 //
 //   - ASSET_BILLS        — miner, factory (the two ground assets).
 //   - VEHICLE_BILLS      — the four guild transports.
-//   - INSTALLATION_BILLS — outpost, deep scan array, toll gate. DATA ONLY: none of the three
-//                          has a build path yet, so these are not in ALL_BILLS / BUILDABLE_KINDS
-//                          (see INSTALLATION_BILLS below for why).
+//   - INSTALLATION_BILLS — outpost, deep scan array, toll gate. The outpost and the deep scan
+//                          array are buildable and sellable, and finish as a KIT; the toll gate is
+//                          still data only (see INSTALLATION_BILLS below for why).
 //
 // The Droid row of the doc has no bill yet (design-ahead, no entity), so it is not here.
 //
@@ -21,7 +21,7 @@ const { MINER, FACTORY } = require('./assets.js');
 const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT, BUILDABLE_VEHICLE_KINDS,
 } = require('./vehicles.js');
-const { isTier3Good } = require('./resources.js');
+const { isTier3Good, kitGoodFor } = require('./resources.js');
 const { quotedPrice } = require('./price-ring.js');
 
 // The two ground-asset bills — quantities lifted VERBATIM from docs/asset-recipes.md's FINAL
@@ -65,8 +65,7 @@ const BUILDABLE_ASSET_KINDS = Object.freeze([MINER, FACTORY]);
 // Kept beside the ground-asset bills so the same `assertBillModulesAreTier3` tripwire covers
 // them (run over the merged view below), and so a bought/built vehicle is priced and consumed
 // through the SAME kind-general machinery a ground asset is. Ground-asset bills stay in
-// ASSET_BILLS untouched — the /asset-recipes endpoint that serves ASSET_BILLS and lists
-// [miner, factory] as buildable is a client concern for a later slice, not moved here.
+// ASSET_BILLS untouched; `GET /asset-recipes` serves the merged ALL_BILLS + BUILDABLE_KINDS.
 //
 // Quantities lifted VERBATIM from docs/asset-recipes.md's FINAL table, the four ship rows
 // (RULED 27-09-26, all `[FIRST-CUT]`), in the doc's own order.
@@ -120,24 +119,24 @@ const VEHICLE_BILLS = Object.freeze({
   [SPYCRAFT]: SPYCRAFT_BILL,
 });
 
-// ── THE THREE INSTALLATION BILLS — DATA ONLY, NO BUILD PATH (RULED 27-09-26) ──────────────────
+// ── THE THREE INSTALLATION BILLS (RULED 27-09-26; two made buildable 15-10-26) ────────────────
 // The doc's FINAL table rules a bill and an assembly time for the outpost, the deep scan array and
-// the toll gate. They are recorded here so the code carries all nine bills the doc does, and so the
-// Tier-3 tripwire below covers them. But NONE of the three can be built or bought yet:
-//   - outpost         — the entity exists (state.outposts), but it is placed by the operator
-//                       (spawnOutpost), not built at a dockyard;
-//   - deep scan array — no entity yet;
-//   - toll gate       — no entity yet.
-// So these bills are deliberately NOT in ALL_BILLS and their kinds are NOT in BUILDABLE_KINDS:
-// `assetBill` returns null for them, the dockyard refuses them and the Syndicate cannot price
-// them. Wiring one in is the job of the slice that gives it a build path — adding it here alone
-// would invent that path.
+// the toll gate. All three are recorded here so the code carries all nine bills the doc does, and so
+// the Tier-3 tripwire below covers them. Two of them now have a build path and one does not
+// (docs/asset-purchase.md §"Installation kits", RULED 15-10-26):
+//   - outpost, deep scan array — BUILDABLE (dockyard) and SELLABLE (Syndicate). What a finished
+//                       build or delivery produces is not an entity of the bill kind but one idle
+//                       KIT in the guild's inventory, which the existing load → ferry → deploy loop
+//                       carries (KIT_KIND_FOR_BILL below is the translation);
+//   - toll gate       — still DATA ONLY: it has no entity and no kit row in DEPLOYABLE_KITS
+//                       (sim/resources.js), so making it buildable would invent its kit. `assetBill`
+//                       returns null for it, the dockyard refuses it and the Syndicate cannot price it.
 //
-// The kind names are spelled ONCE, here, as the build prompt named them. None is used as an
-// entity kind anywhere else yet. The deployed array's KIT kind is `deepScan` (sim/resources.js, the
-// deploy-lane spelling, as `tollGate` will be) — RULED 06-10-26 a DELIBERATE seam: the slice that gives
-// installations a dockyard build path maps `deep_scan_array` → `deepScan` (and `toll_gate` → its kit
-// kind) for both together, rather than renaming either (docs/exploration-model.md §5).
+// The bill kind names are spelled ONCE, here. A queue entry or a Syndicate commission carries the
+// BILL kind (`deep_scan_array`); the kit it finishes as carries the KIT kind (`deepScan`, the
+// deploy-lane spelling in sim/resources.js). The two spellings were RULED a deliberate seam on 06-10-26
+// (docs/exploration-model.md §5) rather than renamed, and they meet in exactly one place:
+// KIT_KIND_FOR_BILL below.
 const OUTPOST = 'outpost';
 const DEEP_SCAN_ARRAY = 'deep_scan_array';
 const TOLL_GATE = 'toll_gate';
@@ -174,35 +173,60 @@ const OUTPOST_BILL = Object.freeze({
   power_cells: 200,
 });
 
-// installationKind -> bill. NOT merged into ALL_BILLS (see above).
+// installationKind -> bill. Only the BUILDABLE installations are merged into ALL_BILLS (below).
 const INSTALLATION_BILLS = Object.freeze({
   [DEEP_SCAN_ARRAY]: DEEP_SCAN_ARRAY_BILL,
   [TOLL_GATE]: TOLL_GATE_BILL,
   [OUTPOST]: OUTPOST_BILL,
 });
 
-// The merged view — every buildable/buyable kind's bill, ground assets AND vehicles. `assetBill`
-// reads this, so one lookup answers "the bill for this kind" for either family. The installation
-// bills are NOT in it: they have no build path yet.
-const ALL_BILLS = Object.freeze({ ...ASSET_BILLS, ...VEHICLE_BILLS });
+// The installations a dockyard can build (and the Syndicate sell) — the deep scan array and the
+// outpost, in the doc's table order. The toll gate is deliberately absent (see above).
+const BUILDABLE_INSTALLATION_KINDS = Object.freeze([DEEP_SCAN_ARRAY, OUTPOST]);
 
-// The combined kind vocabulary a dockyard can BUILD — ground assets THEN vehicles. The build
-// gate (commissionBuild, sim/actions.js), the build-queue invariant, and `GET /asset-recipes`
-// read THIS, so a vehicle is buildable everywhere a ground asset is — spycraft INCLUDED (a
-// guild builds all six at its own dockyard).
-const BUILDABLE_KINDS = Object.freeze([...BUILDABLE_ASSET_KINDS, ...BUILDABLE_VEHICLE_KINDS]);
+// The merged view — every buildable/buyable kind's bill: ground assets, vehicles AND the buildable
+// installations. `assetBill` reads this, so one lookup answers "the bill for this kind" for every
+// family. The toll gate's bill is NOT in it: it has no build path yet.
+const ALL_BILLS = Object.freeze({
+  ...ASSET_BILLS,
+  ...VEHICLE_BILLS,
+  ...Object.fromEntries(BUILDABLE_INSTALLATION_KINDS.map((kind) => [kind, INSTALLATION_BILLS[kind]])),
+});
+
+// The combined kind vocabulary a dockyard can BUILD — ground assets, then vehicles, then the
+// buildable installations. The build gate (commissionBuild, sim/actions.js), the build-queue
+// invariant, and `GET /asset-recipes` read THIS, so anything here is buildable everywhere —
+// spycraft INCLUDED (a guild builds it at its own dockyard).
+const BUILDABLE_KINDS = Object.freeze([
+  ...BUILDABLE_ASSET_KINDS, ...BUILDABLE_VEHICLE_KINDS, ...BUILDABLE_INSTALLATION_KINDS,
+]);
 
 // SYNDICATE_SELLABLE_KINDS — the kinds the Syndicate SELLS: sellable ⊂ buildable, diverging at
 // spycraft (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable (RULED
-// 22-09-26)"). It is `BUILDABLE_KINDS` MINUS `spycraft` — the two ground assets + the three
-// CARGO transports (light / medium / heavy), five kinds. Spycraft is guild-build-only: a guild
-// makes it in the dark at its own dockyard, the Syndicate never sells it. Spelled as an
-// explicit list (not a filter of BUILDABLE_KINDS) so it reads as the deliberate sell catalog it
-// is — the buy gate (buyAssetFromSyndicate) and the snapshot's purchase quote read THIS, not
-// BUILDABLE_KINDS, so a spycraft buy is refused loudly and the TRADE tab shows exactly the five.
+// 22-09-26)"). It is `BUILDABLE_KINDS` MINUS `spycraft` — the two ground assets, the three
+// CARGO transports (light / medium / heavy), and the two installation kits (deep scan array,
+// outpost; RULED 15-10-26, docs/asset-purchase.md §"Installation kits"): seven kinds. Spycraft
+// is still the ONLY guild-build-only kind: a guild makes it in the dark at its own dockyard, the
+// Syndicate never sells it. Spelled as an explicit list (not a filter of BUILDABLE_KINDS) so it
+// reads as the deliberate sell catalog it is — the buy gate (buyAssetFromSyndicate) and the
+// snapshot's purchase quote read THIS, not BUILDABLE_KINDS, so a spycraft buy is refused loudly.
 const SYNDICATE_SELLABLE_KINDS = Object.freeze([
   ...BUILDABLE_ASSET_KINDS, LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
+  DEEP_SCAN_ARRAY, OUTPOST,
 ]);
+
+// KIT_KIND_FOR_BILL — THE BRIDGE between the two spellings of an installation (docs/asset-purchase.md
+// §"Installation kits", RULED 15-10-26; closes the 06-10-26 seam, docs/exploration-model.md §5). A
+// dockyard queue entry and a Syndicate commission carry the BILL kind; when one finishes, the mint
+// (sim/tick.js mintFinishedKind) looks the bill kind up HERE and mints one idle KIT of the kit kind.
+// This is the ONLY place the two spellings meet — nothing else translates one into the other. The
+// outpost happens to spell both the same way; it still needs its row, or a finished outpost would be
+// minted as a plain asset off the miner/factory numbering instead of the kit serial. The toll gate gets
+// its row (`toll_gate` → `tollGate`) in the slice that gives it a kit.
+const KIT_KIND_FOR_BILL = Object.freeze({
+  [DEEP_SCAN_ARRAY]: 'deepScan',
+  [OUTPOST]: 'outpost',
+});
 
 // THE LOAD-BEARING MECHANICAL TRIPWIRE (working practice #4). Every module named in every
 // bill MUST be a real Tier-3 stockpile good (resources.js). A typo that drifts a bill from
@@ -230,11 +254,55 @@ function assertBillModulesAreTier3(bills) {
 assertBillModulesAreTier3(ALL_BILLS);
 assertBillModulesAreTier3(INSTALLATION_BILLS);
 
-// assetBill(kind) -> the frozen bill for a buildable kind (ground asset OR vehicle class), or
-// null. null (not a throw) so a caller can ASK whether a kind is buildable and refuse loudly
-// itself (sim/actions.js), the same shape `getRecipe` has.
+// THE BRIDGE'S TRIPWIRE (the same discipline as assertBillModulesAreTier3 above). A bad row would
+// otherwise mint something the rest of the engine cannot read, and only when a 9-day build finished.
+// Three rules, each one a way the bridge could drift:
+//   1. every VALUE is a real kit kind (a row in sim/resources.js DEPLOYABLE_KITS), so the minted kit
+//      can be loaded, ferried and deployed like a granted one;
+//   2. every KEY is a buildable kind, so the row can actually be reached by a finished build;
+//   3. every buildable INSTALLATION has a row, so none can finish as a plain asset of its bill kind
+//      (which no asset rule knows). This is the rule that stops the toll gate being made buildable
+//      before it has a kit.
+// Exported AND run at module load below, so the real map is checked the instant this file is required
+// and a test can hand it a deliberately bad map to prove the guard bites.
+function assertKitBridge(bridge, buildableKinds) {
+  for (const [billKind, kitKind] of Object.entries(bridge)) {
+    if (kitGoodFor(kitKind) === null) {
+      throw new Error(
+        `asset-recipes: KIT_KIND_FOR_BILL maps ${JSON.stringify(billKind)} to ${JSON.stringify(kitKind)}, `
+        + 'which is not a kit kind in sim/resources.js DEPLOYABLE_KITS',
+      );
+    }
+    if (!buildableKinds.includes(billKind)) {
+      throw new Error(
+        `asset-recipes: KIT_KIND_FOR_BILL has a row for ${JSON.stringify(billKind)}, which is not a buildable kind`,
+      );
+    }
+  }
+  for (const kind of buildableKinds) {
+    if (INSTALLATION_BILLS[kind] && !Object.prototype.hasOwnProperty.call(bridge, kind)) {
+      throw new Error(
+        `asset-recipes: ${JSON.stringify(kind)} is a buildable installation with no KIT_KIND_FOR_BILL row — `
+        + 'a finished build would have no kit to mint',
+      );
+    }
+  }
+}
+
+assertKitBridge(KIT_KIND_FOR_BILL, BUILDABLE_KINDS);
+
+// assetBill(kind) -> the frozen bill for a buildable kind (ground asset, vehicle class or buildable
+// installation), or null. null (not a throw) so a caller can ASK whether a kind is buildable and
+// refuse loudly itself (sim/actions.js), the same shape `getRecipe` has.
 function assetBill(kind) {
   return ALL_BILLS[kind] || null;
+}
+
+// kitKindForBill(billKind) -> the kit kind a finished build of `billKind` mints ('deep_scan_array' ->
+// 'deepScan'), or null for a kind that does not finish as a kit (a miner, a transport). null (not a
+// throw), the same shape as `kitGoodFor`, so the mint can ASK.
+function kitKindForBill(billKind) {
+  return Object.prototype.hasOwnProperty.call(KIT_KIND_FOR_BILL, billKind) ? KIT_KIND_FOR_BILL[billKind] : null;
 }
 
 // ── CONSTANTS — `[FIRST-CUT]`, RULED this design session (13-09-26) ─────────────────────────
@@ -257,12 +325,12 @@ const BUILD_TICKS = Object.freeze({
   [HEAVY_TRANSPORT]: 10080,   // 1 week (7 × 1,440)
   [SPYCRAFT]: 10080,          // 1 week
   // The three installations' assembly times (docs/asset-recipes.md FINAL table; docs/
-  // tier3-timed-production.md, RULED 27-09-26). All `[FIRST-CUT]`. Carried now so the doc's
-  // times live in one table, but INERT: none of these kinds is buildable yet (INSTALLATION_BILLS
-  // above), so no build ever counts one of these down.
+  // tier3-timed-production.md, RULED 27-09-26). All `[FIRST-CUT]`. The outpost's and the deep
+  // scan array's are LIVE (both buildable since 15-10-26); the toll gate's stays INERT, because
+  // the toll gate is not buildable (INSTALLATION_BILLS above), so no build counts it down.
   [OUTPOST]: 12960,           // 9 days (9 × 1,440)
   [DEEP_SCAN_ARRAY]: 10080,   // 7 days (7 × 1,440)
-  [TOLL_GATE]: 8640,          // 6 days (6 × 1,440)
+  [TOLL_GATE]: 8640,          // 6 days (6 × 1,440) — inert
 });
 
 // ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────
@@ -297,6 +365,16 @@ const VEHICLE_BUY_BASELINE = Object.freeze({
   [SPYCRAFT]: 100_000_000,
 });
 
+// INSTALLATION_KIT_BUY_BASELINE — the per-kind minimum a bought installation KIT costs, in the same
+// role VEHICLE_BUY_BASELINE plays for a transport: the `baseline` term of the price, and the cancel
+// refund. Both `[FIRST-CUT]`, RULED 15-10-26 — given by the human, not derived from the parts
+// (docs/phase-1-tuning.md §"Installation kits — build and buy"; docs/asset-purchase.md §"Installation
+// kits"). At base prices both bind (the parts × 0.8 come to well under each).
+const INSTALLATION_KIT_BUY_BASELINE = Object.freeze({
+  [DEEP_SCAN_ARRAY]: 100_000_000, // [FIRST-CUT] docs/phase-1-tuning.md
+  [OUTPOST]: 150_000_000,         // [FIRST-CUT] docs/phase-1-tuning.md
+});
+
 // SYNDICATE_QUEUE_MAX — the most Syndicate commissions ONE GUILD may hold on `state.syndicateBuilds`
 // at once, counting the WHOLE queue (the one building + those waiting). An 11th buy is refused
 // loudly at intake (docs/asset-purchase.md §"The queue cap", RULED 26-09-26; the value is
@@ -304,12 +382,13 @@ const VEHICLE_BUY_BASELINE = Object.freeze({
 const SYNDICATE_QUEUE_MAX = 10;
 
 // assetPurchaseBaseline(kind) -> the kind's BASELINE credit price: its per-class
-// VEHICLE_BUY_BASELINE for a transport, else the flat ASSET_PURCHASE_FLOOR (miner/factory).
-// The ONE definition of "baseline". Two things read it and must never disagree: the purchase
-// price is `max(baseline, …)` of it (priceAssetForPurchase below), and a cancelled commission
-// refunds exactly it (docs/asset-purchase.md §"Cancelling a queued commission").
+// VEHICLE_BUY_BASELINE for a transport, else its INSTALLATION_KIT_BUY_BASELINE for an installation
+// kit, else the flat ASSET_PURCHASE_FLOOR (miner/factory). The ONE definition of "baseline". Two
+// things read it and must never disagree: the purchase price is `max(baseline, …)` of it
+// (priceAssetForPurchase below), and a cancelled commission refunds exactly it
+// (docs/asset-purchase.md §"Cancelling a queued commission").
 function assetPurchaseBaseline(kind) {
-  return VEHICLE_BUY_BASELINE[kind] ?? ASSET_PURCHASE_FLOOR;
+  return VEHICLE_BUY_BASELINE[kind] ?? INSTALLATION_KIT_BUY_BASELINE[kind] ?? ASSET_PURCHASE_FLOOR;
 }
 
 // nextSyndicateCommissionId(guild) -> the next per-GUILD Syndicate commission id: one above the
@@ -330,8 +409,8 @@ function nextSyndicateCommissionId(guild) {
 //   price     = max( baseline , round( partsCost × ASSET_PURCHASE_REDUCTION ) )
 //
 // where `baseline` is assetPurchaseBaseline(kind) — the per-class VEHICLE_BUY_BASELINE for a
-// vehicle kind, else the flat ASSET_PURCHASE_FLOOR (miner/factory keep the 12M floor). Same
-// formula, one baseline per kind.
+// vehicle kind, the INSTALLATION_KIT_BUY_BASELINE for an installation kit, else the flat
+// ASSET_PURCHASE_FLOOR (miner/factory keep the 12M floor). Same formula, one baseline per kind.
 //
 // Rounded ONCE on the whole order (#43), exactly as a goods buy rounds `qty × price`. The
 // module price is the SAME `quotedPrice` the goods buy uses (§8.1 quote-lock): today's posted
@@ -363,15 +442,20 @@ module.exports = {
   TOLL_GATE,
   ALL_BILLS,
   BUILDABLE_ASSET_KINDS,
+  BUILDABLE_INSTALLATION_KINDS,
   BUILDABLE_KINDS,
   SYNDICATE_SELLABLE_KINDS,
+  KIT_KIND_FOR_BILL,
   assetBill,
+  kitKindForBill,
   assertBillModulesAreTier3,
+  assertKitBridge,
   MAX_QUEUE,
   BUILD_TICKS,
   ASSET_PURCHASE_FLOOR,
   ASSET_PURCHASE_REDUCTION,
   VEHICLE_BUY_BASELINE,
+  INSTALLATION_KIT_BUY_BASELINE,
   SYNDICATE_QUEUE_MAX,
   assetPurchaseBaseline,
   nextSyndicateCommissionId,

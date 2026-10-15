@@ -28,6 +28,14 @@ bills in the doc but no buildable entity yet — deferred to their own slices.
 > bills gained buildable vehicle entities (2.2-foundation) and the endpoint now serves them all.
 > This is the BUILD catalog; the Syndicate SELLS the narrower `SYNDICATE_SELLABLE_KINDS` (spycraft
 > excluded, guild-build-only — see `docs/asset-purchase.md` §"What the Syndicate sells").
+>
+> **As built (15-10-26, roadmap 2.5 — the installation-kit acquire slice):** eight kinds now. The deep
+> scan array and the outpost joined `ALL_BILLS` / `BUILDABLE_KINDS` (`docs/asset-purchase.md`
+> §"Installation kits"). A dockyard builds them by the same rules as any kind (reserve-and-wait,
+> strict FIFO, `MAX_QUEUE`, the unstarted-only cancel), counting down `BUILD_TICKS` **12,960** (outpost)
+> and **10,080** (array). Step 3 below emits one idle **kit** for them: an `outpost` / `deepScan` kit asset
+> minted through the kit serial (`mintKitAsset`), not an entity of the bill kind. The toll gate's bill
+> is still data only (it has no kit), so a dockyard refuses it.
 - Miner = 2 chassis, reactor_housing, photovoltaic_array, power_cells, control_module,
   extraction_head, cargo_module, cargo_handling_system, defence_system.
 - Factory = 3 chassis, reactor_housing, 2 photovoltaic_array, 2 power_cells, control_module,
@@ -56,7 +64,8 @@ guild holds the system). It takes **no `recipeId`** and carries a **queue** inst
      **`BUILD_TICKS[assetKind]`** (fixed per kind, `[FIRST-CUT]`; ladder: light transport shortest
      -> outpost / deep-scanner longest). **No reservation while waiting** — the modules stay
      spendable until the instant the build starts (a build can be starved; intended).
-  3. At 0, **emit one asset idle at the dockyard's system** (into `guild.assets`) and advance.
+  3. At 0, **emit one asset idle at the dockyard's system** (into `guild.assets`) and advance. *(⤳ 15-10-26:
+     for the deep scan array and the outpost the emitted asset is an idle KIT — see the 15-10-26 note in §1.)*
 - **Cancel** (`cancelCommission`): remove any commission that **has not started** — a pending one,
   or the head still waiting for parts (nothing consumed -> free). A build that **has started**
   (parts consumed, ticking) is stopped only by **tearing down the dockyard**.
@@ -210,4 +219,5 @@ mine**, but not identically — the deuterium mine's 0-GP is its *unique* advant
      no game number (§5); pinned on the served bytes by `sim/tests/server.test.js`.
 
 Then, out of this arc: Syndicate-commission for credits (2.1d), the open market (2.1e), and the
-ship/droid/installation outputs (their entity slices).
+ship/droid/installation outputs (their entity slices). *(⤳ the ships landed in 2.2-foundation; the outpost and deep scan
+array kits on 15-10-26 (roadmap 2.5); the toll gate and droids are still to come.)*

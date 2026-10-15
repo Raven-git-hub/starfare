@@ -11,7 +11,8 @@
 //     fails here, not in a playtest.
 //   - BUILD_TICKS: the three new installation times are present, and the existing six did not
 //     move.
-//   - DATA ONLY: the three installation bills have no build or buy path yet.
+//   - INSTALLATIONS: the outpost and the deep scan array are buildable and sellable (⤳ 15-10-26);
+//     the toll gate's bill is still data only, with no build or buy path.
 //   - AT REST: under the new bills and the 27-09-26 Tier-3 prices, every buildable kind's parts
 //     cost still sits below its purchase baseline, so a fresh galaxy's Syndicate buy prices are
 //     unchanged.
@@ -144,18 +145,26 @@ test('BUILD_TICKS: the three new installation times are present, and the existin
   }, 'nine entries: the six existing values unchanged, plus the three new ones');
 });
 
-// --- 3. the installations are data only ---------------------------------------------------
+// --- 3. two installations are buildable, the toll gate is still data only -------------------
+// ⤳ 15-10-26 (docs/asset-purchase.md §"Installation kits"): this test used to pin all three as DATA
+// ONLY. The ruling made the outpost and the deep scan array buildable AND sellable; the toll gate
+// stays data only, because it has no entity and no kit.
 
-test('the three installation bills are DATA ONLY: no build path, no buy path, no bill lookup', () => {
-  for (const kind of [OUTPOST, DEEP_SCAN_ARRAY, TOLL_GATE]) {
-    assert.equal(assetBill(kind), null, `${kind}: assetBill finds no buildable bill`);
-    assert.equal(BUILDABLE_KINDS.includes(kind), false, `${kind}: a dockyard cannot build it`);
-    assert.equal(SYNDICATE_SELLABLE_KINDS.includes(kind), false, `${kind}: the Syndicate does not sell it`);
-    assert.equal(ALL_BILLS[kind], undefined, `${kind}: not in the buildable catalog`);
-  }
+test('installations: the outpost and the deep scan array are buildable and sellable; the toll gate is still DATA ONLY', () => {
   const s = createState({ guilds: [], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 } });
-  assert.equal(priceAssetForPurchase(s, OUTPOST, s.tick), null, 'an installation cannot be priced for purchase');
-  // …but the same Tier-3 tripwire covers their bills (it also ran at load time).
+  for (const kind of [OUTPOST, DEEP_SCAN_ARRAY]) {
+    assert.equal(assetBill(kind), INSTALLATION_BILLS[kind], `${kind}: assetBill finds the doc's bill`);
+    assert.equal(ALL_BILLS[kind], INSTALLATION_BILLS[kind], `${kind}: in the buildable catalog`);
+    assert.equal(BUILDABLE_KINDS.includes(kind), true, `${kind}: a dockyard builds it`);
+    assert.equal(SYNDICATE_SELLABLE_KINDS.includes(kind), true, `${kind}: the Syndicate sells it`);
+    assert.equal(priceAssetForPurchase(s, kind, s.tick), assetPurchaseBaseline(kind), `${kind}: priced, at its baseline at rest`);
+  }
+  assert.equal(assetBill(TOLL_GATE), null, 'toll gate: assetBill finds no buildable bill');
+  assert.equal(ALL_BILLS[TOLL_GATE], undefined, 'toll gate: not in the buildable catalog');
+  assert.equal(BUILDABLE_KINDS.includes(TOLL_GATE), false, 'toll gate: a dockyard cannot build it');
+  assert.equal(SYNDICATE_SELLABLE_KINDS.includes(TOLL_GATE), false, 'toll gate: the Syndicate does not sell it');
+  assert.equal(priceAssetForPurchase(s, TOLL_GATE, s.tick), null, 'toll gate: cannot be priced for purchase');
+  // The same Tier-3 tripwire covers all three bills (it also ran at load time).
   assert.doesNotThrow(() => assertBillModulesAreTier3(INSTALLATION_BILLS));
 });
 

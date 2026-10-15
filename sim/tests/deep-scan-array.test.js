@@ -5,7 +5,8 @@
 // deploy pipeline it rides). No scanning — that is (b2). The tripwires:
 //
 //   1. VOCABULARY: 'deepScan' is a kit kind whose good is `deep_scan_array_kit` — off-market, a whole heavy
-//      hold, and NOT dockyard-buildable; every kit kind has a deploy rule of its own.
+//      hold, and built or bought only under its BILL kind `deep_scan_array` (⤳ 15-10-26); every kit kind has a
+//      deploy rule of its own.
 //   2. ATTACHED: a bare hex exactly claimRadius + 1 from a held system's centre, or 1 from an owned
 //      Outpost, deploys; every other hex is refused — the centre as 'not-bare-hex', a hex inside the disk
 //      or further out as 'not-attached', and a rival's territory never counts. The anchor: a held system
@@ -32,6 +33,7 @@ const { tick } = require('../tick.js');
 const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { computeGalacticSupply } = require('../supply.js');
 const {
@@ -40,7 +42,7 @@ const {
 const { PRICED_GOODS } = require('../prices.js');
 const { volumeOf, ASSET_CARGO_VOLUME } = require('../fuel.js');
 const { isKitAssetKind, isAssetKind } = require('../assets.js');
-const { BUILDABLE_KINDS, assetBill } = require('../asset-recipes.js');
+const { BUILDABLE_KINDS, assetBill, kitKindForBill } = require('../asset-recipes.js');
 const { DEPLOY_FAILED_REASONS, DEPLOY_RETREAT_HEXES } = require('../outposts.js');
 const { hexDistance } = require('../transport.js');
 const {
@@ -141,7 +143,7 @@ function tickToIdle(s) {
 
 // --- 1. vocabulary ----------------------------------------------------------------------------------
 
-test('vocabulary: deepScan is a kit kind packing deep_scan_array_kit — off-market, a whole heavy hold, NOT buildable', () => {
+test('vocabulary: deepScan is a kit kind packing deep_scan_array_kit — off-market, a whole heavy hold, built only by its BILL kind', () => {
   assert.equal(DEEP_SCAN_KIT, 'deep_scan_array_kit');
   assert.equal(kitGoodFor('deepScan'), DEEP_SCAN_KIT);
   assert.equal(kindForKit(DEEP_SCAN_KIT), 'deepScan');
@@ -152,9 +154,13 @@ test('vocabulary: deepScan is a kit kind packing deep_scan_array_kit — off-mar
   assert.equal(volumeOf(DEEP_SCAN_KIT), ASSET_CARGO_VOLUME, 'a whole heavy hold, like the outpost kit');
   assert.equal(isKitAssetKind('deepScan'), true);
   assert.equal(isAssetKind('deepScan'), false, 'so no venture can ever name an array kit');
-  // NO dockyard build path this slice (asset-recipes.js: the installation bills are data only).
-  for (const kind of ['deepScan', 'deep_scan_array']) assert.equal(BUILDABLE_KINDS.includes(kind), false, kind);
-  assert.equal(assetBill('deep_scan_array'), null);
+  // ⤳ 15-10-26 (docs/asset-purchase.md §"Installation kits"): this used to pin "no build path". The array is
+  // now built and bought by its BILL kind, `deep_scan_array`, and finishes as a `deepScan` kit through the one
+  // bridge (sim/asset-recipes.js KIT_KIND_FOR_BILL). The KIT kind itself is still never a build or buy kind.
+  assert.equal(BUILDABLE_KINDS.includes('deepScan'), false, 'deepScan is the kit, not a buildable kind');
+  assert.equal(assetBill('deepScan'), null);
+  assert.equal(BUILDABLE_KINDS.includes('deep_scan_array'), true, 'the bill kind is buildable');
+  assert.equal(kitKindForBill('deep_scan_array'), 'deepScan');
 });
 
 test('every kit kind has a deploy rule of its own — none throws, and each judges placement its own way', () => {
@@ -529,7 +535,9 @@ test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placemen
     const { state: noSlots, count } = withoutRecordSlots(steps[name]);
     assert.ok(count > 0, 'the founding really recorded settlement slots, so the strip proves something');
     assert.equal(hashState(noSlots), OUTPOST_PATH_ON_MAIN[name].state, `"${name}" moved outside the record's slots`);
-    assert.equal(sha(JSON.stringify(buildSnapshot(steps[name]))), OUTPOST_PATH_ON_MAIN[name].godsEye, `the god's-eye lens moved at "${name}"`);
+    // ⤳ 15-10-26: every lens/view hash here goes through the installation-quote strip (tests/installation-quote-strip.js) —
+    // the installation kit acquire slice added two public assetPurchaseQuote rows and nothing else, so the pins stay as they were.
+    assert.equal(sha(JSON.stringify(withoutInstallationQuotes(buildSnapshot(steps[name])))), OUTPOST_PATH_ON_MAIN[name].godsEye, `the god's-eye lens moved at "${name}"`);
   }
   assert.equal(sha(JSON.stringify(reasons)), OUTPOST_PATH_ON_MAIN.reasons, 'an outpost refusal moved');
   // The script really did exercise each branch, so the hashes are guarding something.

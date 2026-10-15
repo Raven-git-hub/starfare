@@ -486,6 +486,8 @@ footprint and changes no territory.
 >   kind, an off-market deployable good taking a whole heavy hold, and lets the existing grant / load /
 >   unload / ferry carry it. It is obtained exactly as the outpost kit is — the operator `grantKit` lever.
 >   **No dockyard build path** (the installation bills stay data-only, `sim/asset-recipes.js`).
+>   *(⤳ AS-BUILT 15-10-26: there is one now — a dockyard builds, and the Syndicate sells, a `deep_scan_array`,
+>   which finishes as one idle `deepScan` kit; `asset-purchase.md` §"Installation kits" and its as-built note.)*
 > - **The structure** lives in its OWN top-level list, **`state.deepScanArrays`** — beside, not inside,
 >   `state.outposts` (an array has no stockpile, capacity or dock, and every Outpost row stays
 >   byte-identical). A row is `{ id, ownerGuildId, coords, anchorSystemId, createdAtTick }`, the id
@@ -626,7 +628,8 @@ queue depth**:
 > *(⤳ AMENDED 15-10-26, `asset-purchase.md` §"Installation kits": the array is bridged NOW, with no toll
 > gate: one bill-kind → kit-kind map (`deep_scan_array` → `deepScan`, `outpost` → `outpost`) in
 > `sim/asset-recipes.js`. The toll gate gets its row when its entity and kit exist. A guild acquires an array
-> kit by dockyard build or Syndicate buy.)*
+> kit by dockyard build or Syndicate buy.)* *(⤳ AS-BUILT 15-10-26: `KIT_KIND_FOR_BILL` + its load-time tripwire
+> `assertKitBridge`, read at the one mint seam, `sim/tick.js` `mintFinishedKind`.)*
 > **Not built:** monitoring, L3 espionage, a scan cancel, a player teardown / reclaim, a completion notice,
 > the client. *(⤳ 13-10-26: the client's survey flow is BUILT — the client flip's slice 3b, §10 — reading the
 > job off this row exactly as it is. The **completion notice** is still not built, and is **DEFERRED** (ruled

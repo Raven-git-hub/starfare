@@ -2074,9 +2074,11 @@ function deleteAsset(guild, assetId) {
 // else changes representation except the deploy, which consumes the good.
 
 // mintKitAsset(guild, kind, systemId) -> the new idle kit asset, having MUTATED `guild`. THE ONE kit-asset
-// mint, shared by grantKit and the unload: bump the guild's stored kit serial (never reused — a loaded
-// kit's id must not come back, design.md §15.4 "Ids never repeat"), build the `asset_<guild>_<kind>_NN`
-// id from it, and push a new-condition asset at `systemId`. No venture names it, so it is idle.
+// mint, shared by grantKit, the unload, the starter package, and (2.5, 15-10-26) a finished dockyard build
+// or Syndicate delivery of an installation (sim/tick.js mintFinishedKind, which is why it is exported).
+// Bump the guild's stored kit serial (never reused — a loaded kit's id must not come back, design.md §15.4
+// "Ids never repeat"), build the `asset_<guild>_<kind>_NN` id from it, and push a new-condition asset at
+// `systemId`. No venture names it, so it is idle.
 function mintKitAsset(guild, kind, systemId) {
   const serial = nextKitAssetSerial(guild);
   guild.kitAssetSerial = serial;
@@ -3201,7 +3203,7 @@ function validateAction(state, action) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a dockyard — only a dockyard can be commissioned to build (docs/build-yard.md §3)` };
     }
     if (!BUILDABLE_KINDS.includes(action.assetKind)) {
-      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets or the four guild transports, docs/build-yard.md §1 / phase-1-tuning §"Guild transports")` };
+      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets, the four guild transports or the two installation kits, docs/build-yard.md §1 / docs/asset-purchase.md §"Installation kits")` };
     }
     // Single-slot queue capped at MAX_QUEUE — a commission over the cap is refused loudly (§3).
     const queueLen = (venture.buildQueue || []).length;
@@ -3598,7 +3600,7 @@ function validateAction(state, action) {
       const spycraftNote = typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)
         ? ' — the Syndicate does not sell spycraft, it is guild-build-only; commission it at a dockyard'
         : '';
-      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, or a cargo transport)${spycraftNote}` };
+      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, a cargo transport, or a deep_scan_array / outpost kit)${spycraftNote}` };
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
@@ -3639,7 +3641,7 @@ function validateAction(state, action) {
     // kind / destination says so rather than blaming fuel. TWO delivery models, by kind:
     //   - a VEHICLE flies ITSELF in (2.2-foundation, phase-1-tuning §"Guild transports"): the burn
     //     is the craft's OWN `fuelCostToRun × hexDistance` (vehicleDeliveryFuelBurn), NOT a hauler.
-    //   - a GROUND asset can't fly, so it rides a HEAVY hauler (⤳ RULED 14-09-26 §5.1: a non-movable
+    //   - a GROUND asset (or an installation kit, design.md §4) can't fly, so it rides a HEAVY hauler (⤳ RULED 14-09-26 §5.1: a non-movable
     //     T4 asset fills a HEAVY hold, `routeFuelCost(dest, ASSET_CARGO_VOLUME)` — the 0.7/hex rate).
     // A 0 means no route, already turned away by the waystation gate above.
     const { fuelBurn } = isVehicleClass(action.assetKind)
@@ -5418,7 +5420,7 @@ function applyAction(state, action) {
     // invariant 1 balances only because `totalConsumed` rises to match the hoard falling. Same
     // legal-first `burnFuel`. The burn matches the validate gate EXACTLY — the shared helpers
     // guarantee it: a VEHICLE burns its OWN `fuelCostToRun × hexDistance` (it flies itself in,
-    // 2.2-foundation); a GROUND asset burns the HEAVY hauler rate (`ASSET_CARGO_VOLUME`, §5.1).
+    // 2.2-foundation); a GROUND asset or an installation kit burns the HEAVY hauler rate (`ASSET_CARGO_VOLUME`, §5.1).
     // A 0 is a no-op (no route, refused up front); the combined-availability gate covered it, so
     // neither store goes negative.
     const { fuelBurn } = isVehicleClass(action.assetKind)
@@ -6169,6 +6171,9 @@ module.exports = {
   resolveRouteArrival,
   advanceRoute,
   resumeWaitingLanes,
+  // THE ONE kit-asset mint — also called by sim/tick.js's mintFinishedKind, when a dockyard build or a
+  // Syndicate delivery of an installation finishes as a kit (docs/asset-purchase.md §"Installation kits").
+  mintKitAsset,
   validateAction,
   applyAction,
   intake,

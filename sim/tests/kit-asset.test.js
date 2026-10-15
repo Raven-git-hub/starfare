@@ -205,7 +205,12 @@ test('not venture-deployable: establishVenture, the Syndicate purchase and grant
   assert.match(refuse(s, establish), /asset "asset_player-guild_outpost_01" is a outpost; a mining venture needs a miner/);
   // A miner on the same node is fine — the kit changed nothing for the machines beside it.
   accept(s, { ...establish, assetId: 'asset_player-guild_miner_01' });
-  assert.match(refuse(s, createBuyAssetFromSyndicateAction({ guildId: 'player-guild', assetKind: 'outpost', destinationSystemId: HOME_SYSTEM, issueTick: s.tick })), /is not a Syndicate-sellable kind/);
+  // ⤳ 15-10-26 (docs/asset-purchase.md §"Installation kits"): the Syndicate now SELLS the outpost — but as a
+  // new kit, bought by its bill kind and minted on delivery, never by handing over a kit the guild owns. So a
+  // buy naming the array's KIT kind is still refused as unsellable, and an `outpost` buy passes the kind gate
+  // and is refused here only because this guild's founding credits cannot cover the 150M price.
+  assert.match(refuse(s, createBuyAssetFromSyndicateAction({ guildId: 'player-guild', assetKind: 'deepScan', destinationSystemId: HOME_SYSTEM, issueTick: s.tick })), /is not a Syndicate-sellable kind/);
+  assert.match(refuse(s, createBuyAssetFromSyndicateAction({ guildId: 'player-guild', assetKind: 'outpost', destinationSystemId: HOME_SYSTEM, issueTick: s.tick })), /cannot pay 150000000 for a outpost/);
   assert.match(refuse(s, createGrantAssetAction({ guildId: 'player-guild', kind: 'outpost', systemId: HOME_SYSTEM })), /is not an asset kind \(miner \/ factory\)/);
 });
 

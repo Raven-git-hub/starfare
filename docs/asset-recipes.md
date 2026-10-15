@@ -143,6 +143,13 @@ parts cost × 0.8 stays below its purchase baseline, so a fresh galaxy's Syndica
 unchanged (a test pins that). No build or assembly flow moved. The Droid row has no bill in
 code.)*
 
+*(**⤳ AS-BUILT 15-10-26 — the outpost and deep scan array bills are no longer data only** (roadmap 2.5, the
+installation-kit acquire slice; `docs/asset-purchase.md` §"Installation kits"). Both joined `ALL_BILLS`,
+`BUILDABLE_KINDS` and `SYNDICATE_SELLABLE_KINDS`: a dockyard builds them and the Syndicate sells them, and
+either path finishes as one idle kit (`deepScan` / `outpost`). Their assembly times above (**10,080** /
+**12,960**) are now live. The **toll gate** stays data only, because it has no entity and no kit, so
+`assetBill('toll_gate')` is still null and its 8,640 is still inert. No bill or time in the table moved.)*
+
 ## Reconciliation with design.md §3's eight-part sketch
 
 The eight parts map into modules with no loss: Structural Frames → `chassis`;
