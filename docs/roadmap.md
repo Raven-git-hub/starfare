@@ -5441,6 +5441,14 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      stopped while the client read it).
 - **The Deep Scan Array placement revision + map, slice 15 (2.5) — items for a ruling or a confirm** — *surfaced 15-10-26
   by the build; each was built the way stated, and none is decided by the code beyond that.*
+  **⤳ ANSWERED 15-10-26 (the design room) — CLOSED except the follow-ons named:** (1) `rival-territory` / "Rival
+  territory" confirmed. (2) Unreachable today; when claims allow overlap, **seniority decides**
+  (`exploration-model.md` §5 "Overlapping disks"); built with the Prefecture/claims work. (3) Confirmed for the
+  Outpost hex; and **RULED: an array may sit on its own held system's centre hex** (`exploration-model.md` §5,
+  AMENDED 15-10-26). That is slice 16. (4) and (5) accepted as built. (6) The marker and the click-does-nothing
+  behaviour are confirmed. (7) **Keep** 14b's owner filter: the engine's fog tests catch a leak at the source. (8)
+  The title-cased inbox row is confirmed. (9) `controlNear` stays in `sim/claims.js`. (10)(b) The stale
+  `cli-runbook.md` example hexes are fixed in slice 16.
   1. **The reason's name and label.** The new retreatable failure is `rival-territory`, labelled **"Rival territory"**
      in the notice's Reason fact (slice-local choices, as the build prompt said). Confirm or rename.
   2. **Overlapping disks.** Where the guild's disk and a rival's overlap, the hex is refused for BOTH guilds: the ruling's

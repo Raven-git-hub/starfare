@@ -480,8 +480,16 @@ footprint and changes no territory.
   *(⤳ **REVISED 15-10-26 — placement widened, rival territory excluded** (closes roadmap 2.5 (b1)
   checklist item 1).* A Deep Scan Array may be deployed on a hex that is EITHER:
   1. **inside the guild's own control:** a hex within one of its held systems' control disks
-     (`1 ≤ hexDistance ≤ claimRadius` from the centre). The centre is a landmark and an Outpost's
-     hex is occupied, so the existing bare-hex and occupied checks still refuse both; OR
+     (`1 ≤ hexDistance ≤ claimRadius` from the centre). An Outpost's hex is occupied, so the
+     existing occupied check still refuses it. *(⤳ **AMENDED 15-10-26 — the centre hex too.** A Deep
+     Scan Array MAY also be deployed on the **centre hex of a system the guild holds** (the star's
+     own hex, `hexDistance` 0). This is the ONE exception to "a deploy lands on a bare hex", and it is
+     for arrays only: an Outpost still refuses every system hex. A rival-held system's centre is
+     rival territory, and an unheld system's centre is neither controlled nor deep space, so both stay
+     refused. Waystations and the Citadel are never legal. One structure per hex still applies, so a
+     system's centre holds at most one array. The deploy flight to a centre ends berthed AT that
+     system (a landmark location), and the array's `coords` are the centre hex; its anchor is that
+     system.)*; OR
   2. **uncontrolled deep space sharing an edge with the guild's own control:** a hex in NO guild's
      control that is adjacent to a hex the guild controls (exactly `claimRadius + 1` from a held
      system's centre, or 1 from one of the guild's own Outposts).
@@ -493,6 +501,13 @@ footprint and changes no territory.
   arrival (the existing revalidation and retreat). It is NOT re-applied to arrays already standing.
   The anchor order is unchanged: the held system whose disk the hex is in or touches (lowest id),
   else the touched Outpost's own anchor.
+  *(⤳ **Overlapping disks — RULED 15-10-26.** Unreachable today: each guild holds only its home, and
+  starter systems are spaced so no two home disks overlap (`territory-model.md` §6). Once guilds
+  claim further systems, overlap is a feature (`territory-model.md` §2), and **seniority decides**:
+  a contested hex is controlled by the OLDEST claim covering it, and a system always controls its
+  own centre (the own-centre override). The array rule follows that control: legal for the senior
+  guild, `rival-territory` for the junior. Until the seniority control map is built (with the
+  Prefecture/claims work), the as-built "refused for both" stands, because it cannot arise.)*
 - **Map visibility — RULED 15-10-26.** A guild's OWN Deep Scan Arrays are drawn on its galaxy map.
   A rival's array is **never drawn**. Seeing one is a detection matter, deferred with transport
   detection (L3), exactly as a rival's transport is. Today a rival's array is already absent from a
