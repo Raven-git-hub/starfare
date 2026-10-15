@@ -8,8 +8,10 @@
 > run command carries **`-e STARFARE_TICK_MS=60000`** (one tick/minute), and every redeploy ends with
 > **`docker image prune -af`** — see **Disk hygiene** (section 11), which a full disk made non-optional.
 > Ops is now a **command, not a paste**: `tools/admin.js` ships in the image, and
-> **`docker exec starfare node tools/admin.js verify-cycle`** is the standard post-redeploy check
-> (section 12).
+> the standard post-redeploy check is the read-only **`docker exec starfare node tools/admin.js health`**
+> (section 9). **`verify-cycle` REPLACES the active galaxy** — never run it on a live world (section 12).
+> *(⤳ 15-10-26: run as the post-redeploy check, it wiped the live seed-42 galaxy; restored from the
+> step-0 backup.)*
 
 **What this deploys:** the persistence-capable game container — one galaxy, in-memory compute,
 file-backed durability, runtime create/delete of the galaxy, a self-ticking world — reachable at
@@ -134,6 +136,10 @@ Prove persistence: `docker kill starfare && docker start starfare` then `docker 
       starfare-rig:latest
     docker image prune -af          # reclaim the now-unused old image (see section 11)
     docker logs starfare --tail 15
+    docker exec starfare node tools/admin.js health   # read-only: expect your seed, a tick > 0, autotick running
+
+**Never run `verify-cycle` (or `seat-demo` / `new-galaxy`) as a post-redeploy check on a live world** — each
+creates a new galaxy and REPLACES the active one (section 12). `health` reads and changes nothing.
 
 The state dir is untouched by the rebuild, so **the active galaxy carries across** — the boot log reads
 `loaded state @tick N` / `galaxy: active`, and the tick continues. No reset, no re-onboarding.
@@ -225,16 +231,20 @@ against a local `node sim/server.js`:
 | `starters` | `GET /starters` | Every startable system (id, ring, name). |
 | `new-galaxy [--seed N] [--utc-offset H]` | `POST /admin/galaxy/new`, then `GET /snapshot` | Creates a galaxy and reads back `calendar.dayAnchorTick` to confirm it is midnight-anchored. `--utc-offset` is in **hours** (default 0 = UTC; `-12`…`+14`, halves allowed) and picks *which* midnight — frozen at creation. **Warns that this REPLACES the active galaxy.** |
 | `seat-demo [--window N]` | `POST /admin/galaxy/new` *or* `POST /reset` + `POST /action`, `GET /starters`, `GET /system/:id`, `POST /action` ×5 | The two-mine 100 %-licence console demo — see below. |
-| `verify-cycle [--seed N]` | `POST /admin/galaxy/new`, `GET /starters`, `GET /system/:id`, `POST /action` ×3, `GET /snapshot` | **The standard post-redeploy check** — see below. |
+| `verify-cycle [--seed N]` | `POST /admin/galaxy/new`, `GET /starters`, `GET /system/:id`, `POST /action` ×3, `GET /snapshot` | **DESTRUCTIVE — REPLACES the active galaxy.** A self-check of the commitment cycle for a scratch rig, never a live world — see below. |
 | `tick [n]` | `POST /tick` ×n | Manual advance (default 1), for short-window testing when the boot clock is off. |
 | `reveal --guild ID (--system ID [--l1] \| --planet ID)` | `POST /action`, then `GET /snapshot?guild=ID` | **Operator fog lever** (`docs/operator-adjust.md` §3.7): writes geography into the guild's exploration record — a whole system (every planet and its surface), with `--l1` only its planets' archetypes, or one planet's whole surface — and prints what the guild now knows there. Learn-once (a repeat changes nothing); moves no credits, fuel or goods. A refused reveal exits 1. |
 
 Flags: `--base <url>`, `--seed N`, `--pick a.b.c`, `--json`, `--window N`, `--guild ID`, `--system ID`, `--planet ID`, `--l1`, `--help`/`-h`. (The other operator levers and primitives — `adjust-*`, `grant-*`, `spawn-*`, the deploy and route commands — are listed in `node tools/admin.js --help`.)
 
-### `verify-cycle` — the standard post-redeploy check
+### `verify-cycle` — a DESTRUCTIVE self-check, for a scratch rig only
 
-Run it after every redeploy (section 9) to prove the ruled commitment cycle is actually live on the
-running container. It creates a fresh galaxy, auto-finds a titanium node in an unclaimed starter,
+> ⚠️ **It REPLACES the active galaxy.** Run it only on a scratch rig, or on a galaxy you mean to throw away
+> — never as the post-redeploy check on a live world (use `health`, section 9). *(15-10-26: running it as
+> the "standard post-redeploy check" this section used to name wiped the live galaxy; it was restored from
+> the backup.)*
+
+On a rig, it proves the ruled commitment cycle is actually live on the running container. It creates a fresh galaxy, auto-finds a titanium node in an unclaimed starter,
 founds a guild, establishes a mine, licenses it at 100 %, reads the result back, and asserts five
 things — every figure read back from the server, none computed here:
 
