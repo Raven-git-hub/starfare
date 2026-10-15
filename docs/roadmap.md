@@ -5642,6 +5642,11 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      invariant asks the kind and the anchor's form, not who holds the system — holding is the deploy rule's question.
 - **The starter-spacing repair, slice 17 (2.5) — items for a confirm or a ruling** — *surfaced 15-10-26 by the build;
   each was built the way stated, and none is decided by the code beyond that.*
+  **⤳ ANSWERED 15-10-26 (the design room):** (1)–(5) and (7) **accepted as built**: the greedy junior rule, "too close"
+  read from the seed's `claimRadius`, the side-stream label, the `starterSpacingDemotions` stat and the test-only skip
+  switch are all confirmed; `tools/generate_seed.js` at ~700 lines is noted. (8) recorded. (6) **Left as is, by ruling:**
+  Create Galaxy keeps saving a seed without reading its `validation` result. No measured seed fails, so this is
+  accepted for now, not fixed. If a generator change ever lets a seed fail validation, revisit it then.
   1. **The slice-local rules the prompt spelled out, built as given — confirm:** the junior is the LATER starter in
      the generator's system order, kept starters alone block (greedy); demotion converts every Terran planet of the
      junior, re-drawn from its ring's table without Terran; the repair sits between tagging and the rare-tier repair.
