@@ -244,7 +244,8 @@ consumes resolved control yet, and the client's footprint render is untouched); 
 - **Not built (design-ahead):** §2's seniority map (engine PR 2 — *⤳ BUILT 16-10-26, §2's AS-BUILT note; its client
   render too, client PR A*); the client (the plant affordance, the kit's row, the `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` /
   `deploy-failed-notice-client.test.js`; *⤳ the kit's row, its ferry and the label BUILT 16-10-26, client PR B1 —
-  "AS-BUILT — client PR B1" below; the plant affordance is client PR B2*); teardown / eviction (§19 #67), hostile
+  "AS-BUILT — client PR B1" below; the plant affordance is client PR B2* — *⤳ BUILT 16-10-26, "AS-BUILT — client PR
+B2" below*); teardown / eviction (§19 #67), hostile
   removal (§19 #69), corridors (§3), squatting, and the in-system planet-scan.
 
 **⤳ RULED 16-10-26 — a planted Prefecture is a PUBLICLY VISIBLE structure.** A rival sees its row, cut to
@@ -257,7 +258,8 @@ A field added to the row later stays hidden from rivals until it is ruled public
 **AS-BUILT — client PR B1: ferry a Prefecture kit to an unheld system (16-10-26; roadmap 2.5, the Prefecture / claims
 slice; `client/game.html`, one label in `client/console.html`; no engine change).** The player can now do step 1 of the
 two-step ground flow above — the FERRY — from the page; the plant (step 2) is client PR B2, and until it lands a ferried
-kit is planted with the operator CLI (`tools/admin.js plant-prefecture`). Built to the ruling above and `design.md` §18:
+kit is planted with the operator CLI (`tools/admin.js plant-prefecture`). *(⤳ BUILT 16-10-26 — "AS-BUILT — client PR
+B2" below.)* Built to the ruling above and `design.md` §18:
 the client mirrors the engine's gate as guidance, and the engine re-checks at dispatch and on arrival. No new number.
 - **The kit-kinds row.** The client's one kit table gains `prefecture` (`good: 'prefecture_kit'`, `bill: 'prefecture'`,
   "Prefecture kit" / "Prefecture") marked **`ground: true`** — the engine's one kit with no `DEPLOYABLE_STRUCTURES` row. A
@@ -278,6 +280,41 @@ the client mirrors the engine's gate as guidance, and the engine re-checks at di
 - **Proved** by `sim/tests/prefecture-ferry-client.test.js` (the gate held against the engine's own dispatch for every
   kit kind and class of target, the planner, Finalise, the popup's commit order on a stub DOM, the idle row) and the
   extended `kit-kinds-client` / `deploy-failed-notice-client` tests; and headless against a live server (roadmap 2.5).
+
+**AS-BUILT — client PR B2: plant a Prefecture from a settlement slot (16-10-26; roadmap 2.5, the Prefecture / claims
+slice; `client/game.html` only; no engine change).** The player can now do step 2 of the two-step ground flow — the
+PLANT — from the page, so **the first Prefecture / claims slice is COMPLETE: the claim loop runs end to end from the
+client** (survey → build → ferry → plant → claim). Built to the ruling above and `design.md` §18: the page offers the
+plant only where `plantPrefecture` would take it, as guidance, and the engine re-checks every gate at the click. No new
+number.
+- **The offer.** On a planet's Settlements tab, a VACANT slot reads **Plant Prefecture** when the system is held by
+  **nobody** and an idle Prefecture kit of the guild's sits **in that system**. That is the engine's gate, read from
+  what the page already has: the kit off the guild's idle assets (the kit-kinds row's `ground` flag, as every ground-kit
+  branch asks, and the kit's `systemId`); "nobody holds it" off the claims (a system the guild holds — its home, or
+  an earlier Prefecture — takes no second one, so there the slot keeps the factory Establish flow); the free slot off
+  occupancy; and the survey for free — the tab is drawn only at L2, and in a system nobody holds a slot is listed only
+  from the guild's own survey record (`sim/fog.js`), which is `knowsSlot`. Every other slot keeps its old click,
+  unchanged: Establish (gated off where the guild holds nothing), Venture Management, the read-only overlay.
+- **The confirm and the send.** The slot's click opens a light confirm on the Guild Adviser's card (the shared
+  one-page confirm), not the factory Establish popup — a plant has no asset to pick and no licence terms. It names the
+  kit (`#NN`), the slot and the planet, says the Prefecture claims the **whole system** for the guild, and that it
+  cannot yet be taken down (teardown is deferred, `design.md` §19 #67). Confirm sends `plantPrefecture { guildId,
+  assetId, slotId }` and re-reads the snapshot. A refusal — a rival planting first, between the offer and the click —
+  is shown in the engine's own words, and nothing is pretended; one plant is sent however often the player confirms.
+- **After the plant** nothing is kept by hand: the re-read snapshot repaints the slot, the map (the new claim's
+  `controlMap` rows) and Gate 3 (the slot beside it now opens Establish inside held territory). The planted slot reads
+  as the guild's own **PREFECTURE** — the page now files the snapshot's `prefectures` rows under their slots, so the
+  player's own reads as its own, and a rival's as taken **by that guild's name** (it read "another guild" before, the
+  occupancy map naming no owner). An open manifest re-renders when an idle Prefecture kit lands in or leaves a system,
+  so the offer appears with the kit.
+- **Proved** by `sim/tests/prefecture-plant-client.test.js` (the page's own code in `node:vm` over real engine views:
+  an ORACLE holding the offer to the engine's own `plantPrefecture` verdict on every slot of every case — unclaimed with
+  the kit there; a rival planted first; held by the guild; the kit elsewhere; a space kit there; the guild's home — the
+  row's click, the confirm's words, the exact action sent, the rival-race refusal, an unreachable server, the
+  double-confirm guard, and the repaint); and headless against a live server, the whole loop clicked in the page
+  (roadmap 2.5).
+- **Still not built (the contest-by-force half):** teardown / un-claim / eviction (§19 #67), hostile removal (§19 #69),
+  corridors (§3), squatting, and the Prefecture's in-system planet-scan.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

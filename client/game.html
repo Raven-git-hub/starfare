@@ -1652,6 +1652,13 @@ select.field{appearance:none; cursor:pointer;}
 #detail-screen .survey-btn:not(.surveying):hover{ background:var(--brass); color:var(--bg-void); }
 #detail-screen .survey-btn.surveying{ color:#43d9c8; background:rgba(67,217,200,.08); border-color:rgba(67,217,200,.45); cursor:default; }
 #detail-screen .list-row.tab .survey-btn.surveying{ cursor:pointer; }
+/* A vacant settlement slot the guild can plant its Prefecture on carries Plant Prefecture (territory-model.md §4;
+   client PR B2) — the survey button's brass look, between the slot's name and its VACANT badge. It is a label on the
+   row, not a control of its own: the row's click is what opens the plant. */
+#detail-screen .list-row.tab.tex-node .plant-btn{ font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em;
+  text-transform:uppercase; white-space:nowrap; color:var(--brass); background:rgba(201,162,39,.10); border:1px solid var(--brass-dim);
+  border-radius:6px; padding:4px 10px; align-self:center; flex:none; cursor:pointer; }
+#detail-screen .list-row.tab.tex-node:hover .plant-btn{ background:var(--brass); color:var(--bg-void); }
 /* an L1 tab's Survey sits where the L2 pip columns would (top-right of the tab) */
 #detail-screen .list-row.tab .tab-survey{ position:absolute; top:12px; right:14px; z-index:2; padding:5px 10px; background:rgba(11,13,18,.62); }
 #detail-screen .no-survey{ text-align:center; color:var(--ink-faint); padding:48px 0; }
@@ -6447,6 +6454,9 @@ function siteBadge(state, myGuildName){
   if (!state) return { cls:'vacant', top:'VACANT', sub:null };
   if (state.kind === 'other') return { cls:'rival', top:'IN USE', sub: state.ownerName || 'another guild' };
   var who = myGuildName || 'your guild';
+  // The player's own planted Prefecture (docs/territory-model.md §4) names the structure, as MINING names
+  // the activity. A rival's Prefecture is the neutral `other` badge above: taken, and by whom.
+  if (state.kind === 'prefecture') return { cls:'own', top:'PREFECTURE', sub:who };
   if (state.kind === 'mine') return { cls:'own', top:'MINING', sub:who };
   // A dockyard (build-yard.md §2) builds assets from stockpiled modules — the top line
   // names the activity, mirroring MINING. A rival's dockyard stays the neutral `other`
@@ -6653,20 +6663,7 @@ function renderPlanetView(){
       el.siteStack.appendChild(row);
     });
   } else {
-    p.slots.forEach(function(slot,i){
-      const state = siteState(slot.id);
-      const badge = siteBadge(state, myGuildName());
-      const row=document.createElement('div'); row.className='list-row tab tex-node';
-      row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span></span>' +
-        siteBadgeHtml(badge);
-      row.addEventListener('click', function(){
-        if (isOwnSite(state) && window.__openVentureManagement) { window.__openVentureManagement(state.ventureId); return; }
-        if (state) { openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); return; }
-        openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),
-          summary:'Slot '+(i+1)+' · Factory' }, p);
-      });
-      el.siteStack.appendChild(row);
-    });
+    p.slots.forEach(function(slot,i){ el.siteStack.appendChild(settlementRow(slot, i, p)); });
     if (p.slots.length===0){
       const none=document.createElement('div'); none.className='list-row tab tex-node'; none.style.opacity='0.5';
       none.innerHTML='<span class="node-meta"><span class="node-name">No settlement slots on this body</span></span>';
@@ -6678,6 +6675,92 @@ function renderPlanetView(){
   // (The empty-state copy is hidden in this layout, so it is no longer set here.)
   el.mainStamp.textContent = p.nodes.length + (p.nodes.length===1?' node':' nodes') +
     ' \u00b7 ' + p.slots.length + (p.slots.length===1?' slot':' slots');
+}
+
+// One settlement slot's row on the planet's Settlements tab. A click on it goes, in order: to Venture
+// Management for the player's own venture; to the read-only overlay for any other occupant; to the PLANT
+// confirm when the slot can take the guild's Prefecture (plantKitFor); and otherwise to the factory Establish
+// flow, which is unchanged — a held system still establishes a factory, and an unheld one with no kit still
+// opens the Establish popup gated off.
+function settlementRow(slot, i, p){
+  const state = siteState(slot.id);
+  const badge = siteBadge(state, myGuildName());
+  const kit = plantKitFor(state);
+  const row=document.createElement('div'); row.className='list-row tab tex-node';
+  row.innerHTML = '<span class="node-meta"><span class="node-name">Settlement</span></span>' +
+    (kit ? '<span class="plant-btn">Plant ' + esc(window.__kitKind(kit.kind).structure) + '</span>' : '') +
+    siteBadgeHtml(badge);
+  row.addEventListener('click', function(){
+    if (isOwnSite(state) && window.__openVentureManagement) { window.__openVentureManagement(state.ventureId); return; }
+    if (state) { openNodeOverlay('Settlement Slot '+(i+1), slot.id, 'Settlement slot'); return; }
+    if (kit) { openPlantFor({ slotId:slot.id, slotLabel:'Settlement Slot '+(i+1), kit:kit }, p); return; }
+    openEstablishFor({ kind:'slot', siteId:slot.id, nodeLabel:'Settlement Slot '+(i+1),
+      summary:'Slot '+(i+1)+' · Factory' }, p);
+  });
+  return row;
+}
+
+// THE PLANT (docs/territory-model.md §4 — the claim act, step 2 of the two-step ground flow; roadmap 2.5, the
+// Prefecture / claims slice, client PR B2). A vacant settlement slot offers Plant when the engine's
+// plantPrefecture would take it. That is mirrored here as GUIDANCE (design.md §18): the engine re-checks every
+// gate when the player confirms, and a refusal is shown in its own words. Its gates, and where each is read:
+//   the kit    — an idle Prefecture kit of ours sits in THIS system (a plant uses a kit from its own system);
+//   the survey — no read needed: this tab is drawn only at L2, and in a system nobody holds a slot is listed
+//                only from the guild's own survey record (sim/fog.js), which is the engine's knowsSlot;
+//   the slot   — free: `state` is null (no venture and no Prefecture on it);
+//   the system — held by NOBODY. One Prefecture claims a whole system, so a system a rival holds takes none,
+//                and nor does one we hold (there the slot keeps the factory Establish flow).
+// plantKitFor(state) -> the kit a plant on this slot would use (the first in the engine's id order — any one
+// will do), or null when the slot is not offered for a plant.
+function plantKitFor(state){
+  if (state) return null;
+  if (!window.__isClaimed || window.__isClaimed(SYSTEM.id)) return null;
+  const kits = window.__myIdleGroundKitsIn ? window.__myIdleGroundKitsIn(SYSTEM.id) : [];
+  return kits[0] || null;
+}
+
+// The plant's LIGHT confirm, on the Guild Adviser's card (__adviserConfirm) rather than the factory Establish
+// popup: a plant has no asset to pick and no licence terms. It names the kit, the slot and what planting does
+// — claims the whole system — and that it cannot yet be undone (teardown is deferred, design.md §19 #67).
+function openPlantFor(site, planet){
+  if (!window.__adviserConfirm) return;
+  const spec = window.__kitKind(site.kit.kind);
+  const kitNo = String(site.kit.id).split('_').slice(-1)[0];   // asset_<guild>_prefecture_NN → "NN"
+  const body =
+    '<p>Plant <em>' + esc(spec.label) + ' #' + esc(kitNo) + '</em> on <em>' + esc(site.slotLabel) + '</em> of ' +
+      esc(planetDesignation(planet)) + '.</p>' +
+    '<p>A ' + esc(spec.structure) + ' claims the <em>whole system</em>: ' + esc(SYSTEM.name) + ', every planet, node ' +
+      'and slot in it, becomes ' + esc(myGuildName() || 'your guild') + '\u2019s ground, and you can establish ' +
+      'ventures here. The kit is used up.</p>' +
+    '<p>Once planted, it stays: a ' + esc(spec.structure) + ' cannot yet be taken down.</p>';
+  window.__adviserConfirm({ title:'Plant the ' + spec.structure + '?', body:body,
+    confirmLabel:'Plant ' + spec.structure + ' \u25b8', onConfirm:function(){ return sendPlant(site); } });
+}
+
+// The write. A refusal is a real answer — a rival planted first, or the slot was taken, between the offer and
+// the click — so it is shown in the engine's own words, and nothing is pretended. On success there is nothing
+// to keep by hand: the kit is used up, the claim written and the slot taken, and the re-read snapshot repaints
+// all three (the slot's badge, the map's territory, the Establish gate). `plantInFlight` stops a second click from
+// sending the same plant twice while the first is in flight.
+let plantInFlight = false;
+async function sendPlant(site){
+  const player = window.__player ? window.__player() : null;
+  if (plantInFlight || !player || !player.guildId) return;
+  plantInFlight = true;
+  let out = null, failure = null;
+  try {
+    out = await window.__sendAction({ type:'plantPrefecture', guildId:player.guildId, assetId:site.kit.id, slotId:site.slotId });
+  } catch (err) {
+    failure = 'The Syndicate could not be reached: ' + err.message;
+  }
+  if (!failure && !(out && out.accepted)) failure = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined');
+  // Re-read either way: a success repaints the slot and the map; a refusal repaints whatever moved under it.
+  if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
+  plantInFlight = false;
+  if (failure) {
+    window.__adviserConfirm({ title:'The ' + window.__kitKind(site.kit.kind).structure + ' was not planted',
+      body:'<p>' + esc(failure) + '</p>', confirmLabel:'Close', singleButton:true, onConfirm:function(){} });
+  }
 }
 
 // A vacant row hands the establishment popup everything it needs about the site.
@@ -6716,6 +6799,11 @@ function openNodeOverlay(title, siteId, label){
       (state.output ? ', producing ' + prettyGood(state.output) : (state.recipeId ? ', running ' + state.recipeId : '')) + '.';
   } else if (state.kind === 'venture'){
     copy = label + ' \u2014 ' + siteId + '. Held by your venture ' + state.ventureId + '.';
+  } else if (state.kind === 'prefecture'){
+    copy = label + ' \u2014 ' + siteId + '. Your Prefecture ' + state.prefectureId + ' stands here: it holds ' + SYSTEM.name + ' for your guild.';
+  } else if (state.prefectureId){
+    // A rival's Prefecture is public (RULED 16-10-26): whose it is, and that it holds the system.
+    copy = label + ' \u2014 ' + siteId + '. ' + (state.ownerName || 'Another guild') + '\u2019s Prefecture stands here: it holds ' + SYSTEM.name + '.';
   } else {
     // Another guild's site: that it is taken, and by whom. Their output, rates and
     // stockpiles are theirs alone (client-wiring.md §7).
@@ -8439,6 +8527,23 @@ async function shellEnterGame(){
 }
 
 /* ---- the live read: one snapshot in, the whole HUD + territory out --------- */
+// One planted Prefecture's row, as the planet manifest reads the slot it stands on (docs/territory-model.md
+// §4). A Prefecture is a PUBLIC structure (RULED 16-10-26), so the snapshot names every owner: the player's
+// own reads as theirs (the PREFECTURE badge), a rival's as a site another guild holds — by that guild's name.
+function prefectureSite(f){
+  if (f.ownerGuildId === GAME.guildId) return { kind:'prefecture', prefectureId:f.id };
+  return { kind:'other', prefectureId:f.id, ownerGuildId:f.ownerGuildId,
+           ownerName: LIVE.guildNameById[f.ownerGuildId] || f.ownerGuildId };
+}
+// The player's own IDLE ground kits — the Prefecture, by its kit-kinds row's `ground` flag, as every
+// ground-kit branch asks — each carrying the system it sits in. A plant consumes one from the system it is
+// planted in (docs/territory-model.md §4; client PR B2). "Idle" is the engine's answer, read, never re-derived.
+function myIdleGroundKits(){
+  return LIVE.myAssets.filter(function(a){
+    var kit = window.__kitKind ? window.__kitKind(a.kind) : null;
+    return !!(kit && kit.ground) && a.deployedToVentureId == null;
+  });
+}
 function applySnapshot(snap){
   LIVE.snap = snap;
   var me = (snap.guilds || []).filter(function(g){ return g.id === GAME.guildId; })[0] || null;
@@ -8531,14 +8636,18 @@ function applySnapshot(snap){
                                   ownerName: LIVE.guildNameById[v.ownerGuildId] || v.ownerGuildId };
     }
   });
+  // A planted PREFECTURE holds a settlement slot too (the occupancy map names its id, not a venture's).
+  (snap.prefectures || []).forEach(function(f){ LIVE.siteInfo[f.slotId] = prefectureSite(f); });
   // Re-render an open detail screen only when what it draws actually MOVED — occupancy, the
-  // known detail (a survey landing, a system claimed or lost), a controller, or an array starting
-  // or finishing a scan job — so a change under the player shows without the list churning, and
-  // without a re-render every second throwing away their scroll position.
+  // known detail (a survey landing, a system claimed or lost), a controller, an array starting
+  // or finishing a scan job, or an idle Prefecture kit landing in (or leaving) a system, which
+  // is what offers Plant on a slot there — so a change under the player shows without the list
+  // churning, and without a re-render every second throwing away their scroll position.
   var sig = Object.keys(LIVE.occupancy).sort().map(function(k){ return k + ':' + LIVE.occupancy[k]; }).join(',') +
     '|' + JSON.stringify(LIVE.known) +
     '|' + Object.keys(LIVE.systemClaims).sort().map(function(k){ return k + ':' + LIVE.systemClaims[k]; }).join(',') +
-    '|' + JSON.stringify(LIVE.myArrays.map(function(a){ return [a.id, a.scan || null]; }));
+    '|' + JSON.stringify(LIVE.myArrays.map(function(a){ return [a.id, a.scan || null]; })) +
+    '|' + myIdleGroundKits().map(function(a){ return a.id + '@' + a.systemId; }).join(',');
   if (sig !== LIVE.siteSig){
     LIVE.siteSig = sig;
     if (window.__refreshDetail) window.__refreshDetail();
@@ -8785,6 +8894,10 @@ window.__tier3Contract = function(good){
 // ENGINE's answer (`deployedToVentureId == null`), read, never re-derived here.
 window.__myIdleAssets = function(kind){
   return LIVE.myAssets.filter(function(a){ return a.kind === kind && a.deployedToVentureId == null; });
+};
+// The player's idle Prefecture kits sitting in ONE system — what the planet manifest's Plant offer reads.
+window.__myIdleGroundKitsIn = function(systemId){
+  return myIdleGroundKits().filter(function(a){ return a.systemId === systemId; });
 };
 
 function systemById(id){
