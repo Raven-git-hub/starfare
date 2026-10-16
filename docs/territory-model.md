@@ -17,7 +17,8 @@ retreat rule — is BUILT too (the slice-2 AS-BUILT note). Everything else here 
 claim action — the Prefecture kit, its ferry into unheld ground with the arrival retreat, and the plant that writes the
 claim — is BUILT, engine + operator CLI (§4's "AS-BUILT — engine PR 1"). §2's seniority map is next, engine PR 2.)* *(⤳ 16-10-26:
 §2's seniority control map is BUILT in the engine and carried by the snapshot (§2's "AS-BUILT — engine PR 2"); the client
-render is the next PR.)*
+render is the next PR.)* *(⤳ 16-10-26: the client render is BUILT too: the galaxy map paints the engine's `controlMap` and
+resolves nothing (§2's "AS-BUILT — client PR A").)*
 
 ---
 
@@ -106,8 +107,31 @@ claims' own ticks and ids over the seed's `claimRadius`).
 - **What moved.** Every snapshot and every per-guild view gained the `controlMap` key and nothing else: each pinned
   snapshot golden is still asserted against its pre-PR hash through `sim/tests/control-map-strip.js` (which refuses to
   be vacuous). No state golden moved. Not built: the client render (`client/game.html` `computeTerritoryMap` still
-  paints raw disks; next PR), §3's corridors, and the Deep Scan Array rule's switch to seniority
-  (`exploration-model.md` §5 — still "refused for both"; on the decision checklist).
+  paints raw disks; next PR — *⤳ BUILT 16-10-26, "AS-BUILT — client PR A" below*), §3's corridors, and the Deep Scan
+  Array rule's switch to seniority (`exploration-model.md` §5 — still "refused for both"; on the decision checklist).
+
+**AS-BUILT — client PR A: the control map render (16-10-26; roadmap 2.5, the Prefecture / claims slice; `client/game.html`
+only, no engine).** Built to the bullets above and `design.md` §18. No design change, no new number.
+- **The map paints the engine's answer.** `computeTerritoryMap`'s system layer is the snapshot's `controlMap`, threaded
+  verbatim (`applySnapshot` → `LIVE.controlMap` → `__setLiveTerritory` → `loadClaims`): one map entry per row, in its
+  guild's colour (the player's accent, every rival the one rival colour) and labelled with its name. The client no longer
+  expands each claimed system's disk, and no longer paints the player's own disks last. So **overlap renders by
+  seniority**: a contested hex the engine gave to an older rival claim paints rival even where the player's own disk
+  reaches it, and a junior system keeps its own centre in its holder's colour. There is no seniority logic in the
+  client.
+- **The contract is unchanged.** The map is still `"q,r"` → `{ r, g, b, label }` (`isGate` on a toll gate), so the flat
+  fill, the high-zoom hex layer and `pickHex`'s `territory` click read it as before.
+- **The single-hex tiles are as they were.** Syndicate waystations paint under the system layer; guild Outposts and toll
+  gates paint over it, each from its own source (an Outpost is not in `controlMap`, per the scope bullet above). One
+  visible change follows from dropping the own-last pass: a RIVAL's Outpost inside the player's disk now shows the rival
+  on its hex, where the player's accent used to cover it. Who controls such a hex is still on the decision checklist.
+- **Bounds.** Painted as sent, rim hexes included: the full disks the client painted before (the rim-hex checklist item,
+  ruled 16-10-26).
+- **Not changed:** the deploy map's refusal words still read a rival's whole disk (`inRivalTerritory`), because the
+  engine's Deep Scan Array placement still refuses any hex a rival footprint covers (above). They move to seniority with
+  that rule.
+- **Proved** by `sim/tests/control-map-client.test.js` (the page's own code in a `node:vm` sandbox over real engine
+  snapshots) and headless against a live server (the roadmap's 2.5 as-built entry).
 
 ## 3. Semi-controlled space — a detection zone, not a safe zone
 
@@ -172,7 +196,7 @@ onto a fully-visible galaxy. It does not change the claim *row* (still `landmark
 - **Arrival retreat (RULED 16-10-26 — the outpost's logic and messages).** If a rival has claimed the target system in flight, the ferry does not strand the craft in rival space: it **RETREATS exactly as a failed outpost deploy does** — `retreatLanding` toward the nearest held system (always exists, §4), kit aboard, the `deployFailed` flag, and the `deploy_failed` pilot's notice with its Redeploy / Return forks (`event-log.md` §10) — adding ONE new `DEPLOY_FAILED_REASONS` entry for "target system already claimed". The mid-flight un-settle HALT (§8) does **not** apply: a ground asset has no range anchor and the target is unheld by design, so there is nothing to lose but the system to a faster rival.
 - **One residual edge (working rule 7, on paper).** A rival claiming the target in the gap between a clean unload and the plant leaves the kit idle in now-rival ground; the plant then refuses ("already claimed") and the player hauls the kit out. Benign until hostile mechanics exist; the plant's unclaimed-system check is the guard.
 - **Acquire — BUILD-ONLY.** The Prefecture is dockyard-built, **not Syndicate-sold** (`docs/asset-recipes.md`, `docs/phase-1-tuning.md`) — the deliberate throttle on rapid expansion. Otherwise it rides the solved kit pipeline (`BUILDABLE_INSTALLATION_KINDS`, `mintKitAsset`, `KIT_KIND_FOR_BILL`) exactly as the array does.
-- **The seniority control map (§2) is BUILT in this slice** — the 7-hex footprint with overlap resolved by `claimedAtTick` (own-centre override, tie-break lower `claimId`), derived and recomputed on change, extending `controlNear` / the client's `computeTerritoryMap`. (It was ruled-not-built; `controlNear` already hands back every overlapping footprint for the resolver to decide.) *(⤳ Engine half BUILT 16-10-26, engine PR 2 — §2's AS-BUILT note; the client's `computeTerritoryMap` is the next PR.)*
+- **The seniority control map (§2) is BUILT in this slice** — the 7-hex footprint with overlap resolved by `claimedAtTick` (own-centre override, tie-break lower `claimId`), derived and recomputed on change, extending `controlNear` / the client's `computeTerritoryMap`. (It was ruled-not-built; `controlNear` already hands back every overlapping footprint for the resolver to decide.) *(⤳ Engine half BUILT 16-10-26, engine PR 2 — §2's AS-BUILT note; the client's `computeTerritoryMap` is the next PR.)* *(⤳ Client half BUILT 16-10-26, client PR A: `computeTerritoryMap` paints the engine's `controlMap` — §2's "AS-BUILT — client PR A".)*
 - **Scope — claim-only.** Teardown / un-claim / eviction (and so its goods question, §19 #67), hostile removal (§19 #69), the semi-controlled corridors (§3), squatting (Gate 3 stays hard), and the Prefecture's design-ahead **in-system planet-scan** function are all **OUT** of this first slice. It is the solo claim lever: survey → build → ferry → plant → claim → the seniority map. Losing ground comes later.
 
 **AS-BUILT — engine PR 1: acquire + the claim action (16-10-26; roadmap 2.5, the first Prefecture / claims slice; engine
@@ -217,8 +241,8 @@ consumes resolved control yet, and the client's footprint render is untouched); 
   a real Deep Scan Array survey → load → ferry → plant → claim → Gate 3 open, ledger balanced), and live through
   `tools/admin.js` on a `seat-demo --seed 42` galaxy, surviving a restart. No pre-existing path moved a byte apart from
   the two re-banded goods' price rows (`sim/tests/rebanded-goods-delta.test.js`).
-- **Not built (design-ahead):** §2's seniority map (engine PR 2 — *⤳ BUILT 16-10-26, §2's AS-BUILT note*); the client
-  (the plant affordance, the kit's row, the `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` /
+- **Not built (design-ahead):** §2's seniority map (engine PR 2 — *⤳ BUILT 16-10-26, §2's AS-BUILT note; its client
+  render too, client PR A*); the client (the plant affordance, the kit's row, the `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` /
   `deploy-failed-notice-client.test.js`); teardown / eviction (§19 #67), hostile removal (§19 #69), corridors (§3),
   squatting, and the in-system planet-scan.
 
