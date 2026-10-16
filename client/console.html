@@ -3144,11 +3144,12 @@ var DKC_ART = {
 };
 var DKC_ART_FALLBACK = 'assets/industrial/factoryConstruction.jpg';
 
-// The two installations a dockyard builds finish as a KIT, not the structure (docs/asset-purchase.md
+// The installations a dockyard builds finish as a KIT, not the structure (docs/asset-purchase.md
 // §"Installation kits"), so the picker, the queue and the hero name them as kits. Keyed by the BILL kind the
-// commission names. This page is its own document, so it keeps these two labels itself; client/game.html's
-// kit-kinds table is the one the rest of the client reads, and must say the same.
-var DK_KIT_LABEL = { deep_scan_array: 'Deep Scan Array kit', outpost: 'Outpost kit' };
+// commission names. This page is its own document, so it keeps these labels itself; client/game.html's
+// kit-kinds table is the one the rest of the client reads, and must say the same (the Prefecture's, a build-only
+// kit, joined it in the Prefecture / claims client PR B1 — it has no portrait yet, so it shows the fallback).
+var DK_KIT_LABEL = { deep_scan_array: 'Deep Scan Array kit', outpost: 'Outpost kit', prefecture: 'Prefecture kit' };
 // dkKindLabel(kind, plain) -> the kit label for an installation, else `plain` (what the screen showed before).
 function dkKindLabel(kind, plain){ return Object.prototype.hasOwnProperty.call(DK_KIT_LABEL, kind) ? DK_KIT_LABEL[kind] : plain; }
 

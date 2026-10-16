@@ -19,20 +19,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const { DEPLOYABLE_KITS } = require('../resources.js');
+const { DEPLOYABLE_KITS, kindForKit } = require('../resources.js');
 const { KIT_KIND_FOR_BILL } = require('../asset-recipes.js');
+const { PREFECTURE_KIT_KIND } = require('../prefectures.js');
 
 const read = (name) => fs.readFileSync(path.join(__dirname, '..', '..', 'client', name), 'utf8');
 
-// ⤳ 16-10-26 (the Prefecture / claims slice, ENGINE PR 1): the engine gained a third kit kind, 'prefecture' (bill
-// kind 'prefecture'). It is a GROUND kit — unloaded into a system and PLANTED on a settlement slot, never deployed on a
-// hex — and this PR builds no client. The client must NOT get a row for it here yet: every row earns its idle kit a
-// Deploy button that opens the SPACE deploy map, which is wrong for a flag. Its client flow (the ferry and the plant)
-// is the client PR's. So it is listed HERE by name, and the tests below hold BOTH sides: every other kind has its row,
-// and this one has none. The client PR adds the right row (and whatever the plant needs), then empties this list.
-const AWAITING_CLIENT = { kitKinds: ['prefecture'], billKinds: ['prefecture'] };
-const clientKitKinds = () => Object.keys(DEPLOYABLE_KITS).filter((k) => !AWAITING_CLIENT.kitKinds.includes(k));
-const clientBills = () => Object.entries(KIT_KIND_FOR_BILL).filter(([bill]) => !AWAITING_CLIENT.billKinds.includes(bill));
+// ⤳ 16-10-26 (the Prefecture / claims slice): engine PR 1 gave the engine a third kit kind, 'prefecture' (bill kind
+// 'prefecture'), a GROUND kit — unloaded into a system and PLANTED on a settlement slot, never deployed on a hex — and
+// pinned it here as awaiting its client row. Client PR B1 adds that row, marked `ground: true`, so its idle kit is
+// FERRIED rather than offered the space deploy map; the awaited list is gone and every kind is held below. The
+// engine's one ground kit is PREFECTURE_KIT_KIND (it alone has no DEPLOYABLE_STRUCTURES row), and the client's
+// `ground` flag must name exactly it.
+const clientKitKinds = () => Object.keys(DEPLOYABLE_KITS);
+const clientBills = () => Object.entries(KIT_KIND_FOR_BILL);
+const isGround = (kind) => kind === PREFECTURE_KIT_KIND;
 
 // The page's kit-kinds script, run on a stub `window`: hands back the two functions it defines.
 function clientKitTable() {
@@ -45,16 +46,19 @@ function clientKitTable() {
 
 test('every engine kit kind has a client row, with the engine\'s kit good — and no other kind reads as a kit', () => {
   const w = clientKitTable();
-  for (const kind of AWAITING_CLIENT.kitKinds) {
-    assert.equal(w.__kitKind(kind), null, `kit kind ${JSON.stringify(kind)} has a client row now — take it off AWAITING_CLIENT`);
-  }
   for (const kind of clientKitKinds()) {
     const good = DEPLOYABLE_KITS[kind];
     const row = w.__kitKind(kind);
     assert.ok(row, `kit kind ${JSON.stringify(kind)} has no client row — its idle kit would get no Deploy button`);
     assert.equal(row.good, good, `kit kind ${JSON.stringify(kind)}: the client looks for ${JSON.stringify(row.good)} aboard, the engine loads ${JSON.stringify(good)}`);
-    for (const field of ['label', 'structure', 'target', 'outside']) {
+    for (const field of ['label', 'structure']) {
       assert.equal(typeof row[field], 'string', `kit kind ${JSON.stringify(kind)} has no ${field} words`);
+    }
+    // A SPACE kit is placed on the deploy map, so it has the map's words; a GROUND kit never sees that map, so it has
+    // none — a word there would be a sign the map could be offered for it.
+    for (const field of ['target', 'outside']) {
+      if (isGround(kind)) assert.equal(row[field], undefined, `ground kit ${JSON.stringify(kind)} has deploy-map ${field} words`);
+      else assert.equal(typeof row[field], 'string', `kit kind ${JSON.stringify(kind)} has no ${field} words`);
     }
   }
   // The other kinds the client meets — ground assets, a craft, a bill kind, an inherited name, the unbuilt toll
@@ -64,15 +68,41 @@ test('every engine kit kind has a client row, with the engine\'s kit good — an
   }
 });
 
-test('every kit row has its own portrait, and the file is in the repo (2.5 slice 15 — the array no longer falls back to a plain panel)', () => {
+test('every space kit row has its own portrait, and the file is in the repo (2.5 slice 15 — the array no longer falls back to a plain panel)', () => {
   const w = clientKitTable();
-  for (const kind of clientKitKinds()) {
+  for (const kind of clientKitKinds().filter((k) => !isGround(k))) {
     const art = w.__kitKind(kind).art;
     assert.equal(typeof art, 'string', `kit kind ${JSON.stringify(kind)} has no art`);
     assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'client', art)), `${art} is missing`);
   }
   assert.equal(w.__kitKind('deepScan').art, 'assets/units/deepscan.jpg');
   assert.equal(w.__kitKind('outpost').art, 'assets/units/outpost.jpg');
+  // The Prefecture has no portrait yet (none drawn — client PR B1 ships it without, as the array once shipped): the
+  // popup shows its plain panel. Pinned, so adding one is a deliberate change here.
+  assert.equal(w.__kitKind('prefecture').art, undefined);
+});
+
+test('the `ground` flag names exactly the engine\'s one ground kit, the Prefecture (client PR B1)', () => {
+  const w = clientKitTable();
+  for (const kind of clientKitKinds()) {
+    assert.equal(w.__kitKind(kind).ground === true, isGround(kind),
+      `kit kind ${JSON.stringify(kind)}: the client's ground flag is ${w.__kitKind(kind).ground}, the engine's ground kit is ${JSON.stringify(PREFECTURE_KIT_KIND)}`);
+  }
+  const prefecture = w.__kitKind('prefecture');
+  assert.deepEqual({ ...prefecture }, { good: 'prefecture_kit', bill: 'prefecture', label: 'Prefecture kit', structure: 'Prefecture', ground: true });
+  assert.ok(Object.isFrozen(prefecture), 'the row is frozen like the others');
+});
+
+test('__kitKindForGood reads a hold good back to its kit kind, as the engine\'s kindForKit does — and nothing else is a kit', () => {
+  const w = clientKitTable();
+  for (const kind of clientKitKinds()) {
+    const good = DEPLOYABLE_KITS[kind];
+    assert.equal(w.__kitKindForGood(good), kind, `the client reads ${JSON.stringify(good)} as ${JSON.stringify(w.__kitKindForGood(good))}`);
+    assert.equal(w.__kitKindForGood(good), kindForKit(good));
+  }
+  for (const good of ['titanium', 'prefecture', 'deepScan', 'toString', undefined]) {
+    assert.equal(w.__kitKindForGood(good), null, `${JSON.stringify(good)} is not a kit good`);
+  }
 });
 
 test('the deploy map\'s words for the array follow its REVISED rule: in or beside your territory, and a rival refusal (slice 15)', () => {
@@ -87,9 +117,6 @@ test('the deploy map\'s words for the array follow its REVISED rule: in or besid
 
 test('every bill kind that finishes as a kit is labelled on the client, and maps to the same kit kind', () => {
   const w = clientKitTable();
-  for (const bill of AWAITING_CLIENT.billKinds) {
-    assert.equal(w.__kitLabelForBill(bill), null, `bill ${JSON.stringify(bill)} is labelled now — take it off AWAITING_CLIENT`);
-  }
   for (const [bill, kind] of clientBills()) {
     assert.equal(w.__kitKind(kind).bill, bill, `the client's ${JSON.stringify(kind)} row names bill ${JSON.stringify(w.__kitKind(kind).bill)}, the engine's bridge ${JSON.stringify(bill)}`);
     assert.equal(w.__kitLabelForBill(bill), w.__kitKind(kind).label);
@@ -100,6 +127,7 @@ test('every bill kind that finishes as a kit is labelled on the client, and maps
   }
   assert.equal(w.__kitLabelForBill('deep_scan_array'), 'Deep Scan Array kit');
   assert.equal(w.__kitLabelForBill('outpost'), 'Outpost kit');
+  assert.equal(w.__kitLabelForBill('prefecture'), 'Prefecture kit');
 });
 
 test('the Production Console\'s dockyard labels say exactly what the game client\'s table says', () => {
