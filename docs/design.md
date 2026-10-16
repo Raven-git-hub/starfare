@@ -191,6 +191,8 @@ one is itself open - §19 #69.
 
 > **The full territory & deployment model lives in `docs/territory-model.md` (design-ahead, 29-09-26).** The spatial control layer — the 7-hex control footprint with **first-settled seniority** over overlaps, and the semi-controlled **detection** corridors (trunk & feeder, own-nodes only) — plus the Prefecture-as-flag and squatting-as-deferred-direction, the **cross-system deploy pipeline** (which *is* the ferry the Prefecture waits on), the **starter ≥ 3 spacing** generation rule, and the founding-grant change. This section holds the narrative and the headline rulings; that file is the computational model.
 
+**⤳ RULED 16-10-26 — the claim action, now building (the first Prefecture / claims slice, roadmap 2.5).** The ferry the Prefecture waited on exists, so the claim action is ruled and being built. It is a **two-step ground flow**: ferry the Prefecture kit into the target system's idle list, then a separate **plant** on a surveyed-L2 settlement slot writes the `landmarkKind: 'system'` claim row (exempt from Gate 3 — it creates the hold). The Prefecture is **build-only — the Syndicate does not sell it** (a deliberate throttle on rapid expansion by wealthy guilds; so spycraft is no longer the only build-only kind), and its bill resolves §19 #68 (it consumes `claim_beacon` and `habitation_module`). Its ferry-arrival **retreats exactly like a failed outpost deploy** if a rival claimed the system first (kit kept). The first slice is **claim-only**: teardown / eviction (§19 #67) and hostile removal (§19 #69) stay deferred, and the Prefecture's **in-system planet-scan** function (the reason its bill carries deep-scan masts) is **design-ahead, not built here**. The computational model is `docs/territory-model.md` §4 (the claim action) and §5 (the ferry); the seniority control map (§2 there) is built in the same slice.
+
 ### Fog of war — per-guild visibility *(05-10-26)*
 
 **DESIGN-AHEAD; the first half IN BUILD (roadmap 2.5, the exploration slice).** The galaxy
@@ -1706,7 +1708,7 @@ cannot be built until this is ruled.
 item (`docs/phase-1-tuning.md`; roadmap.md Phase 2). A Prefecture is the obvious consumer for two of
 them by name. **Nothing here is ruled**: the bill, its `BUILD_TICKS`, and the two modules' sub-tier
 bands are all unset, and picking them would invent numbers (working rule 5). Recorded so the
-connection is not re-discovered from scratch.
+connection is not re-discovered from scratch. *(⤳ **RULED 16-10-26 — YES, and both.** The Prefecture's Tier-4 bill claims both orphans: it consumes **2 `claim_beacon`** and **2 `habitation_module`** (alongside 5 `deep_scan_mast` for the price/throttle and the design-ahead in-system scan, 10 `life_support_module`, 10 `defence_system`, and ordinary structure). `claim_beacon` → sub-tier **3-2**, `habitation_module` → **3-3** (both leave `UNCLASSIFIED_TIER3_BAND`); `drive_module` and `droid_components` stay unclassified (the Droid is still design-ahead). The bill and its 14-day (20,160-tick) assembly are in `docs/asset-recipes.md`; the bands in `docs/phase-1-tuning.md`. The Prefecture is **build-only** — not Syndicate-sold.)*
 
 69. **How a Prefecture is removed by anyone but its owner.** The ruling says "torn down or destroyed",
 but the design has **no hostile-destruction mechanic for a structure**. Owner teardown has a
