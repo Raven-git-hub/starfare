@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,334 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); the plant affordance (client PR B2) is next; the rest of the guild↔guild contest (a rival, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim); losing ground (teardown / eviction, §19 #67; hostile removal, #69) is the open follow-on, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3631,7 +3631,11 @@ boundary so the later hex-map swap doesn't touch it.
   CLI, engine PR 1 of the Prefecture / claims slice, 2.5 below; the seniority map is engine PR 2, then the client.)*
   *(⤳ 16-10-26: **the seniority control map is BUILT** — engine PR 2, 2.5 below; the client render is next.)*
   *(⤳ 16-10-26: **its client render is BUILT** — client PR A, 2.5 below; the claim affordance, client PR B, is next.)*
-  *(⤳ 16-10-26: **the ferry is BUILT client-side** — client PR B1, 2.5 below; the plant affordance, client PR B2, is next.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
+  *(⤳ 16-10-26: **the ferry is BUILT client-side** — client PR B1, 2.5 below; the plant affordance, client PR B2, is next.)*
+  *(⤳ 16-10-26: **the plant is BUILT client-side** — client PR B2, 2.5 below — and with it **the first Prefecture /
+  claims slice is COMPLETE**: a guild claims a second system end to end from the client (survey → build → ferry →
+  plant → claim), and the seniority map paints it. Still open, the contest-by-force half: #67 (teardown / eviction and
+  its goods) and #69 (hostile removal).)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:
@@ -3729,6 +3733,10 @@ boundary so the later hex-map swap doesn't touch it.
   *(⤳ 16-10-26 — **the Prefecture / claims slice, client PR B1 — the ferry — is BUILT**, the last entry below: an idle
   Prefecture kit's row reads Ferry, and its popup loads it onto a heavy flown to an unclaimed system on a route ending in
   an unload — the planner refusing a rival's system — where it lands idle. Client PR B2 (the plant) follows.)*
+  *(⤳ 16-10-26 — **the Prefecture / claims slice, client PR B2 — the plant — is BUILT**, the last entry below: a vacant
+  settlement slot of a surveyed planet, in a system nobody holds where the guild's Prefecture kit sits, reads Plant
+  Prefecture, and its confirm sends `plantPrefecture`. **The first Prefecture / claims slice is COMPLETE** — survey →
+  build → ferry → plant → claim, all from the client. Losing ground (#67 / #69) is the open follow-on.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4526,6 +4534,59 @@ boundary so the later hex-map swap doesn't touch it.
     fourth check: the idle Prefecture kit has no row in the table, so no button — it cannot be ferried from the page. Sim 2,342 →
     **2,360** (the 14 new client tests, +2 kit-kinds, +2 notice; no engine test moved), tools **96**. Checklist items
     below.
+  - **The Prefecture / claims slice, client PR B2 — plant a Prefecture from a settlement slot (`client/game.html` only)
+    — ⤳ AS-BUILT 16-10-26. The first Prefecture / claims slice is COMPLETE** with it: the claim loop runs end to end
+    from the client — survey → build → ferry → plant → claim. Built to `territory-model.md` §4 "RULED 16-10-26 — the
+    claim action" (the plant, step 2 of the two-step ground flow) and `design.md` §18; as-built detail in §4's
+    "AS-BUILT — client PR B2". **No new number, no engine change.** **(1) The offer:** on a planet's Settlements tab a
+    VACANT slot reads **Plant Prefecture** when the system is held by nobody and an idle Prefecture kit of the guild's
+    sits in it — the engine's `plantPrefecture` gate, read as guidance: the kit off the idle assets (the kit-kinds
+    `ground` flag, B1's mechanism, and its `systemId` — `__myIdleGroundKitsIn`), "held by nobody" off the claims (the
+    guild's own systems included: there the slot keeps the factory Establish), the free slot off occupancy, and the
+    survey for free (the tab draws only at L2, and in a system nobody holds a slot is listed only from the guild's own
+    record — `knowsSlot`). The slot row is now its own function (`settlementRow`); every other slot's click is
+    unchanged. **(2) The confirm:** the Guild Adviser's one-page card (`__adviserConfirm`), not `#est-overlay`: "Plant
+    the Prefecture?" — the kit `#NN`, the slot and planet, the whole-system claim for the guild, and that it cannot yet
+    be taken down (#67). **(3) The send:** `plantPrefecture { guildId, assetId, slotId }`, then the re-read; a refusal
+    (or an unreachable server) is shown on the Adviser's card in the engine's own words, nothing pretended; an in-flight
+    guard sends one plant per confirm. **(4) The repaint:** nothing hand-kept — the re-read paints the slot, the map
+    (PR A's `controlMap`) and Gate 3. The page now files the snapshot's `prefectures` rows under their slots
+    (`prefectureSite`): the player's own reads green **PREFECTURE / <guild>** and its overlay "Your Prefecture … stands
+    here", a rival's reads **IN USE / <its name>** (it read "another guild" before — occupancy names no owner). The
+    open manifest's refresh signature gains the idle Prefecture kits, so a kit landing brings the offer up without
+    leaving the screen. **(5) Tripwires:** `prefecture-plant-client.test.js` (11) runs the page's own code in `node:vm`
+    over real engine views — an ORACLE holding the offer to the engine's `plantPrefecture` verdict on every settlement
+    slot of six galaxies (unclaimed with the kit there; a rival planted first; held by the guild with a second kit
+    there; the kit at home; an Outpost kit there instead; the guild's home); the row (Plant beside VACANT, the click to
+    the confirm and never to Establish; every other slot's old click — Establish open, Establish gated, the overlay);
+    the confirm's words; the exact action; the rival-claims-first race refused in the engine's words; an unreachable
+    server and a reasonless refusal; the double-confirm guard; the repaint (PREFECTURE, no more offers, the overlay,
+    Establish opened beside it) and a rival's Prefecture by name. **Checked to fail** (one mutation at a time): no claim
+    check → 3 red; only the guild's own hold refused (a rival's offered) → 3; an occupied slot offered → 1; a kit from
+    any system → 2; the `ground` flag ignored → 1; the plant branch removed (Establish instead) → 6; the refusal
+    swallowed → 2; no in-flight guard → 1; the `prefectures` rows not filed → 3; the own Prefecture read as a rival's
+    → 1; no PREFECTURE badge → 1; no re-read after the send → 3; the wrong slot sent → 3. **(6) Proved headless**
+    (Playwright, the preinstalled Chromium, a live `node sim/server.js` on seed 7331; the harness outside the repo, as
+    before): the player's guild founded through the connect screen on `sys_0098`, a rival founded on `sys_0979`.
+    **33 checks, zero console errors.** The capstone — the WHOLE loop clicked in the page: a Prefecture kit granted at
+    home (and a Deep Scan Array stood on the home centre by the operator), then from the page the L1 survey of the
+    unclaimed `sys_0048` (Survey System) and the L2 survey of `pl_00156`; before the ferry its slots list VACANT with no
+    offer; the kit ferried there from OPERATIONS → Idle (B1's popup, the unload planner, a click on the system's hex,
+    Finalise, Ferry); with the kit landed every slot offers Plant Prefecture; the click opens the Adviser's confirm (not
+    Establish), naming kit `#04`, Settlement Slot 1, the whole system, the guild and the un-claim caveat; Plant writes
+    the claim (`sys_0048` held), uses the kit up, occupies the slot with the new Prefecture, and gives the system's whole
+    disk to the new claim in `controlMap`; the slot repaints PREFECTURE / Raven Concern with no further offer, its click
+    the overlay, the slot beside it the factory Establish in held territory; a bare hex of the new disk, unpainted
+    before, samples the player's teal after. The gate: no offer in a system the guild holds (a second kit there), at
+    home (a kit there — Establish still opens in held territory), in a rival's home (a kit of ours there — Establish
+    gated off), or in a surveyed, unclaimed system with no kit (`sys_1114` — Establish gated off); a kit granted there
+    while the manifest is open brings the offer up on the next poll alone. The race: with the confirm open on
+    `sys_1114`, the rival plants first (operator); Confirm shows `Refused: system "sys_1114" is already held by guild
+    "iron-combine" — a Prefecture plants only in an unclaimed system`, the kit is still idle there, and the manifest then
+    offers nothing and reads the rival's slot IN USE / Iron Combine. Run against the pre-PR client (`4ef8a37`), the
+    same harness passes its first 8 checks (the survey and the ferry, B1) and fails at the ninth: no slot offers Plant,
+    the slot's click opens the factory Establish, and no plant can be sent. Sim 2,360 → **2,371** (the 11 client
+    tests; no engine test moved), tools **96**. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5955,6 +6016,44 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      (d) The brief expected only the kit-kinds test to move; the notice test lost its awaited label too (the ferry makes
      the `system-claimed` retreat reachable), and two source pins on the Redeploy line (`outpost-teardown-client.test.js`,
      `server.test.js`) moved with it. No engine test moved.
+- **The Prefecture / claims slice, client PR B2 (2.5 — the plant) — items for a confirm or a ruling** — *surfaced
+  16-10-26 by the build; each was built the way stated, and none is decided by the code beyond that.*
+  1. **The plant's words, chosen at build.** The slot's button **"Plant Prefecture"** (the kit-kinds row's `structure`);
+     the confirm's title **"Plant the Prefecture?"**, its body ("Plant *Prefecture kit #NN* on *Settlement Slot N* of
+     <planet>. / A Prefecture claims the *whole system*: <system>, every planet, node and slot in it, becomes <guild>'s
+     ground, and you can establish ventures here. The kit is used up. / Once planted, it stays: a Prefecture cannot yet
+     be taken down.") and its button **"Plant Prefecture ▸"**; the refusal's title **"The Prefecture was not planted"**,
+     body "Refused: " + the engine's reason, verbatim (it names ids — `system "sys_1114" is already held by guild
+     "iron-combine"`), and **"Close"**. Confirm, or supply the words — and say whether the refusal should name the
+     system and guild rather than their ids.
+  2. **The confirm's chrome.** It is the Guild Adviser's one-page card (`__adviserConfirm`, the shared `#est-reel` the
+     close-venture and commission confirms use) — the Adviser's portrait, Cancel / Plant — not the factory `#est-overlay`
+     and not a popup of its own. Confirm, or rule a dedicated plant popup (it would want the Prefecture art B1 item 4
+     asks about).
+  3. **The un-claim caveat is shown** ("cannot yet be taken down"). It becomes untrue the day teardown (#67) lands, and
+     must move with it. Confirm it stays until then, or drop it.
+  4. **A planted slot's badge.** The player's own Prefecture reads green **PREFECTURE / <guild>**, its overlay "Your
+     Prefecture <id> stands here: it holds <system> for your guild."; a rival's reads the neutral **IN USE / <its
+     name>**, its overlay "<guild>'s Prefecture stands here: it holds <system>." To show either truthfully the page now
+     reads the snapshot's public `prefectures` block (engine PR 1 item 4's occupancy contract is otherwise unchanged).
+     Before this PR the player's own Prefecture — planted from the CLI — read "IN USE / another guild". Confirm the
+     words, and whether a rival's (a public structure, RULED 16-10-26) should read PREFECTURE rather than IN USE.
+  5. **A Prefecture slot counts as a "site worked"** on its planet's tab in the system index ("· 1 site worked"), because
+     that count is every occupied site. It did before this PR too (occupancy). Rule whether a Prefecture is "worked".
+  6. **The plant is offered only from the planet manifest.** An idle Prefecture kit's row in OPERATIONS → Idle reads
+     Ferry wherever it sits, including in an unclaimed system it could be planted in; the player goes to the planet's
+     Settlements tab to plant. Rule whether that row should also offer Plant (or a "go to the system") once the kit has
+     landed somewhere plantable.
+  7. **Which kit, and the `ground` flag.** With several idle Prefecture kits in the system the plant uses the first in
+     the engine's id order (any one is equal). The offer finds the kit by the kit-kinds row's `ground` flag (B1 item 2's
+     mechanism), but the action it sends is the Prefecture's own (`plantPrefecture`) — so when a second ground kit
+     exists the flag alone no longer says "plantable". Part of B1 item 2's ruling.
+  8. **Seams — not decisions, recorded:** (a) the manifest's refresh signature now includes the guild's idle Prefecture
+     kits (`id@system`), so a kit landing re-renders an open manifest (otherwise the offer waited for an unrelated
+     change). (b) The headless harness lives outside the repo, as before (slice 3a's item 8(c)); the capstone's Deep
+     Scan Array was stood on the home centre by the operator, and the kit granted — the survey, ferry and plant were all
+     clicked in the page. (c) The brief expected no engine test change; none moved — the sim count moved by the 11 new
+     client tests.
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

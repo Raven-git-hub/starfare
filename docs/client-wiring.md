@@ -1479,3 +1479,21 @@ The full as-built is `docs/territory-model.md` §4, "AS-BUILT — client PR B1";
   refuses a rival's system or a non-system; then Ferry, which loads the kit and sends the heavy. On arrival the kit is idle
   in that system, listed under it in OPERATIONS → Idle. The plant is client PR B2.
 - **Proved** headless against a live server — 26 checks, zero console errors (`docs/roadmap.md`, 2.5).
+
+## Revision — the Prefecture's plant *(16-10-26, roadmap 2.5, the Prefecture / claims slice, client PR B2, client-only)*
+
+The full as-built is `docs/territory-model.md` §4, "AS-BUILT — client PR B2"; this is the client's view of it. With it
+the first Prefecture / claims slice is complete: a player claims a second system entirely from the page.
+
+- **One new snapshot read:** the `prefectures` block (engine PR 1 — public, every guild's), filed under each Prefecture's
+  slot in the page's site rows, so the planet manifest names a planted slot's owner (the player's own, or a rival by
+  name). Everything else the plant reads the page already had: the guild's `assets` (an idle Prefecture kit and the
+  system it sits in), `claims` (who holds the system), `occupancy` and `geography.known` (the slot is listed, so
+  surveyed, and free).
+- **What the player sees:** on a surveyed planet's Settlements tab, in a system nobody holds and where one of its
+  Prefecture kits sits, each VACANT slot reads **Plant Prefecture**. Clicking the slot opens the Guild Adviser's confirm
+  ("Plant the Prefecture?" — the kit, the slot, the whole-system claim, and that it cannot yet be taken down); Confirm
+  plants it. The slot then reads PREFECTURE, the map paints the system's disk in the player's colour, and the other
+  slots open the factory Establish inside held territory. If a rival claimed the system first, the Adviser shows the
+  engine's refusal and nothing changes. Every other slot behaves as before.
+- **Proved** headless against a live server — 33 checks, zero console errors (`docs/roadmap.md`, 2.5).
