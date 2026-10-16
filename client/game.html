@@ -4995,6 +4995,45 @@ select.field{appearance:none; cursor:pointer;}
     ctx.restore();
   }
 
+  // The claim-pending beacon (docs/territory-model.md §4, client PR C): on a system where the player's Prefecture kit
+  // lies idle and nobody holds the system yet, three hollow rings in the player accent flow in from a rim to the
+  // centre hex, a fresh ring appearing at the rim as the inner one collapses — a claim being pulled in. Hollow and
+  // moving on purpose: a SETTLED claim is the solid territory fill, and this must not read as one. Every constant is
+  // LOOK, not a game number: how long one ring takes to fall from the rim to the centre, how many rings are in
+  // flight, and the rim's smallest size on screen so the beacon still reads from the whole-galaxy view.
+  const BEACON_PERIOD_MS = 1500;
+  const BEACON_RINGS = 3;
+  const BEACON_MIN_RIM_PX = 14;
+  // beaconRings(rim, now) -> [ { radius, alpha } ], one per ring. Ring i is a fixed share of a period behind the one
+  // before it, so the rings stay evenly spaced; each shrinks from `rim` towards 0 as its phase runs from 0 to 1, then
+  // wraps to the rim again. It fades in at the rim and out at the centre, so nothing pops.
+  function beaconRings(rim, now) {
+    const rings = [];
+    for (let i = 0; i < BEACON_RINGS; i++) {
+      const phase = ((now / BEACON_PERIOD_MS) + i / BEACON_RINGS) % 1;
+      rings.push({ radius: rim * (1 - phase), alpha: 0.9 * Math.sin(Math.PI * phase) });
+    }
+    return rings;
+  }
+  function drawClaimBeacon(scr, rim, now) {
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.scale(1, SQUASH);   // lie flat in the map's tilted plane, as the radar and the hexes do
+    beaconRings(rim, now).forEach((ring) => {
+      if (ring.radius < 0.5) return;   // under half a pixel: nothing to see
+      ctx.beginPath();
+      ctx.arc(0, 0, ring.radius, 0, Math.PI * 2);
+      // A dark under-stroke first, so the teal ring still reads where it crosses a painted territory hex. Look only.
+      ctx.lineWidth = 3.4;
+      ctx.strokeStyle = `rgba(4,8,16,${0.6 * ring.alpha})`;
+      ctx.stroke();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = col('player', ring.alpha);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   // diagonal-line label, ported from galaxy-map-hex.html's drawLabelBox
   function drawLabelBox(p, lines, colorKey, downLeft) {
     // `downLeft` flips the diagonal to the OPPOSITE quadrant for the transport tag,
@@ -5390,6 +5429,25 @@ select.field{appearance:none; cursor:pointer;}
       ctx.restore();
     });
 
+    // the claim-pending beacon (docs/territory-model.md §4, client PR C) — on each system where one of the player's
+    // Prefecture kits lies idle and nobody holds the system, so a ferried kit is easy to find again. Drawn at EVERY
+    // zoom, never smaller than BEACON_MIN_RIM_PX; once the hex is bigger than that, the rim sits just inside the
+    // centre hex (0.85 of its corner radius, inside the hex's 0.866 edge — look, not a game number). The rows are the
+    // shell's pendingPrefectures, re-read every frame: the player's OWN kits only, so a rival's kit never shows, and a
+    // planted kit or a claimed system drops out on the next snapshot. A MARKER ONLY: it is not territory
+    // (computeTerritoryMap never sees it) and adds no click target — a click on the hex picks the system as before.
+    const pendingOnMap = (window.__pendingPrefectures && window.__pendingPrefectures()) || [];
+    if (pendingOnMap.length) {
+      const now = performance.now();
+      const rim = Math.max(BEACON_MIN_RIM_PX, galaxy.galaxyParams.hexSize * zoom * 0.85);
+      pendingOnMap.forEach((row) => {
+        const p = hexToPixel(row.q, row.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -rim || scr.x > window.innerWidth + rim || scr.y < -rim || scr.y > window.innerHeight + rim) return;
+        drawClaimBeacon(scr, rim, now);
+      });
+    }
+
     // in-flight Syndicate deliveries — the player's own, drawn after the systems/outposts
     // markers and with the label layer (mirrors the mockup's ordering). Each is one dashed
     // brass leg (nearest waystation → destination), a gold craft chevron tweened along it,
@@ -5774,6 +5832,20 @@ select.field{appearance:none; cursor:pointer;}
         const scr = worldToScreen(p.x, p.y);
         if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
         drawLabelBox(scr, [arrayMapName(a).toUpperCase()], 'player', true);
+      });
+    }
+
+    // The claim-pending beacon's tag, at the same threshold: the system's name, then CLAIM PENDING. It hangs DOWN-LEFT:
+    // a kit is usually ferried to a system next to the player's own, and an up-right tag there would sit on that
+    // system's own up-right tag. No click target, as the array's tag has none.
+    if (zoom >= WAYSTATION_LABEL_ZOOM) {
+      pendingOnMap.forEach((row) => {
+        const sys = systemById.get(row.systemId);
+        if (!sys) return;
+        const p = hexToPixel(row.q, row.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        drawLabelBox(scr, [sys.name.toUpperCase(), 'CLAIM PENDING'], 'player', true);
       });
     }
 
@@ -8898,6 +8970,32 @@ window.__myIdleAssets = function(kind){
 // The player's idle Prefecture kits sitting in ONE system — what the planet manifest's Plant offer reads.
 window.__myIdleGroundKitsIn = function(systemId){
   return myIdleGroundKits().filter(function(a){ return a.systemId === systemId; });
+};
+// pendingPrefectures(kits, systemClaims, systems) -> [ { systemId, q, r } ]: the systems where a Prefecture kit of
+// the guild's lies idle and NOBODY holds the system yet — the "ready to plant" state the map's claim-pending beacon
+// marks (docs/territory-model.md §4, client PR C). One row per system, however many kits sit there: one kit is enough
+// to claim it. `q, r` is the system's centre hex. A pure read of what it is handed, so a test can call it directly:
+//   kits         — the guild's OWN idle ground kits (myIdleGroundKits), so a rival's kit can never reach here, and a
+//                  kit aboard a heavy is not in the list at all (it is a hold good until it is unloaded);
+//   systemClaims — { systemId: ownerGuildId } (LIVE.systemClaims); a system named here is held by someone — by us
+//                  (home, or a Prefecture already planted) or by a rival (a stranded kit, which this does not mark);
+//   systems      — the board's systems, for the centre hex. A system missing from it has nothing to draw on.
+function pendingPrefectures(kits, systemClaims, systems){
+  var rows = [], seen = {};
+  kits.forEach(function(kit){
+    var id = kit.systemId;
+    if (seen[id] || systemClaims[id]) return;
+    var sys = systems.filter(function(s){ return s.id === id; })[0];
+    if (!sys) return;
+    seen[id] = true;
+    rows.push({ systemId: id, q: sys.coords.q, r: sys.coords.r });
+  });
+  return rows;
+}
+// The map reads this every frame, so the beacon follows the latest snapshot with nothing kept by hand: it appears
+// when a kit lands idle in an unclaimed system, and is gone the moment the kit is planted or the system is taken.
+window.__pendingPrefectures = function(){
+  return pendingPrefectures(myIdleGroundKits(), LIVE.systemClaims, (GAME.galaxy && GAME.galaxy.systems) || []);
 };
 
 function systemById(id){
