@@ -18,6 +18,14 @@
 // The payment (on delivered units when this slice was built, so lumpy) is Slice 3d's, tested in
 // tier3-payment.test.js.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -51,7 +59,7 @@ const SYS = 'sysA';
 const WEEK = 10080;   // docs/tier3-timed-production.md: "exactly one 7-day window (10,080 ticks)"
 const DAY = 1440;     // docs/cycle-and-calendar.md: the ruled day
 
-// The 21 timed Tier-3 goods, and `y` typed from the doc's formula (not read off the code).
+// The 23 timed Tier-3 goods (21 until 16-10-26), and `y` typed from the doc's formula (not read off the code).
 const TIMED = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
 const yOf = (good) => WEEK / ticksPerUnitFor(good);
 
@@ -412,7 +420,7 @@ test('(c) TRIPWIRE: the Tier-3 re-offer reads standing for the Strong discount O
     { committedOutputPct: 3 / 4, basicFee: 8000000, discountedFee: 6500000, feeDiscountApplied: false }, 'one RP short of Strong: full fee');
 });
 
-test('(c) every legal x survives the re-lock unchanged — all 21 timed goods, every x from 0 to floor(y), at every standing', () => {
+test('(c) every legal x survives the re-lock unchanged — all 23 timed goods, every x from 0 to floor(y), at every standing', () => {
   let checked = 0;
   for (const good of TIMED) {
     const basis = licenceBasisForGood(good, DAY);
@@ -430,7 +438,9 @@ test('(c) every legal x survives the re-lock unchanged — all 21 timed goods, e
   }
   // (⤳ 28-09-26 retime: 5,139 → 5,140. The heavy engine's floor(y) rose 3 → 4, one more x; the
   // stealth module (3 → 3) and deep scan mast (2 → 2) kept theirs.)
-  assert.equal(checked, 5140, 'every (good, x) pair');
+  // (⤳ 16-10-26, the Prefecture slice: 5,140 → 5,646. claim_beacon (3-2, y = 336) and habitation_module (3-3,
+  // y = 168) became timed, adding 337 + 169 = 506 pairs.)
+  assert.equal(checked, 5646, 'every (good, x) pair');
 });
 
 // --- 4. (d) TIER 1/2 UNCHANGED -----------------------------------------------------------------
@@ -491,8 +501,8 @@ test('(d) HEADLINE: a Tier-1/2 licence still commits a percentage, picks a 7–4
 // 4,666,667 → 4,000,000 (2.33 → 2). Checked against HEAD c99005b snapshot by snapshot: with those
 // three goods' rows removed, every snapshot is byte-identical, and every other hash here did not
 // move. Before: 240ee2aa…b6af6.
-const ISO_STATE_EVERY_TICK = '96e4b9caba27f61dcd8d2518db6e9cbe56b09e2928300082cfb6e2c2f0993006';
-const ISO_SNAPSHOTS_AND_RESULTS = 'c1c80ba10bafb22a2f1a8906b08cdf995388cffdcea39cf567532a81a7adbbcd';
+const ISO_STATE_EVERY_TICK = 'fd341bc56affb17a7aff00e02e83656f6902f05b5972758d9114f0673771049c';
+const ISO_SNAPSHOTS_AND_RESULTS = '9348cbaf7653de613f5ade6458d4c3191629e5b1e239427e08b39c1f4e81ce30';
 // The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
 // Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every
 // snapshot, and it did not exist when the pinned hash was computed on the pre-slice engine. Stripping

@@ -105,7 +105,8 @@ const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
 const {
   deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
 } = require('./deep-scan-arrays.js');
-const { knowsPlanet } = require('./exploration.js');
+const { knowsPlanet, knowsSlot } = require('./exploration.js');
+const { prefectureId, prefectureNumberOf, prefectureClaimId } = require('./prefectures.js');
 const {
   REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
@@ -2333,6 +2334,117 @@ function checkDeepScanArrayIntegrity(state) {
   return out;
 }
 
+// Prefecture integrity — the structural guard for the SHARED Prefecture rows (state.prefectures; design.md §2
+// "The Prefecture"; docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice). The sibling of
+// checkOutpostIntegrity / checkDeepScanArrayIntegrity. `plantPrefecture` (sim/actions.js) is the only thing that
+// makes one; this asserts every tick that each row is one it could have made, and that it still means what it
+// meant — a flag that names no claim, or a claim held twice, would be a hold the engine can no longer explain.
+// A pure read; a galaxy with no Prefecture carries no `prefectures` key (omit-when-empty) and the sweep is a no-op.
+//   - SHAPE: an owner that exists; an id `prefecture_<owner>_NN` (unique); a whole `plantedAtTick` ≤ now (§15.2);
+//   - THE SLOT: a real SETTLEMENT slot of the seed, and the row's `planetId` / `systemId` are that slot's (they are
+//     denormalised copies, so a drift is corruption);
+//   - THE CLAIM LINK: `claimId` is `claim_prefecture_<owner>_NN` (the same NN), and EXACTLY ONE claim row carries
+//     it — a `landmarkKind: 'system'` row of the same owner, on the same system, claimed at the plant tick;
+//   - ONE PER SYSTEM: no other system claim names the Prefecture's system (one Prefecture claims a whole system,
+//     and is planted only where nobody held it), and no second Prefecture stands in it;
+//   - ONE OCCUPANT PER SLOT: no venture sits on its slot, and no second Prefecture (the non-venture occupant,
+//     sim/occupancy.js — the slot-side twin of checkSiteOccupancy's one-venture-per-site);
+//   - THE SURVEY GATE STILL HOLDS: the slot is in the owner's exploration record. The plant checked it, and the
+//     record never shrinks (learn-once), so if it fails now something took a fact away;
+//   - the owner's `prefectureSerial` ≥ every live suffix it minted (design.md §15.4 "Ids never repeat").
+function checkPrefectureIntegrity(state) {
+  const out = [];
+  const prefectures = state.prefectures;
+  if (prefectures === undefined) return out;
+  if (!Array.isArray(prefectures) || prefectures.length === 0) {
+    out.push({ rule: 'prefectures-is-a-non-empty-array (omit-when-empty)', where: 'prefectures', detail: { value: prefectures } });
+    return out;
+  }
+  const guildById = (id) => (state.guilds || []).find((g) => g.id === id);
+  const claims = state.claims || [];
+  const ventureOnSite = new Map(); // siteId -> the venture seated there
+  for (const g of state.guilds || []) {
+    for (const v of g.ventures || []) if (v.siteId) ventureOnSite.set(v.siteId, v.id);
+  }
+  const seenIds = new Set();
+  const bySlot = new Map();           // slotId -> the first Prefecture seen on it
+  const bySystem = new Map();         // systemId -> the first Prefecture seen in it
+  const maxSuffixByGuild = new Map(); // ownerGuildId -> highest live Prefecture suffix
+  for (const p of prefectures) {
+    const where = `prefecture:${p && p.id}`;
+    if (!p || typeof p !== 'object') {
+      out.push({ rule: 'prefecture-is-an-object', where, detail: { value: p } });
+      continue;
+    }
+    const owner = guildById(p.ownerGuildId);
+    if (!owner) {
+      out.push({ rule: 'prefecture-owner-exists', where: `${where}.ownerGuildId`, detail: { ownerGuildId: p.ownerGuildId } });
+    }
+    const n = prefectureNumberOf(p.id);
+    if (n === null || p.id !== prefectureId(p.ownerGuildId, n)) {
+      out.push({ rule: 'prefecture-id-names-its-owner (prefectures.js)', where, detail: { id: p.id, ownerGuildId: p.ownerGuildId } });
+    }
+    if (seenIds.has(p.id)) {
+      out.push({ rule: 'prefecture-id-unique', where, detail: { id: p.id } });
+    }
+    seenIds.add(p.id);
+    if (n !== null && n > (maxSuffixByGuild.get(p.ownerGuildId) || 0)) maxSuffixByGuild.set(p.ownerGuildId, n);
+    if (!Number.isInteger(p.plantedAtTick) || p.plantedAtTick < 0 || p.plantedAtTick > state.tick) {
+      out.push({ rule: 'prefecture-plantedAtTick-is-a-past-tick (§15.2)', where: `${where}.plantedAtTick`, detail: { plantedAtTick: p.plantedAtTick, tick: state.tick } });
+    }
+    // THE SLOT, and the two copies of where it is.
+    const site = getSite(p.slotId);
+    if (!site || site.kind !== 'settlement') {
+      out.push({ rule: 'prefecture-on-a-settlement-slot (seed.js)', where: `${where}.slotId`, detail: { slotId: p.slotId, siteKind: site ? site.kind : null } });
+    } else if (p.systemId !== site.systemId || p.planetId !== site.planetId) {
+      out.push({ rule: 'prefecture-system-and-planet-match-slot', where, detail: { slotId: p.slotId, systemId: p.systemId, planetId: p.planetId, seedSystemId: site.systemId, seedPlanetId: site.planetId } });
+    }
+    // THE CLAIM LINK — exactly one row, and it says what the plant wrote.
+    if (n !== null && p.claimId !== prefectureClaimId(p.ownerGuildId, n)) {
+      out.push({ rule: 'prefecture-claimId-shares-its-number (prefectures.js)', where: `${where}.claimId`, detail: { claimId: p.claimId, expected: prefectureClaimId(p.ownerGuildId, n) } });
+    }
+    const rows = claims.filter((c) => c.claimId === p.claimId);
+    const row = rows[0];
+    if (rows.length !== 1) {
+      out.push({ rule: 'prefecture-claim-row-exists-once', where: `${where}.claimId`, detail: { claimId: p.claimId, rows: rows.length } });
+    } else if (row.landmarkKind !== 'system' || row.landmarkId !== p.systemId || row.ownerGuildId !== p.ownerGuildId
+      || row.claimedAtTick !== p.plantedAtTick) {
+      out.push({ rule: 'prefecture-claim-row-matches', where: `${where}.claimId`, detail: { claim: row, prefecture: { ownerGuildId: p.ownerGuildId, systemId: p.systemId, plantedAtTick: p.plantedAtTick } } });
+    }
+    // ONE PER SYSTEM — no other system claim on its system, and no second flag in it.
+    const others = claims.filter((c) => c.landmarkKind === 'system' && c.landmarkId === p.systemId && c.claimId !== p.claimId);
+    if (others.length) {
+      out.push({ rule: 'prefecture-system-claimed-once (territory-model.md §4)', where, detail: { systemId: p.systemId, otherClaims: others.map((c) => c.claimId) } });
+    }
+    if (bySystem.has(p.systemId)) {
+      out.push({ rule: 'prefecture-one-per-system (territory-model.md §4)', where, detail: { systemId: p.systemId, alsoPlanted: bySystem.get(p.systemId) } });
+    } else {
+      bySystem.set(p.systemId, p.id);
+    }
+    // ONE OCCUPANT PER SLOT.
+    if (ventureOnSite.has(p.slotId)) {
+      out.push({ rule: 'prefecture-slot-unshared (design.md §2)', where: `${where}.slotId`, detail: { slotId: p.slotId, venture: ventureOnSite.get(p.slotId) } });
+    }
+    if (bySlot.has(p.slotId)) {
+      out.push({ rule: 'prefecture-slot-unshared (design.md §2)', where: `${where}.slotId`, detail: { slotId: p.slotId, alsoPlanted: bySlot.get(p.slotId) } });
+    } else {
+      bySlot.set(p.slotId, p.id);
+    }
+    // THE SURVEY GATE (exploration-model.md §8) — checked at the plant, and the record never shrinks.
+    if (owner && !knowsSlot(owner, p.slotId)) {
+      out.push({ rule: 'prefecture-slot-surveyed-by-owner (exploration-model.md §8)', where: `${where}.slotId`, detail: { slotId: p.slotId, ownerGuildId: p.ownerGuildId } });
+    }
+  }
+  for (const [guildId, maxSuffix] of maxSuffixByGuild) {
+    const guild = guildById(guildId);
+    const serial = (guild && guild.prefectureSerial) || 0;
+    if (serial < maxSuffix) {
+      out.push({ rule: 'prefecture-serial-monotonic', where: `guild:${guildId}.prefectureSerial`, detail: { prefectureSerial: serial, highestLiveSuffix: maxSuffix } });
+    }
+  }
+  return out;
+}
+
 // checkScanJob(state, array, owner, where) -> violations of ONE array's scan job (docs/exploration-model.md
 // §5; roadmap 2.5 (b2)). `queueScan` builds a job and `stepScanCompletions` clears it (sim/actions.js,
 // sim/deep-scan-arrays.js); this asserts every tick that what sits between them is a job they could have made:
@@ -2631,6 +2743,7 @@ function checkInvariants(state, tick) {
     ...checkClaimIntegrity(state),
     ...checkOutpostIntegrity(state),
     ...checkDeepScanArrayIntegrity(state),
+    ...checkPrefectureIntegrity(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkExplorationRecord(state),

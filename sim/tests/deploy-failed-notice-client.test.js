@@ -74,9 +74,19 @@ test('the title names the structure in title case: "Deployment Failed — Deep S
   assert.equal(page.noticeRowTitle(outpost), 'Deployment Failed &mdash; <span class="who">Outpost</span>');
 });
 
+// ⤳ 16-10-26 (the Prefecture / claims slice, ENGINE PR 1): the engine gained a fifth retreat reason, 'system-claimed'
+// (a Prefecture kit's target system claimed by a rival in flight). This PR is engine + operator CLI only, so the
+// notice does not name it yet — it reads "—", as 'not-attached' once did. It is listed HERE, by name, so the gap is
+// pinned rather than hidden: the client PR labels it and empties this list, and the test below then holds it to that.
+const AWAITING_CLIENT_LABEL = ['system-claimed'];
+
 test('the Reason fact has a label for EVERY reason the engine retreats on — "Rival territory" for the new one', () => {
   const { page } = noticePage([]);
   for (const reason of DEPLOY_FAILED_REASONS) {
+    if (AWAITING_CLIENT_LABEL.includes(reason)) {
+      assert.equal(page.DEPLOY_FAILED_REASON[reason], undefined, `${JSON.stringify(reason)} is labelled now — take it off AWAITING_CLIENT_LABEL`);
+      continue;
+    }
     assert.equal(typeof page.DEPLOY_FAILED_REASON[reason], 'string', `the engine can retreat on ${JSON.stringify(reason)}, which the notice cannot name`);
   }
   assert.equal(page.DEPLOY_FAILED_REASON['rival-territory'], 'Rival territory');

@@ -199,6 +199,8 @@ every other price constant, and the capacity and level code are untouched.
   the old uniform Tier-3 band, 100 / 20 / 100,000 (`UNCLASSIFIED_TIER3_BAND`). The ruling does not say
   which sub-tier they default to, and they cannot go without a band (a fresh galaxy seeds every priced
   good). So they keep their status quo, like `DEUTERIUM_BAND`. Their sub-tier is on the decision checklist.
+  *(⤳ 16-10-26: RULED for two of them — the Prefecture bill placed `claim_beacon` in 3-2 and `habitation_module` in
+  3-3 (`docs/phase-1-tuning.md`), so the unclassified band now holds only `drive_module` and `droid_components`.)*
 - **Fail loud, twice.** `assertTier3Classified` runs at load time over the whole Tier-3 vocabulary, so a new
   module with no price class halts the process the moment `prices.js` is required, naming the module.
   `bandFor` runs the same check for each Tier-3 good it prices. `basePriceFor` keeps its null contract for

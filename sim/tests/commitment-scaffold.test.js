@@ -9,6 +9,14 @@
 // and — the key guard — that a run touching NEITHER action is byte-identical to
 // pre-change HEAD (the determinism-hash no-op proof).
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -404,8 +412,8 @@ const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'a39d9385eae3cf88b060d0ce8fd10a
 // standing test — the bands are frozen module constants): with every module put back on the old
 // uniform 100 / 20 / 100,000 band and the rest of the slice in place, both previous values
 // (54e3fc2c… and 70b4009c…) came back byte for byte.
-const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = 'dd93779327d61eed0ea84f3ead4d50c40531b1e672d1b056458bbd75f3da9d93';
-const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = 'f6120e60a193baf3e0753f9b8a5926d2df5dda51a5cc721ea1edeba232a5f218';
+const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = '886ec56aec3570ec65255b79d5f085876de2131378f4210576c76cbd5891db4c';
+const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = '137d7334b0df39f7be11ab65abebc34ca0c4c1da9cbecc71c19817e5d84b1bb8';
 
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //

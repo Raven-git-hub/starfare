@@ -1,7 +1,8 @@
 'use strict';
 
 const {
-  createGuild, createVenture, createAsset, createVehicle, createOutpost, createDeepScanArray, createSavedRoute,
+  createGuild, createVenture, createAsset, createVehicle, createOutpost, createDeepScanArray, createPrefecture,
+  createSavedRoute,
 } = require('./state.js');
 const {
   isStarterSystem, getTerranHomeworld, getSite, getSystem, getPlanet, isHexInBounds, seedLandmarkAtHex,
@@ -31,6 +32,10 @@ const {
 const {
   deepScanArrayId, nextDeepScanArraySerial, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
 } = require('./deep-scan-arrays.js');
+const {
+  PREFECTURE_KIT_KIND, prefectureId, prefectureClaimId, nextPrefectureSerial,
+} = require('./prefectures.js');
+const { siteOccupantOf } = require('./occupancy.js');
 const { resolveManifest, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
   REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
@@ -46,9 +51,9 @@ const { getStock, addStock } = require('./stock.js');
 const { computeGalacticSupply } = require('./supply.js');
 const { foundingEndowmentFor } = require('./meanline.js');
 const { grantFor } = require('./issuance.js');
-const { guildHolds, heldSystemIds, systemControllers, controlNear } = require('./claims.js');
+const { guildHolds, heldSystemIds, systemControllers, systemHolder, controlNear } = require('./claims.js');
 const {
-  reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet,
+  reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsSlot,
 } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
 const {
@@ -417,13 +422,24 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
     // two triggers. The unload stop is the route's last, so advanceRoute then ends the one-shot run: the route
     // goes and the craft is left idle at the system.
     const check = unloadKitCheck(state, guild.id, craft.id, craft.location, craft.cargo);
+    if (!check.ok && check.failure === 'system-claimed') {
+      // A PREFECTURE kit flown to an unclaimed system, which a RIVAL claimed while the craft flew (the Prefecture
+      // / claims slice; territory-model.md §4, "Arrival retreat", RULED 16-10-26). The craft does not idle in
+      // rival space: it RETREATS exactly as a failed deploy does — the same retreat, flag and `deploy_failed`
+      // notice (retreatKitCraft), with the kit still aboard — and the one-shot run then ends, as the deploy's
+      // does. (The mid-flight un-settle halt does not apply: a ground kit has no range anchor to lose.)
+      retreatKitCraft(state, guild, craft, check, check.kind, 'unload', thisTick);
+      advanceRoute(state, guild, craft, thisTick);
+      return;
+    }
     if (!check.ok) {
-      // The dispatch proved this unload would succeed, and nothing can undo that in flight today: no path takes
-      // a system from a guild, and nothing touches a routed craft's hold. If that ever changes, the run ENDS the
-      // way a route action whose target is gone ends (§11.6, the dock branch below): the craft idle at this
-      // berth, the kit STILL ABOARD (never dropped), the route cleared, flagged laneEnded 'target-gone'. It does
-      // not halt, unlike the deploy's corrupt-state branch: the kit is safe aboard, and the flag says the trip
-      // did not finish (roadmap decision checklist, "Asset-initiated slice 3a").
+      // The dispatch proved this unload would succeed, and — the Prefecture's rival claim above aside — nothing
+      // can undo that in flight today: no path takes a system from a guild, and nothing touches a routed craft's
+      // hold. If that ever changes, the run ENDS the way a route action whose target is gone ends (§11.6, the dock
+      // branch below): the craft idle at this berth, the kit STILL ABOARD (never dropped), the route cleared,
+      // flagged laneEnded 'target-gone'. It does not halt, unlike the deploy's corrupt-state branch: the kit is
+      // safe aboard, and the flag says the trip did not finish (roadmap decision checklist, "Asset-initiated
+      // slice 3a").
       endLane(craft, 'target-gone', thisTick);
       return;
     }
@@ -496,10 +512,24 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
     // values rather than guess where to put the craft (§15.5: a silent violation is worse than a crash).
     throw new Error(`deploy on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check, which the dispatch gate rules out — ${check.reason}`);
   }
-  // Read what the notice needs BEFORE the snap moves the craft. The craft still sits on the target, which
-  // deployCheck's first check has just passed (every retreatable failure comes after it): a bare hex, or — for a
-  // Deep Scan Array — the held system it berthed at to stand on its centre (slice 16). Either way the hex it
-  // could not deploy on is its resolved coords, a fresh { q, r }, so the notice never aliases the craft.
+  retreatKitCraft(state, guild, craft, check, kind, 'deploy', thisTick);
+}
+
+// retreatKitCraft(state, guild, craft, check, kind, trigger, thisTick) — THE ONE KIT RETREAT: a craft whose
+// on-arrival kit action failed for a reason its flight could change (a DEPLOY_FAILED_REASONS entry, carried as
+// `check.failure`) pulls back toward the nearest system its guild holds, the kit still aboard, flagged
+// `deployFailed`, with the `deploy_failed` notice (docs/event-log.md §10). Two triggers share it, so the two
+// retreats cannot drift apart (territory-model.md §4, "the outpost's logic and messages"):
+//   - 'deploy' — a space-lane deploy that failed on arrival (resolveDeployArrival, above);
+//   - 'unload' — a PREFECTURE kit's unload that found its target system claimed by a rival in flight
+//                ('system-claimed', the Prefecture / claims slice; resolveRouteArrival).
+// `kind` is the kit's kind, for the notice; `trigger` only names the halt below. These lines are the deploy's
+// retreat exactly as it stood before the Prefecture slice — moved here, not changed.
+function retreatKitCraft(state, guild, craft, check, kind, trigger, thisTick) {
+  // Read what the notice needs BEFORE the snap moves the craft. The craft still sits on the target: a bare hex,
+  // or — for a Deep Scan Array — the held system it berthed at to stand on its centre (slice 16), or — for a
+  // Prefecture kit — the system it came to unload into. Either way the hex it could not act on is its resolved
+  // coords, a fresh { q, r }, so the notice never aliases the craft.
   // The retreat system is asked of nearestHeldSystem with exactly the arguments retreatLanding gives it on
   // the next line (this guild, this hex, nothing changed in between), so it names the very system the craft
   // is pulled toward.
@@ -509,7 +539,7 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
     // The retreat needs a held system to pull toward. An Outpost deploy cannot get here without one (its
     // 'no-held-system' check halts above), but an array can attach to an Outpost alone. A guild never loses
     // its home system (territory-model.md §4), so this is a corrupt state: HALT, naming it (§15.5).
-    throw new Error(`deploy on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check and must retreat, but its guild holds no system to retreat toward — ${check.reason}`);
+    throw new Error(`${trigger} on arrival, tick ${thisTick}: guild ${JSON.stringify(guild.id)} vehicle ${JSON.stringify(craft.id)} failed the "${check.failure}" check and must retreat, but its guild holds no system to retreat toward — ${check.reason}`);
   }
   const retreatSystemId = retreatTo.systemId;
   craft.location = retreatLanding(state, guild.id, craft.location);
@@ -518,8 +548,8 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
   // The notice, on the same guild at the same tick as the flag. Its payload is SELF-CONTAINED (§10) — the
   // craft may have been re-dispatched (its flag cleared) by the time the player reads it.
   //   - `cause`  — the same reason the flag carries ('occupied' | 'out-of-range' | 'not-attached' |
-  //                'rival-territory');
-  //   - `kind`   — what was being deployed (the deploy waypoint's kind, read above);
+  //                'rival-territory' | 'system-claimed');
+  //   - `kind`   — what was being deployed or unloaded (the deploy waypoint's kind, or the kit's own);
   //   - `retreatSystemName` — the system's SEED name, falling back to its id, the way the licence notices
   //                resolve a venture's site name (sim/licence.js `ventureName`).
   const retreatSystem = getSystem(retreatSystemId);
@@ -535,7 +565,9 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
 }
 
 // retreatLanding(state, guildId, from) -> the location a craft retreats to when its on-arrival deploy fails
-// on the bare hex `from` (docs/territory-model.md §5, the retreat rule). S is the NEAREST system the guild
+// on the bare hex `from` (docs/territory-model.md §5, the retreat rule) — or, since the Prefecture / claims slice,
+// when a Prefecture kit's unload finds the system `from` claimed by a rival (§4; `from` is then that system's
+// landmark, and its centre hex is where the step starts). S is the NEAREST system the guild
 // holds (nearestHeldSystem — a tie goes to the lower id; the caller has proved there is one). The craft moves
 // DEPLOY_RETREAT_HEXES hexes from `from` straight toward S (hexStepToward — the cube-round of the point that
 // far along the line, whole-number exact, so a replay lands it on the same hex, §15.5 invariant 9):
@@ -1368,6 +1400,21 @@ function createUnloadKitAction({ guildId, vehicleId: vId }) {
   return { type: 'unloadKit', guildId, vehicleId: vId };
 }
 
+// plantPrefecture: THE CLAIM ACT (docs/territory-model.md §4, RULED 16-10-26; roadmap 2.5, the Prefecture /
+// claims slice). Plant the named idle Prefecture kit on the named settlement slot of the system it sits in:
+// the kit is consumed, a Prefecture is placed on the slot, and the guild comes to hold the whole system (one
+// `landmarkKind: 'system'` claim row). It is the SECOND step of the two-step ground flow — the first is the
+// ferry (loadKit → a route ending `{ type: 'unload' }` → the kit lands in the system's idle list). Modelled on
+// establishVenture, which names a machine and a site and seats a venture; this names a kit and a slot and
+// writes a claim. The planet and the system are read from the slot (the seed), so the action names only the
+// two ids. The constructor only enforces the required fields are present; validateAction judges legality.
+function createPlantPrefectureAction({ guildId, assetId: aId, slotId }) {
+  if (guildId === undefined) throw new Error('createPlantPrefectureAction: guildId is required');
+  if (aId === undefined) throw new Error('createPlantPrefectureAction: assetId is required');
+  if (slotId === undefined) throw new Error('createPlantPrefectureAction: slotId is required');
+  return { type: 'plantPrefecture', guildId, assetId: aId, slotId };
+}
+
 // dispatchRouteWithActions: send an IDLE craft along a route whose waypoints can carry a load/unload
 // ACTION, executed automatically as the craft arrives at each stop (transport-model.md §11, roadmap
 // 2.2 automation slice 1a — the chained-legs model). `waypoints` is a non-empty ordered array of
@@ -1961,6 +2008,14 @@ function nearestHeldSystem(state, guildId, coords) {
 // `reason` is the refusal text. On success it hands back the hex and the anchor the placement check chose,
 // so the apply (deployKit) places exactly what was checked. A pure read: it changes nothing.
 function deployCheck(state, guildId, vehicleId, location, cargo, kind) {
+  // A PREFECTURE kit is the one GROUND kit (sim/prefectures.js): it is never placed on a hex. It is unloaded into
+  // a system and PLANTED on a settlement slot (plantPrefecture), so this space-lane rule refuses it FIRST, by
+  // name — before 'not-bare-hex' could tell the player to fly it to open space, and before the no-structure halt
+  // below could mistake it for a table out of step. A 'kit' failure, which is not retreatable: the dispatch
+  // refuses a deploy waypoint for it up front (routeWaypointError), so no arrival can bring one here.
+  if (kind === PREFECTURE_KIT_KIND) {
+    return { ok: false, failure: 'kit', reason: `vehicle ${JSON.stringify(vehicleId)} carries a ${kitGoodFor(kind)} — a Prefecture is not deployed on a hex; unload it into a system and plant it on a settlement slot (plantPrefecture)` };
+  }
   const structure = deployableStructure(kind); // null for a kind with no kit — the 'kit' check refuses it
   const what = structure ? structure.as : 'a structure'; // for the refusal text only
   const where = resolveVehicleLocation(location);
@@ -2056,7 +2111,9 @@ function attachedPlacement(state, guildId, coords) {
 //   placement — where it may go: the one check of deployCheck that differs by kind;
 //   mint      — how deployKit places it: the structure's ONE mint path.
 // A kit kind added to DEPLOYABLE_KITS without a row here fails a tripwire test
-// (tests/deep-scan-array.test.js), so a new kind can never borrow another kind's rule by accident.
+// (tests/deep-scan-array.test.js), so a new kind can never borrow another kind's rule by accident. The ONE kit
+// kind with no row is the Prefecture's (PREFECTURE_KIT_KIND): a GROUND kit, planted on a slot, never deployed on
+// a hex — deployCheck refuses it by name, and the same test pins that it has no row.
 const DEPLOYABLE_STRUCTURES = Object.freeze({
   outpost: Object.freeze({ as: 'an Outpost', placement: outpostPlacement, mint: mintOutpost }),
   deepScan: Object.freeze({ as: 'a Deep Scan Array', placement: attachedPlacement, mint: mintDeepScanArray }),
@@ -2068,7 +2125,7 @@ function deployableStructure(kind) {
   return Object.prototype.hasOwnProperty.call(DEPLOYABLE_STRUCTURES, kind) ? DEPLOYABLE_STRUCTURES[kind] : null;
 }
 
-// kitKindAboard(cargo) -> the kind of the kit in a hold ('outpost' | 'deepScan'), or null when the hold
+// kitKindAboard(cargo) -> the kind of the kit in a hold ('outpost' | 'deepScan' | 'prefecture'), or null when the hold
 // carries none. How the MANUAL deploy (deployAsset) learns what it is placing: its action names only the
 // craft, so the kind is read off the kit aboard, as the unload reads it (unloadKitCheck).
 function kitKindAboard(cargo) {
@@ -2206,12 +2263,19 @@ function kitIntoHold(guild, craft, asset, tick) {
 }
 
 // unloadKitCheck(state, guildId, vehicleId, location, cargo) -> { ok: true, systemId, kind }
-//                                                            | { ok: false, reason }
+//                                                            | { ok: false, reason, failure?, kind? }
 // THE ONE unload rule: may this craft, holding `cargo` at `location`, drop its kit into an inventory?
 //   - the hold is exactly ONE kit and nothing else (the kind is read from it);
 //   - the craft is berthed AT a system (a landmark, not a bare hex or an Outpost — an inventory lives in
 //     a system, design.md §4);
-//   - the guild HOLDS that system (`guildHolds`) — a kit is dropped only on your own ground.
+//   - the guild HOLDS that system (`guildHolds`) — a kit is dropped only on your own ground — WITH ONE
+//     EXCEPTION (docs/territory-model.md §4, RULED 16-10-26; the Prefecture / claims slice): a PREFECTURE kit
+//     may also drop into an UNCLAIMED system, because that is how a flag reaches the ground it will claim (the
+//     plant, plantPrefecture, is the second step). Never into a system a RIVAL holds: that refusal carries
+//     `failure: 'system-claimed'`, a retreatable reason (DEPLOY_FAILED_REASONS), because a rival can claim the
+//     target while the craft flies — the arrival then retreats the craft as a failed deploy does
+//     (resolveRouteArrival), and it also carries the kit's `kind`, which the retreat's notice names. Every other
+//     refusal carries no `failure`.
 // A pure read. Written with the location passed in, like deployCheck, so the route-arrival unload (the
 // Return fork, asset-initiated slice 3a) asks it of the stop the craft lands on — and the dispatch asks it up
 // front of the stop the craft is being sent to.
@@ -2224,10 +2288,19 @@ function unloadKitCheck(state, guildId, vehicleId, location, cargo) {
   if (!location || location.landmarkKind !== 'system') {
     return { ok: false, reason: `vehicle ${JSON.stringify(vehicleId)} is not berthed at a system (it is at ${JSON.stringify(location)}) — a kit unloads into a held system's inventory, not on a bare hex or at an Outpost` };
   }
+  const kind = kindForKit(goods[0]);
   if (!guildHolds(state, guildId, location.landmarkId)) {
-    return { ok: false, reason: `guild ${JSON.stringify(guildId)} does not hold system ${JSON.stringify(location.landmarkId)} — a kit unloads only into a system its guild holds` };
+    if (kind !== PREFECTURE_KIT_KIND) {
+      return { ok: false, reason: `guild ${JSON.stringify(guildId)} does not hold system ${JSON.stringify(location.landmarkId)} — a kit unloads only into a system its guild holds` };
+    }
+    // The Prefecture exception: unclaimed ground is fine, a rival's is not. (A system this guild holds never
+    // reaches here — guildHolds answered it above.)
+    const holder = systemHolder(state, location.landmarkId);
+    if (holder !== null) {
+      return { ok: false, failure: 'system-claimed', kind, reason: `system ${JSON.stringify(location.landmarkId)} is held by guild ${JSON.stringify(holder)} — a Prefecture kit unloads into an unclaimed system or one its guild holds, never into a rival's` };
+    }
   }
-  return { ok: true, systemId: location.landmarkId, kind: kindForKit(goods[0]) };
+  return { ok: true, systemId: location.landmarkId, kind };
 }
 
 // kitIntoInventory(guild, craft, check, tick) — THE ONE unload apply, for a `check` unloadKitCheck passed:
@@ -2245,6 +2318,51 @@ function kitIntoInventory(guild, craft, check, tick) {
   delete craft.deployFailed;
   mintKitAsset(guild, check.kind, check.systemId);
   craft.updatedAtTick = tick; // §15.2: the unload is a mutation of the craft — record its tick
+}
+
+// --- the Prefecture: the claim act (docs/territory-model.md §4, RULED 16-10-26) ----------------------------
+
+// plantKit(state, guild, assetId, site, tick) -> the new Prefecture row, having MUTATED `state` and `guild`.
+// THE ONE plant apply, for a plant validate passed (the kit is an idle Prefecture kit in the slot's system, the
+// slot is a free settlement slot the guild has surveyed, and no guild holds the system). In this order:
+//   1. the KIT is consumed — it leaves the inventory (`assets` dropped when it empties, as a load does), and
+//      nothing takes its place there: a planted flag is a structure, not an asset;
+//   2. ONE serial numbers both the Prefecture and its claim (sim/prefectures.js), bumped and stored, never
+//      reused (design.md §15.4 "Ids never repeat");
+//   3. the CLAIM ROW — the same shape foundGuild pushes for a home (`landmarkKind: 'system'`, not contested),
+//      claimed at this tick. It is what every holding question reads (sim/claims.js), so from here on
+//      `guildHolds` is true for the system and Gate 3 opens for ventures in it;
+//   4. the PREFECTURE row in `state.prefectures` (created on first use — it is omit-when-empty), on the slot,
+//      linked to its claim, planted at this tick (§15.2). The slot is now occupied (sim/occupancy.js).
+// Nothing priced moves: a kit is never a good on the market or in Galactic Supply, and neither is a flag, so no
+// credits, fuel, goods or supply change and the supply cache needs no refresh. The tick is passed in, as
+// deployKit takes it.
+function plantKit(state, guild, assetId, site, tick) {
+  guild.assets = guild.assets.filter((a) => a.id !== assetId);
+  if (guild.assets.length === 0) delete guild.assets;
+  const serial = nextPrefectureSerial(guild);
+  guild.prefectureSerial = serial;
+  const claimId = prefectureClaimId(guild.id, serial);
+  state.claims.push({
+    claimId,
+    ownerGuildId: guild.id,
+    landmarkId: site.systemId,
+    landmarkKind: 'system',
+    claimedAtTick: tick,
+    contested: false,
+  });
+  if (!Array.isArray(state.prefectures)) state.prefectures = [];
+  const prefecture = createPrefecture({
+    id: prefectureId(guild.id, serial),
+    ownerGuildId: guild.id,
+    systemId: site.systemId,
+    planetId: site.planetId,
+    slotId: site.id,
+    claimId,
+    plantedAtTick: tick,
+  });
+  state.prefectures.push(prefecture);
+  return prefecture;
 }
 
 // routeStoreAt(state, guildId, anchor) -> the STORE a route action at `anchor` works against, or null
@@ -2323,8 +2441,13 @@ function routeWaypointError(wp, i, { allowDeploy = false, allowUnload = false } 
   }
   if (wp.action !== undefined) {
     if (allowDeploy && wp.action && typeof wp.action === 'object' && wp.action.type === 'deploy') {
+      // The kinds a deploy can place are the SPACE-lane kinds — the ones with a DEPLOYABLE_STRUCTURES row. The
+      // Prefecture has a kit but no row: it is a GROUND kit, unloaded at a system and planted, never deployed.
       if (kitGoodFor(wp.action.kind) === null) {
-        return `waypoint ${i} deploy action: ${JSON.stringify(wp.action.kind)} is not a deployable kind with a kit (known: ${Object.keys(DEPLOYABLE_KITS).join(', ')})`;
+        return `waypoint ${i} deploy action: ${JSON.stringify(wp.action.kind)} is not a deployable kind with a kit (known: ${Object.keys(DEPLOYABLE_STRUCTURES).join(', ')})`;
+      }
+      if (deployableStructure(wp.action.kind) === null) {
+        return `waypoint ${i} deploy action: a ${JSON.stringify(wp.action.kind)} kit is not deployed on a hex — end the route at a system with { type: "unload" } and plant it there (plantPrefecture)`;
       }
       return null;
     }
@@ -2439,15 +2562,19 @@ function findVenture(state, ventureId) {
   return undefined;
 }
 
-// Which venture (if any) currently sits on a site — the same lookup the
-// occupancy invariant polices, used here to refuse a double-seating up front.
-function siteOccupant(state, siteId) {
-  for (const g of state.guilds || []) {
-    for (const v of g.ventures || []) {
-      if (v.siteId === siteId) return v;
-    }
+// siteOccupiedReason(state, siteId) -> the refusal for seating anything on a site that is already
+// occupied, or null when it is free. THE ONE "is this site free?" gate, shared by the three venture
+// establishes and the Prefecture plant: it asks sim/occupancy.js `siteOccupantOf`, the same lookup the
+// occupancy invariants police, so a factory can never be seated on a Prefecture's slot, nor a Prefecture
+// on a factory's, nor anything on a slot a Prefecture already holds. The venture refusal is worded
+// exactly as it was before the Prefecture existed.
+function siteOccupiedReason(state, siteId) {
+  const occupant = siteOccupantOf(state, siteId);
+  if (occupant === null) return null;
+  if (occupant.kind === 'venture') {
+    return `site ${JSON.stringify(siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}`;
   }
-  return undefined;
+  return `site ${JSON.stringify(siteId)} is already occupied by Prefecture ${JSON.stringify(occupant.id)} — a settlement slot holds one occupant`;
 }
 
 // The LIVE node lockout on a site, if any (docs/venture-teardown.md §3.3). A lockout is
@@ -2618,9 +2745,9 @@ function validateAction(state, action) {
     }
     // Checked against state-as-it-stands, so two ventures racing for the same
     // site in one batch resolve first-valid-wins (the second is refused).
-    const occupant = siteOccupant(state, action.siteId);
-    if (occupant) {
-      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    const occupied = siteOccupiedReason(state, action.siteId);
+    if (occupied) {
+      return { valid: false, reason: occupied };
     }
     // THE NODE-LOCKOUT GATE (docs/venture-teardown.md §3.3). A node whose former
     // ordinary-licensed venture was torn down with contract time left is locked to the
@@ -3125,9 +3252,9 @@ function validateAction(state, action) {
     if (site.kind !== 'settlement') {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a settlement slot (a deuterium refinery is a factory on a settlement slot)` };
     }
-    const occupant = siteOccupant(state, action.siteId);
-    if (occupant) {
-      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    const occupied = siteOccupiedReason(state, action.siteId);
+    if (occupied) {
+      return { valid: false, reason: occupied };
     }
     // THE NODE-LOCKOUT GATE (docs/venture-teardown.md §3.3), the same refusal establishVenture
     // makes: a site whose former licensed venture was torn down mid-term is barred from ANY
@@ -3198,9 +3325,9 @@ function validateAction(state, action) {
     if (site.kind !== 'settlement') {
       return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is a ${site.kind} site, not a settlement slot (a dockyard is a factory on a settlement slot)` };
     }
-    const occupant = siteOccupant(state, action.siteId);
-    if (occupant) {
-      return { valid: false, reason: `site ${JSON.stringify(action.siteId)} is already occupied by venture ${JSON.stringify(occupant.id)}` };
+    const occupied = siteOccupiedReason(state, action.siteId);
+    if (occupied) {
+      return { valid: false, reason: occupied };
     }
     // THE NODE-LOCKOUT GATE (docs/venture-teardown.md §3.3), the same refusal every establish makes.
     const lock = activeLockout(state, action.siteId);
@@ -3255,7 +3382,7 @@ function validateAction(state, action) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a dockyard — only a dockyard can be commissioned to build (docs/build-yard.md §3)` };
     }
     if (!BUILDABLE_KINDS.includes(action.assetKind)) {
-      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets, the four guild transports or the two installation kits, docs/build-yard.md §1 / docs/asset-purchase.md §"Installation kits")` };
+      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets, the four guild transports or the three installation kits, docs/build-yard.md §1 / docs/asset-purchase.md §"Installation kits")` };
     }
     // Single-slot queue capped at MAX_QUEUE — a commission over the cap is refused loudly (§3).
     const queueLen = (venture.buildQueue || []).length;
@@ -3644,15 +3771,16 @@ function validateAction(state, action) {
       return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
     }
     // WHAT MAY BE BOUGHT — the SELL catalog, not the build catalog: SYNDICATE_SELLABLE_KINDS =
-    // BUILDABLE_KINDS minus spycraft (docs/asset-purchase.md §"What the Syndicate sells", RULED
-    // 22-09-26). The two catalogs deliberately DIVERGE at spycraft — a guild builds it at its own
-    // dockyard (commissionBuild keeps the full BUILDABLE_KINDS gate), but the Syndicate never
-    // sells it, so a spycraft buy is refused LOUDLY here (not merely hidden from the UI).
+    // BUILDABLE_KINDS minus the build-only kinds (docs/asset-purchase.md §"What the Syndicate sells",
+    // RULED 22-09-26). The two catalogs deliberately DIVERGE at spycraft and (16-10-26) the Prefecture
+    // — a guild builds either at its own dockyard (commissionBuild keeps the full BUILDABLE_KINDS gate),
+    // but the Syndicate never sells them, so such a buy is refused LOUDLY here (not merely hidden from
+    // the UI), naming the kind.
     if (typeof action.assetKind !== 'string' || !SYNDICATE_SELLABLE_KINDS.includes(action.assetKind)) {
-      const spycraftNote = typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)
-        ? ' — the Syndicate does not sell spycraft, it is guild-build-only; commission it at a dockyard'
+      const buildOnlyNote = typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)
+        ? ` — the Syndicate does not sell ${action.assetKind}, it is guild-build-only; commission it at a dockyard`
         : '';
-      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, a cargo transport, or a deep_scan_array / outpost kit)${spycraftNote}` };
+      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, a cargo transport, or a deep_scan_array / outpost kit)${buildOnlyNote}` };
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
@@ -4346,6 +4474,77 @@ function validateAction(state, action) {
     // unload rule (unloadKitCheck), which the route-arrival unload (asset-initiated slice 3a) asks too.
     const check = unloadKitCheck(state, action.guildId, action.vehicleId, craft.location, craft.cargo);
     if (!check.ok) return { valid: false, reason: check.reason };
+    return { valid: true };
+  }
+
+  if (action.type === 'plantPrefecture') {
+    // docs/territory-model.md §4 (RULED 16-10-26) — THE CLAIM ACT, the second step of the two-step ground flow:
+    // an idle Prefecture kit, already ferried into a system's idle list, is planted on a settlement slot there,
+    // and the guild comes to hold the system. EXEMPT FROM GATE 3 — it is what CREATES the hold, so unlike
+    // establishVenture it never asks whether the guild already holds the system (it asks the opposite, gate 5).
+    // Refused whole, gates in the order a failure is felt: who, which kit, which slot, then whether the guild
+    // may plant there. Every gate reads state-as-it-stands, so two plants racing in one batch resolve first-
+    // valid-wins — the second finds the slot taken or the system held (the "first to plant wins" of §4).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // 1. THE KIT — an IDLE Prefecture kit asset in THIS guild's inventory. Ownership is "the guild whose array
+    //    holds it", so a rival's kit fails the first check. Separate refusals so the player learns WHICH way the
+    //    id was wrong. Nothing deploys a kit to a venture, so the idle check cannot fail today; it is asked (as
+    //    loadKit asks it) so a corrupt state is refused here rather than planted.
+    if (typeof action.assetId !== 'string' || action.assetId.length === 0) {
+      return { valid: false, reason: 'assetId must be a non-empty string' };
+    }
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    if (asset.kind !== PREFECTURE_KIT_KIND) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}, not a Prefecture kit — only a Prefecture kit is planted` };
+    }
+    const heldBy = deployedAssetIds(guild).get(action.assetId);
+    if (heldBy !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is deployed to venture ${JSON.stringify(heldBy)} — only an idle kit is planted` };
+    }
+    // 2. THE SLOT — a real SETTLEMENT SLOT (the seed), in the very system the kit sits in. A Prefecture plants
+    //    from that system's idle list only — the same-system rule a venture's machine obeys (design.md §4) — so
+    //    the kit must have been ferried there first.
+    if (typeof action.slotId !== 'string' || action.slotId.length === 0) {
+      return { valid: false, reason: 'slotId must be a non-empty string' };
+    }
+    const site = getSite(action.slotId);
+    if (!site) {
+      return { valid: false, reason: `site ${JSON.stringify(action.slotId)} does not exist in the seed` };
+    }
+    if (site.kind !== 'settlement') {
+      return { valid: false, reason: `site ${JSON.stringify(action.slotId)} is a ${site.kind} site, not a settlement slot — a Prefecture plants on a settlement slot` };
+    }
+    if (asset.systemId !== site.systemId) {
+      return { valid: false, reason: `kit ${JSON.stringify(action.assetId)} sits in system ${JSON.stringify(asset.systemId)} but slot ${JSON.stringify(action.slotId)} is in system ${JSON.stringify(site.systemId)} — a Prefecture plants only in the system its kit sits in; ferry the kit there first (§4)` };
+    }
+    // 3. THE SURVEY GATE (docs/exploration-model.md §8, §4 rulings 7, 10 & 11 — "you can't claim an unexplored
+    //    system"): the slot must be in the guild's exploration RECORD. A survey reveals a planet's whole surface,
+    //    so this is "the guild has surveyed this planet to full L2". First ENFORCED here.
+    if (!knowsSlot(guild, action.slotId)) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} has not surveyed planet ${JSON.stringify(site.planetId)} — slot ${JSON.stringify(action.slotId)} is not in its exploration record, and a Prefecture plants only on a planet its guild has surveyed to full L2 (docs/exploration-model.md §8)` };
+    }
+    // 4. THE SLOT IS FREE — no venture on it, and no other Prefecture (the one occupancy question).
+    const occupied = siteOccupiedReason(state, action.slotId);
+    if (occupied) {
+      return { valid: false, reason: occupied };
+    }
+    // 5. NO GUILD HOLDS THE SYSTEM — one Prefecture claims a whole system, so a system held already, by a rival
+    //    (who planted first, or founded there) or by this guild (its home, or an earlier Prefecture), takes no
+    //    other. This is also the residual edge's guard (territory-model.md §4): a kit unloaded cleanly into a
+    //    system a rival then claimed cannot be planted, and the player hauls it out.
+    const holder = systemHolder(state, site.systemId);
+    if (holder === action.guildId) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} already holds system ${JSON.stringify(site.systemId)} — one Prefecture claims a whole system, so a guild never plants one in a system it holds` };
+    }
+    if (holder !== null) {
+      return { valid: false, reason: `system ${JSON.stringify(site.systemId)} is already held by guild ${JSON.stringify(holder)} — a Prefecture plants only in an unclaimed system` };
+    }
     return { valid: true };
   }
 
@@ -5974,6 +6173,14 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'plantPrefecture') {
+    // docs/territory-model.md §4: THE CLAIM ACT. Instant — the kit was built earlier and ferried here. The slot
+    // is resolved once more (validate proved it is a real settlement slot) for the system and planet, and THE ONE
+    // plant apply consumes the kit, writes the claim row and places the Prefecture, all at this tick.
+    plantKit(next, findGuild(next, action.guildId), action.assetId, getSite(action.slotId), next.tick);
+    return next;
+  }
+
   if (action.type === 'deployAsset') {
     // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5): the deploy is INSTANT — the kit
     // was built earlier, so there is no build time. The ONE deploy rule is asked again (validate proved it
@@ -6215,6 +6422,7 @@ module.exports = {
   createGrantKitAction,
   createLoadKitAction,
   createUnloadKitAction,
+  createPlantPrefectureAction,
   createDeployAssetAction,
   createDispatchRouteWithActionsAction,
   createSaveRouteAction,

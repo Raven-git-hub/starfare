@@ -72,10 +72,15 @@ const DEPLOY_RETREAT_HEXES = 3;
 //                    a rival came to hold a system whose control disk covers it while the craft flew
 //                    (docs/exploration-model.md §5 REVISED 15-10-26). A rival Outpost planted ON the hex
 //                    reads 'occupied' instead: the one-structure-per-hex check runs first.
+//   'system-claimed' — (a Prefecture kit, roadmap 2.5 — the Prefecture / claims slice; docs/territory-model.md
+//                    §4 "Arrival retreat", RULED 16-10-26) the UNCLAIMED system the kit was being flown to, to be
+//                    unloaded and planted, is now held by a RIVAL — claimed while the craft flew. Not a deploy
+//                    check but the unload's (sim/actions.js `unloadKitCheck`); the craft retreats through the same
+//                    retreat, flag and notice as a failed deploy, so it shares this list.
 // These are the deploy checks a craft's flight can change. The others cannot fail on arrival — the
 // dispatch proved the target is a bare hex (an anchor never moves) and the hold exactly one kit (a kit is
 // never manifested) — so they have no reason here; an arrival that trips one halts loudly instead.
-const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range', 'not-attached', 'rival-territory']);
+const DEPLOY_FAILED_REASONS = Object.freeze(['occupied', 'out-of-range', 'not-attached', 'rival-territory', 'system-claimed']);
 
 // OUTPOST_DOCK_TURNAROUND — the per-class load/unload time (ticks a craft holds a dock slot),
 // RULED 21-09-26 (design.md §4 "The dock model"; recorded in docs/phase-1-tuning.md): light 5,

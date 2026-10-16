@@ -35,6 +35,14 @@
 // always-on rescue these tests were written against. Nothing else in them changed. The switch
 // itself, and its limit, are tested in syndicate-top-up.test.js.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -509,15 +517,15 @@ function shortNoSpare() {
 // by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
 // other hash here did not move. Before: 4ddd45b9…85acb and 8c380524…5ce8.
 const ISO_NO_SHORTFALL = {
-  final: '670451a841a79fa6c20c4b13041403751162018af300be2077b0dd7f77377ddf',
-  everyTick: '590f3458c101bbd9cbe8c68328d2960d177995df527c46d81f9d9fefc29239ae',
-  snapshots: 'c094c040ece29549897a3e395bcbe4e5fec130399378195cfdbe7062c347cf2c',
+  final: '97ecfffe5048dba31369d33b1c1cbab3a09a27e45e75aaa6773452d085cff578',
+  everyTick: 'bd3a05ccfc95ce8edc8cb9a1893b8bd648c52654cb542fdb80d4a9a1eb380a4c',
+  snapshots: 'd6da9c43760fb1eaecb8f28d041b8ce683185eefd4becd37ad46c3653fecc546',
   verdicts: { met: 23, breach: 0 },
 };
 const ISO_SHORT_NO_SPARE = {
-  final: '21e2423c6386849be718a9efb445551027eeeaa32dbeda8f1382057e3c08c33a',
-  everyTick: '228e8fa513eda998b839fca94ac88f3df82dde6f5576574c3e4fc2790b878846',
-  snapshots: '3689992698035669935e1b5d0d7da8fec11b794c0613c2de2e10865ec10d009e',
+  final: '4139974629f0f11dfc02e4cf0b8c484f88d2b47dff3f1efe742a507c21dcf786',
+  everyTick: 'd7d49b0b0f6f0f3b85bcdbfcf7d63768021f99dcc28bfc74d3588b2eec3b5e65',
+  snapshots: 'b2cdf1b979e7f5b0661bea2db42e9d567eded1e2fb32103bf43daecef10994bd',
   verdicts: { met: 0, breach: 34 },
 };
 

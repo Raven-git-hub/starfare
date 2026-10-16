@@ -18,6 +18,14 @@
 //   6. THE PACKAGE WORKS: the starter heavy can load the starter kit (only a heavy can);
 //   7. `isBot` MUST MEAN WHAT IT SAYS: a non-boolean is refused, not guessed at.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -219,14 +227,14 @@ test('a human founding with the package undone is byte-identical to a bot foundi
 // GOLDENS recorded on main at 074e4d1, BEFORE this slice's code existed, with exactly these two
 // actions on the zero-state. If a later ruling legitimately changes a bot founding, re-record them
 // and say why; if anything else moves them, the bot path has been touched by accident.
-const BOT_FOUNDING_GOLDEN = 'aac003c6384ef74b615ace9ca963e67e3b7070260d39c71f53874774ae2bd971';
-const BOT_INLINE_FOUNDING_GOLDEN = '5925d6ad724ccfe8aed5f6e866b59d29676c37dd931f11ef6e0b333109149d47';
+const BOT_FOUNDING_GOLDEN = '8a6c00b2f28c2e5c0ab114b6b9b25eb4ddd77504abe055ce385a06f17514b2fe';
+const BOT_INLINE_FOUNDING_GOLDEN = 'f6b9d83bb5cdff0288487c1ced5e95d4e06d829be3fa95fc069f019d4032ca48';
 // ⤳ 05-10-26 (roadmap 2.5, the exploration record): EVERY founding — bot included — now seeds the
 // guild's `exploration` record with its home system (docs/exploration-model.md §6), so both full
 // hashes moved. They are re-pinned below, and the two goldens above are KEPT and asserted against the
 // state with that one added key stripped — the proof that the record is the only thing that moved.
-const BOT_FOUNDING_GOLDEN_WITH_EXPLORATION = 'fbf7f22cfa88719c8e68035c4a13d4505d1b66fd9db916815c85a7effd7a65ca';
-const BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION = 'ee23d4a166c0ffcfd7e3e392d904c3071c060da061d074f18209be25cb38c3be';
+const BOT_FOUNDING_GOLDEN_WITH_EXPLORATION = 'c1293b24004efc8ca8e74a403efb252ed5de6892effe92d1c1b1d0a10f39bf21';
+const BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION = 'b3d201805a9862db4f0a71bcf06eb1e584de1f72f839a659b83f09ec6039ef3e';
 const withoutExploration = (state) => ({
   ...state,
   guilds: state.guilds.map((g) => { const { exploration, ...rest } = g; return rest; }),
@@ -235,8 +243,8 @@ const withoutExploration = (state) => ({
 // map and founding fills the home system's slots, so both full hashes moved again. Re-pinned below; the two
 // `…_WITH_EXPLORATION` values above are KEPT and asserted with the slots stripped (tests/slot-strip.js) —
 // the proof that the slots are the only thing that moved.
-const BOT_FOUNDING_GOLDEN_WITH_SLOTS = '6632f1245c7ae21e3e9164e5b036fa8f604195dda59551cf1b1c62595af7a55f';
-const BOT_INLINE_FOUNDING_GOLDEN_WITH_SLOTS = 'fa3c4b3e6c5cd6304904dd8a1e24a40c4d1ef510ba63b511d3a9e2e43a0b3420';
+const BOT_FOUNDING_GOLDEN_WITH_SLOTS = 'd19c48a0bcd73dd3aa1b0d9ebf9329c1cec2ffb498b144280c8ffece5e5ebca7';
+const BOT_INLINE_FOUNDING_GOLDEN_WITH_SLOTS = '4e06d656cf67363666fd1294c8418b3ac87a9ca9a37d105a211a4922a32b0268';
 
 test('bot: founding is byte-identical to the pre-slice golden (bare, and with an inline venture)', () => {
   const z = createZeroState();

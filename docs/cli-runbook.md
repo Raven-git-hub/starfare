@@ -252,3 +252,30 @@ nothing. The operator removes an array — and with it any running job, which th
 
 (The ids above are seed 42's: the array deployed on `106,55`, and `sys_0012` / `pl_00048` an unclaimed system
 and one of its planets.)
+
+## The claim act — a Prefecture ferried and planted (2.5, the Prefecture / claims slice, engine PR 1)
+
+The operator path for `docs/territory-model.md` §4: a guild takes a second system. A Prefecture kit is ferried into
+an **unclaimed** system on a route ending in `@unload-kit` (the one kit that may unload into ground its guild does
+not hold — never a rival's), then planted on a settlement slot of a planet the guild has **surveyed to full L2**. The
+plant writes the system claim. On the seed-42 galaxy, from a fresh `seat-demo --seed 42` (`sys_0936` is the nearest
+non-starter system to the home `sys_0006` with a settlement slot, 8 hexes out; `pl_03280` one of its planets):
+
+    node tools/admin.js adjust-fuel --guild seat_demo --delta 100000 $B
+    node tools/admin.js grant-kit --guild seat_demo --system sys_0006 --kind prefecture $B       # asset_seat_demo_prefecture_02
+    node tools/admin.js load-kit --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_prefecture_02 $B
+    node tools/admin.js dispatch-route --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --route "sys:sys_0936@unload-kit" $B
+    node tools/admin.js tick 1800 $B                              # to firstLegArrivalTick; the kit lands as asset_seat_demo_prefecture_03 in sys_0936
+    node tools/admin.js reveal --guild seat_demo --planet pl_03280 $B                            # the survey (or a Deep Scan Array's L1 + L2 scans)
+    node tools/admin.js plant-prefecture --guild seat_demo --asset asset_seat_demo_prefecture_03 --slot pl_03280_s01 $B
+
+`plant-prefecture` prints the Prefecture (`prefecture_seat_demo_01`), the claim it wrote (`claim_prefecture_seat_demo_01`,
+at the plant's tick) and the systems the guild now holds (`sys_0006, sys_0936`). From then on the guild may establish
+ventures in `sys_0936` (Gate 3), and the slot reads as occupied. Refusals exit 1 with the engine's reason, checked in
+this order: not an idle Prefecture kit of this guild; not a settlement slot in the kit's own system; the planet not
+surveyed ("has not surveyed planet …" — try it before the `reveal`); the slot occupied; the system held by anyone (a
+rival, or the guild itself — its home included). A dispatch whose unload target a rival already holds is refused up
+front; if a rival claims it while the heavy flies, the heavy RETREATS with the kit aboard, flagged `deployFailed:
+{ reason: 'system-claimed' }`, with a `deploy_failed` notice — the outpost's retreat. A kit can also be **built**: the
+dockyard's commission dropdown now lists the Prefecture (14 days), and the Syndicate refuses to sell one. *(Run live
+16-10-26 against a fresh `seat-demo --seed 42`, and the plant survived a server restart with persistence on.)*

@@ -48,8 +48,9 @@ const FLAG_SPEC = Object.freeze({
   delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
   system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint; reveal: which system
   good: 'string',     // adjust-goods: which stockpile good
-  kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost | deepScan (the kit's kind)
-  asset: 'string',    // remove-asset / load-kit: which asset id
+  kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost | deepScan | prefecture (the kit's kind)
+  asset: 'string',    // remove-asset / load-kit / plant-prefecture: which asset id
+  slot: 'string',     // plant-prefecture: which settlement slot the Prefecture plants on
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
   'remove-asset': 'bool', // remove-venture: delete the freed asset too (else keep it idle)
@@ -658,9 +659,10 @@ function deployAssetBody(flags) {
 }
 
 // KIT_KINDS — the kinds of undeployed kit a guild's inventory can hold, QUOTED from sim/assets.js
-// KIT_ASSET_KINDS, never authored (tools/admin.test.js ties the copy to it): the Outpost's, and the Deep
-// Scan Array's 'deepScan' (roadmap 2.5 (b1)). The deploy printouts list a guild's idle kits by it.
-const KIT_KINDS = Object.freeze(['deepScan', 'outpost']);
+// KIT_ASSET_KINDS, never authored (tools/admin.test.js ties the copy to it): the Outpost's, the Deep
+// Scan Array's 'deepScan' (roadmap 2.5 (b1)), and the Prefecture's (the Prefecture / claims slice). The
+// deploy printouts list a guild's idle kits by it.
+const KIT_KINDS = Object.freeze(['deepScan', 'outpost', 'prefecture']);
 
 // idleKitsIn(snapshot, guildId) -> the guild's idle KIT asset rows (any KIT_KINDS kind), in snapshot (id)
 // order — the "idle outposts" / idle array kits the snapshot already lists among its assets
@@ -681,6 +683,22 @@ function structureUnder(snapshot, craft) {
   if (outpost) return { kind: 'outpost', row: outpost };
   const array = (snapshot.deepScanArrays || []).find(onHex);
   return array ? { kind: 'deepScanArray', row: array } : null;
+}
+
+// The claim subcommand (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) — a thin HTTP
+// client: plant-prefecture plants an idle Prefecture kit on a settlement slot of the system it sits in (POST
+// /admin/guild/plant-prefecture), which writes the guild's claim on that system. The kit gets there by the
+// deploy subcommands above: grant-kit --kind prefecture, load-kit, then a dispatch-route ending sys:<id>@unload-kit.
+const CLAIM_COMMANDS = Object.freeze(['plant-prefecture']);
+
+// plantPrefectureBody(flags) -> the POST /admin/guild/plant-prefecture request body: the idle kit (--asset) and the
+// settlement slot (--slot). No system or planet: the engine reads both off the slot. PURE and exported.
+function plantPrefectureBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'plant-prefecture'),
+    assetId: requireFlag(flags, 'asset', 'plant-prefecture'),
+    slotId: requireFlag(flags, 'slot', 'plant-prefecture'),
+  };
 }
 
 // The two saved-route subcommands (transport-model.md §11.9, automation slice 2a) — thin HTTP clients
@@ -770,6 +788,7 @@ module.exports = {
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS, KIT_KINDS, idleKitsIn, structureUnder,
+  plantPrefectureBody, CLAIM_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   revealActionFor, snapshotPath, knownCounts, FOG_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
@@ -1417,6 +1436,29 @@ async function cmdDeployAsset(base, flags) {
   if (out.snapshot.deepScanArrays) row('arrays', `${out.snapshot.deepScanArrays.length}`);
 }
 
+// plant-prefecture (docs/territory-model.md §4): build the body and POST it to the gated /admin endpoint. A refused
+// plant comes back accepted:false -> throw -> exit 1. Prints the Prefecture just planted, the claim it wrote, the
+// systems the guild now holds, and its idle kits.
+async function cmdPlantPrefecture(base, flags) {
+  const body = plantPrefectureBody(flags);
+  const out = await postJson(base, '/admin/guild/plant-prefecture', body);
+  if (!out.accepted) throw new Error(`plant-prefecture refused: ${out.reason}`);
+  const planted = (out.snapshot.prefectures || []).find((p) => p.slotId === body.slotId) || null;
+  row('action', 'plantPrefecture');
+  row('guild', body.guildId);
+  log(`  planted   ${body.assetId} on ${body.slotId}`);
+  if (planted) {
+    // `log`, not `row`: the ids are wider than row's 12-character label column.
+    log(`  prefecture ${planted.id} in ${planted.systemId} (planet ${planted.planetId})`);
+    log(`  claim     ${planted.claimId}, claimed at tick ${planted.plantedAtTick}`);
+  }
+  const held = (out.snapshot.claims || [])
+    .filter((c) => c.ownerGuildId === body.guildId && c.landmarkKind === 'system')
+    .map((c) => c.landmarkId);
+  row('holds', held.length ? held.join(', ') : 'nothing');
+  printIdleKits(idleKitsIn(out.snapshot, body.guildId));
+}
+
 // save-route / delete-route (transport-model.md §11.9, automation slice 2a): build the body (the PURE
 // saveRouteBody / deleteRouteBody) and POST it to the gated /admin/route/* endpoint. A refused action comes
 // back accepted:false -> throw -> exit 1. Prints the guild's saved routes as they now stand, so the operator
@@ -1543,18 +1585,25 @@ Guild-Outpost spawn/remove primitive (design.md §4 — operator, exit 1 on a re
   remove-outpost  --guild ID --id OUTPOST_ID   tear the named outpost down (id never reissued)
 
 Deploy pipeline (territory-model.md §5 — operator, exit 1 on a refused action)
-  grant-kit       --guild ID --system ID --kind outpost
+  grant-kit       --guild ID --system ID --kind outpost|deepScan|prefecture
                   mint one idle kit asset (an "idle outpost") into the guild's inventory at a system
   load-kit        --guild ID --id VEHICLE_ID --asset ASSET_ID
                   load that idle kit onto a heavy transport — the heavy must be idle, empty and berthed
                   at the kit's own system (a kit fills a whole heavy hold)
   unload-kit      --guild ID --id VEHICLE_ID
                   the heavy's kit becomes a fresh idle kit asset in the system it is berthed at, which
-                  the guild must hold (refused on a bare hex or at an Outpost)
+                  the guild must hold (refused on a bare hex or at an Outpost) — a Prefecture kit may
+                  also unload into an UNCLAIMED system, never a rival's
   deploy-asset    --guild ID --id VEHICLE_ID
                   the craft, idle on a free bare hex within the outpost deploy range of a system the guild
                   holds (phase-1-tuning.md "Territory & deployment"), places the Outpost its kit packs,
                   anchored to the nearest held system; the kit is used up
+
+Claims (territory-model.md §4 — operator, exit 1 on a refused action)
+  plant-prefecture --guild ID --asset ASSET_ID --slot SLOT_ID
+                  plant that idle Prefecture kit on a settlement slot of the system it sits in: the kit is
+                  used up and the guild comes to hold the whole system. The slot must be free, on a planet
+                  the guild has surveyed to full L2, and no guild may hold the system already
 
 Saved routes (transport-model.md §11.9 — operator, exit 1 on a refused action; read them back with snapshot)
   save-route "NAME" --guild ID --route "w;w;…"
@@ -1579,8 +1628,9 @@ Flags
   --planet ID    reveal: the one planet to reveal (instead of --system)
   --l1           reveal --system: its planets' archetypes only (default: every surface too)
   --good G       adjust-goods: which stockpile good
-  --kind K       grant-asset: miner | factory; grant-kit: outpost | deepScan
-  --asset ID     remove-asset / load-kit: which asset id
+  --kind K       grant-asset: miner | factory; grant-kit: outpost | deepScan | prefecture
+  --asset ID     remove-asset / load-kit / plant-prefecture: which asset id
+  --slot ID      plant-prefecture: which settlement slot
   --venture ID   remove-venture: which venture id
   --close        remove-asset: tear the occupying venture down (default: detach it)
   --remove-asset remove-venture: delete the freed asset too (default: keep it idle)
@@ -1628,6 +1678,7 @@ async function main(argv) {
     case 'load-kit': await cmdLoadKit(base, flags); return;
     case 'unload-kit': await cmdUnloadKit(base, flags); return;
     case 'deploy-asset': await cmdDeployAsset(base, flags); return;
+    case 'plant-prefecture': await cmdPlantPrefecture(base, flags); return;
     case 'save-route': await cmdSaveRoute(base, flags); return;
     case 'delete-route': await cmdDeleteRoute(base, flags); return;
     case 'reveal': await cmdReveal(base, flags); return;

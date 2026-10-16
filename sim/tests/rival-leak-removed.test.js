@@ -34,6 +34,14 @@
 // view minus the block. No state pin and no god's-eye pin moved (the slice changes no state and the lens
 // builds no geography).
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
@@ -66,77 +74,77 @@ const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 // god's-eye lens, and each guild's view with `withoutRivalGround` applied (JSON.stringify(buildSnapshot)).
 const ON_MAIN = {
   founded: {
-    state: '4e572f7161957d583aa2d9b2cc68531cb21e02cfd9b3c4fe2796ff5fa867ea0f',
-    strippedState: '4e572f7161957d583aa2d9b2cc68531cb21e02cfd9b3c4fe2796ff5fa867ea0f',
-    godsEye: '37a3bb70d1302b26dc84be8abee371a9186e1890285837423bc61a3fa114cacb',
+    state: 'a6a22d60f68a9bdf59273df6ac831327fbe0317c87474328c1131a4b69bd1168',
+    strippedState: 'a6a22d60f68a9bdf59273df6ac831327fbe0317c87474328c1131a4b69bd1168',
+    godsEye: 'b1bd00dafa58a4f6e71fc24a025930a8d846f6c5d7fe74906a72d6c088006659',
     strippedView: {
-      [A]: 'd1f535787dc737b9fab59edea5782572911a450f74ba4bb29201e55cae692e6b',
-      [B]: '19d230e47a215efde776b5fc01645255179c9f662adc7b97c18e1dcff65d55cd',
+      [A]: '96f28fd9153c186220994f340fc152bd7107f2399b4f342bc2e14b512792871d',
+      [B]: '3e9fc7db7f7b697ebf64e6129fde9302a184ca1720f256d6ea485c57ce62d80e',
     },
   },
   licensed: {
-    state: '6d26ddbff123c72f9af14a2a51c117020dbb96049454d114eabad896b3a83047',
-    strippedState: '0d6997b96b2a23604565d8f193ab73676206a264cab694e06465dbf92aea94df',
-    godsEye: '13c710db9a97139e8cb4bc39a105446182f2c03e5cff1be5deb6ebd4586c16b5',
+    state: 'f3420df7f7c2866daa9f46d1c2bec8c9354eaf88b9b46cf4124dff9fb04ce642',
+    strippedState: '0d6777073976230aefa3971a41bdc657a9274d561ce5a3aaace28001114290b7',
+    godsEye: '637bbe74d4278495797a8f3640503323e5b7c3a0e9deb10c02fa8375f409718d',
     strippedView: {
-      [A]: 'f5ae44a0a499c8f0a39293ea95e5dbfc1874476582d396cd93fdaebdb8edc7d4',
-      [B]: '4954ea8afacbacd4280975d37ca252e99353a8799fde8a05c080df11e0f82f7c',
+      [A]: 'da407aaddcc42aab5fa82ee6c98d5441ceea24f523686903c18c448b9f9b5515',
+      [B]: '60d9825f772e8f7a3ebf24fcf5193a8591c98a36c03b376890704978c9024a3c',
     },
   },
   closed: {
-    state: '1d6d0932dc2fb56760c53582d78cbbb80dc681a23c3ab11bfa61e81078914adb',
-    strippedState: 'b49d13b37ad4358b12f6a1c85c391912ebc370fd4e424b3aa02627de7becfcc9',
-    godsEye: '524adabb4e0c864932db484f39f700e38071d1b04dfbdd9bbf5facc8d95e8262',
+    state: '7a38792fb2c8d0e6ac37dc6a08df1cf089a37e2292cb2d4679ac40685edd2718',
+    strippedState: '20be450b3271e778167456e9b65dc904111a952e305ab70251097e4d3e98f794',
+    godsEye: '637d7260d995ed57f272987d483d08c0f0a294749039fd42f6b212df43f0754b',
     strippedView: {
-      [A]: 'b68a00d46410a746bba60f5d7be42c34b3fa529264159798585a4c231e18c69c',
-      [B]: 'ffe785c16db02683e0fe008fd8b1871345e6f5787f773899594c18b39cf71d09',
+      [A]: '5b2ec2dbb410783a4c8c1ee2ff7e95b8c4a14b8c7a1298867788ff6bd5d4e11c',
+      [B]: 'e1bddbe5d9ace326cc0fa0e0b28c7296f3e720c1808d5b7b554b2d13b63cd7e0',
     },
   },
 };
 const SOLO_ON_MAIN = {
-  state: 'd1db12533d22a4a44d943417fce6c6c5594c15ba26011ca837113c973ffa6628',
-  godsEye: '0a254a27ea93bc5cb288c893fde01683991e6ea3f58d1db1f2310816c8efde45',
-  view: '90263f25aeab8f245739b1af0bb79fa04a5b223c23d3f18f4857f08592c6fd9a',
+  state: '024c792061ec079048cc4dfadb2c7d1204df207c7ea9d2d0bcc1dd73dd0f4a4f',
+  godsEye: '6a9d145924522e29bf1a33f722b232997e468ee262671e9fee4a42ad70f25abe',
+  view: '64072254112eb4aea21ed9305a9048231f7c5aa215ff6e0f1d0ca2edd129e0ce',
 };
 
 // The full per-guild views after the cleanup, recorded 08-10-26. Each shows the rival's home at full L2.
 // ⤳ 09-10-26: now the views with `known`'s slots stripped (the full views are WITH_SLOTS, below).
 const VIEWS_AFTER = {
   founded: {
-    [A]: 'e5a46a34c5ec407777319bb61c8b4199f325703d755784c4bbf99966b49ef357',
-    [B]: 'a64c68f242603329cf0e32e535a45e36ac6c9de58b002fb180cd2bb250d0e9c0',
+    [A]: '6a09441a6f893d5c62a6b2d66086461ee0230d8c49a53f46346282fb88ee7c38',
+    [B]: 'd92eaa4f5335402b58d7f6505e75fae440998dfcb88252751bef758fd69030a1',
   },
   licensed: {
-    [A]: '955ac16aff20f430763d678748ae8af34ccc6de8797e5c71f8032aef5265f5a5',
-    [B]: 'c4c7a3ec96b74c48c5202e179de27c887b7259b828bd56706dfa2ec0200b3357',
+    [A]: 'a5f6be5be2ae750a2da243da5e7ef61f6da1761b4d96e228e7c210d017bdecad',
+    [B]: '8bba7fd8667afee2f723da84d7c3ed04f4220f9586bb793a7aff3a34cbd337c8',
   },
   closed: {
-    [A]: 'e251b2dc3d1934de631ddfe79244b2dc9f55273d54bcc6bf7638a88dcd4f8f5b',
-    [B]: 'c746bc737d9bf188a6ecbe878d1950e00cfbfb0651f78d068b54dec120486e6e',
+    [A]: 'b0f4e10c51fbadd3758dda6819fa0f2e1026eead249b0aac307bee9c451f19ca',
+    [B]: 'f73275cb34feac833201e130f44aaa0ace794eb15c72ac70ef0c021b9b53a36c',
   },
 };
 
 // After the settlement-surface slice, recorded 09-10-26: the full states and per-guild views of the same steps.
 const WITH_SLOTS = {
   founded: {
-    state: '3ae89a673a486d3aee5c03a5db1c69fd9bf3bd2b3d405a2d412ee3db0f09723f',
-    [A]: '6b8db105242b9c21d9342e771ef9ece611b2ef4654d7cdf6505ea461c4f05977',
-    [B]: 'af6b8da9a84e5bc56ee66ffc018af60e76cc810d57f36e26bc2500f832cf37c3',
+    state: '85e9d89951e45de79b5377bc608039eba69374335a605b91a474ad269b150496',
+    [A]: '53f437946836efb9f5e6dd53b5f37be1178fb4fe8c2d45870a32b5558930aa79',
+    [B]: '58ce4ce68266ee1872de1563c95000db8c89d77e3e1284b30c22b5b62fe5d407',
   },
   licensed: {
-    state: '938ea6d56d4d1399477a36e6f61928e0fc2b43d3c17c308ef3140f69a75ec9b4',
-    [A]: '25b8017c1ff537ded356a28c68da5eba1bfc624eb552f422191f801f01c437dc',
-    [B]: '6f77ee1d54199e98da3b366516fd67ec5ca7d29e9ffa4261935b3dcd5c1a0c52',
+    state: '6187e12c938b267a703a11dac5f0775365bf08f1d23a77dd57d86141e617f36a',
+    [A]: 'b434c15f8b69102770c1a2f81bf672f5530c4438be947bdd2cfc3d9655cd83bb',
+    [B]: 'd0df1c77b81c54be8a3ed415fac612192d5af2be3510259e735402b6787489ae',
   },
   closed: {
-    state: '6b4544ba0e4f7bb748665f46f76ef28a1c4b23aef60feabdb0447cf39aba48e2',
-    [A]: '1ab98c78530f5e4dfb4bccac42c6d6d3e7af96f079bd36f17c200cc1adcbe6c3',
-    [B]: '9ad15005f6ac40b22189a77274a77d8c90733a215958dda7fae871bbde4ced58',
+    state: '462cfd2f59ab7c7e3078b295507ea4b8f333901b6cd81055640cabe4bc49ee5d',
+    [A]: '407e43a7a276274cf2048faf08f4652d7e6564ca1cbee9ab89b65eba41ba3537',
+    [B]: '789f9291dbbd9e1f5234b116149cf8338694e44a69fb5a2ba9aa7ff99ccfb804',
   },
 };
 const SOLO_WITH_SLOTS = {
-  state: '7333c71d21df5978325f771363febd5d3c192571766d5399cc0ad215f751a8a4',
-  view: '11b09de4885497a9807eddbfbf39058dded47b724682adf09dbe423b87670ddb',
+  state: 'c4e0600b45aaba8bcb1113788b86507cced6cb8120f3d09da7d25b4006688404',
+  view: '3a2e80e099e69c64a712a1f51cfc329408ca6c7c50763eb3273686cdd54e8737',
 };
 
 // After the L0-board slice: the per-guild views of the same steps, with no `geography.systems`. Recorded on
@@ -144,19 +152,19 @@ const SOLO_WITH_SLOTS = {
 // SOLO_WITH_SLOTS) and hashing the rest; the slim view must hash to exactly that. The states did not move.
 const SLIM = {
   founded: {
-    [A]: '3acbe24be47abb6d1eac7ad2995b2712842513db18dd32fb3af13eaf9d136289',
-    [B]: '2ae3c8a6c06a586ebd610195bda8ad0ba274ecace4eef551648c52a56615abae',
+    [A]: 'fea29dd814b9e2192921b986b982b1fe9aa54e766f58cb0fae1d099dec7afc3b',
+    [B]: '708d0c9fbbedfc491fb5fc6ffec952d44ba6e981d4cb86d70bcbce98009f6417',
   },
   licensed: {
-    [A]: '55b70a9f6f13dea88dfe09a6527ea4d0e26cfe28ebe4dd96e1e88bdec56cc72d',
-    [B]: 'e3e4e7b725818a9004868f28a1adba5763dfbf9f02189fc85e52def1cd253198',
+    [A]: '047e798950e93cd8a71596e7ece2054591580b750ede6b7a2358ece6bf9ef387',
+    [B]: '7594f5f0b103783abb1a81321f66bdf4ceca9c172311c02337116cca36599150',
   },
   closed: {
-    [A]: '5737020ed6aa6b0748b2874a6ff97d84155cde104478dfa77623af5b3662eeaf',
-    [B]: 'eb3eb054421baa1b8d68f38a0f168c5d8383c8699b648058bffbef939cb562fd',
+    [A]: 'e9deaa3744f6fa12ca830693053807c06054e55deafb6f51f4999bc74d9c4aad',
+    [B]: '5628a00bab799c6168de8a3820709e4041ea20f1a2488d749e775279d737ff5a',
   },
 };
-const SOLO_SLIM = { view: '34d7c06ab2735a1a1c2d92418d5c63b3f69a8e317b88adba4ca2094f7b22172e' };
+const SOLO_SLIM = { view: '9778b70c9d96c88ed9129698ea496ba8356d2ff0b5a6f70ce2514e31cae28ef3' };
 
 // legacyObservePublicRegister(state) — the REMOVED end-of-tick step, copied from main at 41fe84c
 // (sim/exploration.js `publicRegisterFacts` + `observePublicRegister`) for ONE purpose: rebuilding main's bytes

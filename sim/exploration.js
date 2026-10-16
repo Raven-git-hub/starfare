@@ -161,9 +161,8 @@ function revealPlanetSurface(guild, planetId, tick) {
   return revealSurface(guild, row, tick);
 }
 
-// knowsPlanet(guild, planetId) / knowsNode(guild, nodeId) — the two read questions. A pure read.
-// `knowsNode` is what the per-planet claim gate (§8) will ask, planet by planet; nothing enforces
-// that gate yet — the Prefecture slice does.
+// knowsPlanet(guild, planetId) / knowsNode(guild, nodeId) / knowsSlot(guild, slotId) — the read
+// questions. Pure reads.
 function knowsPlanet(guild, planetId) {
   return !!(guild && guild.exploration && guild.exploration[planetId]);
 }
@@ -171,6 +170,19 @@ function knowsNode(guild, nodeId) {
   const site = getSite(nodeId);
   if (!site || !knowsPlanet(guild, site.planetId)) return false;
   return guild.exploration[site.planetId].nodes[nodeId] !== undefined;
+}
+// knowsSlot(guild, slotId) — the mirror of `knowsNode`, reading the `slots` track: does the guild's
+// RECORD hold this settlement slot? THE CLAIM GATE (§8; §4 rulings 7, 10 & 11), first ENFORCED by the
+// Prefecture / claims slice (sim/actions.js `plantPrefecture`): a Prefecture plants only on a slot the
+// guild knows. Because a survey reveals a planet's whole surface at once (`revealSurface` above), knowing
+// one slot of P is having surveyed P to full L2 — so this one read IS "planet surveyed to L2". It reads the
+// record only — never the live controlled-system projection of the view (sim/fog.js): the record is the
+// gate's data source (§8), and it holds only the guild's own surveys (ruling 11). A node id, or an id the
+// seed does not hold, is not a known slot.
+function knowsSlot(guild, slotId) {
+  const site = getSite(slotId);
+  if (!site || site.kind !== 'settlement' || !knowsPlanet(guild, site.planetId)) return false;
+  return guild.exploration[site.planetId].slots[slotId] !== undefined;
 }
 
 // cloneExploration(record) -> a deep-enough copy, or null for a missing/empty record (so the caller
@@ -200,6 +212,6 @@ function isOnPublicRegister(venture) {
 }
 
 module.exports = {
-  reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsNode, cloneExploration,
+  reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsNode, knowsSlot, cloneExploration,
   isOnPublicRegister,
 };

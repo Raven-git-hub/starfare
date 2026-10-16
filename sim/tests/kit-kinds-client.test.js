@@ -24,6 +24,16 @@ const { KIT_KIND_FOR_BILL } = require('../asset-recipes.js');
 
 const read = (name) => fs.readFileSync(path.join(__dirname, '..', '..', 'client', name), 'utf8');
 
+// ⤳ 16-10-26 (the Prefecture / claims slice, ENGINE PR 1): the engine gained a third kit kind, 'prefecture' (bill
+// kind 'prefecture'). It is a GROUND kit — unloaded into a system and PLANTED on a settlement slot, never deployed on a
+// hex — and this PR builds no client. The client must NOT get a row for it here yet: every row earns its idle kit a
+// Deploy button that opens the SPACE deploy map, which is wrong for a flag. Its client flow (the ferry and the plant)
+// is the client PR's. So it is listed HERE by name, and the tests below hold BOTH sides: every other kind has its row,
+// and this one has none. The client PR adds the right row (and whatever the plant needs), then empties this list.
+const AWAITING_CLIENT = { kitKinds: ['prefecture'], billKinds: ['prefecture'] };
+const clientKitKinds = () => Object.keys(DEPLOYABLE_KITS).filter((k) => !AWAITING_CLIENT.kitKinds.includes(k));
+const clientBills = () => Object.entries(KIT_KIND_FOR_BILL).filter(([bill]) => !AWAITING_CLIENT.billKinds.includes(bill));
+
 // The page's kit-kinds script, run on a stub `window`: hands back the two functions it defines.
 function clientKitTable() {
   const src = read('game.html').match(/<script id="kit-kinds">([\s\S]*?)<\/script>/);
@@ -35,7 +45,11 @@ function clientKitTable() {
 
 test('every engine kit kind has a client row, with the engine\'s kit good — and no other kind reads as a kit', () => {
   const w = clientKitTable();
-  for (const [kind, good] of Object.entries(DEPLOYABLE_KITS)) {
+  for (const kind of AWAITING_CLIENT.kitKinds) {
+    assert.equal(w.__kitKind(kind), null, `kit kind ${JSON.stringify(kind)} has a client row now — take it off AWAITING_CLIENT`);
+  }
+  for (const kind of clientKitKinds()) {
+    const good = DEPLOYABLE_KITS[kind];
     const row = w.__kitKind(kind);
     assert.ok(row, `kit kind ${JSON.stringify(kind)} has no client row — its idle kit would get no Deploy button`);
     assert.equal(row.good, good, `kit kind ${JSON.stringify(kind)}: the client looks for ${JSON.stringify(row.good)} aboard, the engine loads ${JSON.stringify(good)}`);
@@ -52,7 +66,7 @@ test('every engine kit kind has a client row, with the engine\'s kit good — an
 
 test('every kit row has its own portrait, and the file is in the repo (2.5 slice 15 — the array no longer falls back to a plain panel)', () => {
   const w = clientKitTable();
-  for (const kind of Object.keys(DEPLOYABLE_KITS)) {
+  for (const kind of clientKitKinds()) {
     const art = w.__kitKind(kind).art;
     assert.equal(typeof art, 'string', `kit kind ${JSON.stringify(kind)} has no art`);
     assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'client', art)), `${art} is missing`);
@@ -73,7 +87,10 @@ test('the deploy map\'s words for the array follow its REVISED rule: in or besid
 
 test('every bill kind that finishes as a kit is labelled on the client, and maps to the same kit kind', () => {
   const w = clientKitTable();
-  for (const [bill, kind] of Object.entries(KIT_KIND_FOR_BILL)) {
+  for (const bill of AWAITING_CLIENT.billKinds) {
+    assert.equal(w.__kitLabelForBill(bill), null, `bill ${JSON.stringify(bill)} is labelled now — take it off AWAITING_CLIENT`);
+  }
+  for (const [bill, kind] of clientBills()) {
     assert.equal(w.__kitKind(kind).bill, bill, `the client's ${JSON.stringify(kind)} row names bill ${JSON.stringify(w.__kitKind(kind).bill)}, the engine's bridge ${JSON.stringify(bill)}`);
     assert.equal(w.__kitLabelForBill(bill), w.__kitKind(kind).label);
   }
@@ -90,6 +107,6 @@ test('the Production Console\'s dockyard labels say exactly what the game client
   const src = read('console.html').match(/var DK_KIT_LABEL = (\{[^}]*\});/);
   assert.ok(src, 'DK_KIT_LABEL is present in client/console.html');
   const consoleLabels = vm.runInNewContext(`(${src[1]})`);
-  const expected = Object.fromEntries(Object.keys(KIT_KIND_FOR_BILL).map((bill) => [bill, w.__kitLabelForBill(bill)]));
+  const expected = Object.fromEntries(clientBills().map(([bill]) => [bill, w.__kitLabelForBill(bill)]));
   assert.deepEqual({ ...consoleLabels }, expected);
 });

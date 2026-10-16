@@ -269,7 +269,9 @@ a level of 2,880, a target of 2.9B, and the price pinned at its 2B ceiling. The 
 **Decided by the ruling's silence, not invented — on the roadmap's decision checklist:**
 - **The four unclassified modules** (drive_module, droid_components, claim_beacon,
   habitation_module) have no sub-tier, so no timer. They stay **continuous**, their status quo,
-  until a sub-tier is ruled; then they become timed with no code change.
+  until a sub-tier is ruled; then they become timed with no code change. *(⤳ 16-10-26: two of them were — the
+  Prefecture bill placed claim_beacon in 3-2 and habitation_module in 3-3, and both became timed (30 / 60 ticks) with no
+  code change, as promised. drive_module and droid_components stay continuous. `docs/phase-1-tuning.md`.)*
 - **A timed factory's throttle is on/off.** 0 stops a new unit starting (a unit on the line still
   finishes); anything above 0 runs the timer at full pace. Whether a partial throttle should slow
   the timer is unruled.

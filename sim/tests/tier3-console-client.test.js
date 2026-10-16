@@ -61,9 +61,9 @@ const systemOf = (snap) => snap.production[0].systems.find((x) => x.systemId ===
 
 test('the fork\'s figures: every timed factory publishes its timer and its unit on the line, and they agree with tier3Contract', () => {
   // One factory of every timed good, each with one input set, so every line starts a unit on
-  // tick 1. Plus the four unclassified modules, which are Tier 3 but not timed.
+  // tick 1. Plus the two unclassified modules (four until 16-10-26), which are Tier 3 but not timed.
   const untimed = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null);
-  assert.equal(untimed.length, 4, 'the four unclassified modules');
+  assert.equal(untimed.length, 2, 'the two unclassified modules');
   let stock = {};
   for (const g of TIMED) for (const [k, v] of Object.entries(inputSets(g, 1))) stock[k] = (stock[k] || 0) + v;
   let s = galaxy([...TIMED, ...untimed].map((g) => factory(`f_${g}`, g)), stock);

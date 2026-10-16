@@ -1628,12 +1628,13 @@ test('GET /asset-recipes returns the FULL build catalog, matching sim/asset-reci
   assert.deepEqual(body.buildTicks, BUILD_TICKS);
   assert.equal(body.maxQueue, MAX_QUEUE);
   assert.deepEqual(body.buildable, [...BUILDABLE_KINDS]);
-  // And a spot-check on the shape: all eight buildable kinds, spycraft among them, each with a bill.
+  // And a spot-check on the shape: all nine buildable kinds, spycraft among them, each with a bill.
   // ⤳ 15-10-26 (docs/asset-purchase.md §"Installation kits"): six → eight — the deep scan array and the outpost
   // joined the build catalog, by their BILL kinds. The data-only toll gate did not.
-  assert.equal(body.buildable.length, 8, 'the full build catalog is served (eight kinds)');
+  // ⤳ 16-10-26 (the Prefecture / claims slice): eight → nine — the build-only Prefecture joined it too.
+  assert.equal(body.buildable.length, 9, 'the full build catalog is served (nine kinds)');
   assert.ok(body.buildable.includes(SPYCRAFT), 'spycraft IS in the build catalog (guild-buildable)');
-  assert.deepEqual(body.buildable.slice(-2), ['deep_scan_array', 'outpost'], 'the two installation kits, last');
+  assert.deepEqual(body.buildable.slice(-3), ['deep_scan_array', 'outpost', 'prefecture'], 'the three installation kits, last');
   assert.equal(body.buildable.includes('toll_gate'), false, 'the toll gate is not buildable');
   assert.equal(body.bills.toll_gate, undefined, 'and its bill is not served as a build recipe');
   for (const kind of body.buildable) {
@@ -1984,6 +1985,50 @@ test('the kit endpoints refuse (200, accepted:false), 400 a malformed body, and 
   // The pre-02-10-26 route (a kit straight into a hold) no longer exists.
   const old = await req('POST', '/admin/vehicle/grant-kit', { guildId: 'player-guild', vehicleId: LIGHT_ID, kind: 'outpost' });
   assert.equal(old.status, 404);
+});
+
+// --- the claim act (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) -------------------
+// POST /admin/guild/plant-prefecture runs plantPrefecture through the same validate → journal → apply path. The kit
+// is granted straight into an unclaimed system here (the operator lever places freely) — the ferry that would
+// normally bring it is tests/prefecture-ferry.test.js's.
+test('POST /admin/guild/plant-prefecture: an idle Prefecture kit planted on a surveyed slot claims the system; refusals are 200s, a half body a 400; none tick', async () => {
+  await reset();
+  await foundEmptyFleet();
+  const { getSystemLayout } = require('../seed.js');
+  const seedSystems = require('../../data/seed.json').systems;
+  const homeHex = getSystem(HOME_SYSTEM).coords;
+  // The nearest system to home with a settlement slot — unclaimed in this one-guild galaxy. Derived from the seed.
+  const target = seedSystems.filter((x) => x.id !== HOME_SYSTEM && getSystemLayout(x.id).planets.some((p) => p.settlementSlots.length))
+    .sort((a, b) => hexDistance(a.coords, homeHex) - hexDistance(b.coords, homeHex) || a.id.localeCompare(b.id))[0].id;
+  const planet = getSystemLayout(target).planets.find((p) => p.settlementSlots.length);
+  const slotId = planet.settlementSlots[0].id;
+  const grant = await req('POST', '/admin/guild/grant-kit', { guildId: 'player-guild', systemId: target, kind: 'prefecture' });
+  assert.equal(grant.body.accepted, true, grant.body.reason);
+  const assetId = grant.body.snapshot.guilds[0].assets.find((a) => a.kind === 'prefecture').id;
+
+  // Unsurveyed: the survey gate refuses (an engine refusal is a 200, accepted:false).
+  const early = await req('POST', '/admin/guild/plant-prefecture', { guildId: 'player-guild', assetId, slotId });
+  assert.equal(early.status, 200);
+  assert.equal(early.body.accepted, false);
+  assert.match(early.body.reason, /has not surveyed planet/);
+
+  await req('POST', '/action', { type: 'reveal', guildId: 'player-guild', planetId: planet.id });
+  const planted = await req('POST', '/admin/guild/plant-prefecture', { guildId: 'player-guild', assetId, slotId });
+  assert.equal(planted.status, 200);
+  assert.equal(planted.body.accepted, true, planted.body.reason);
+  const snap = planted.body.snapshot;
+  assert.equal(snap.tick, 0, 'a plant must not tick');
+  assert.deepEqual(snap.prefectures, [{
+    id: 'prefecture_player-guild_01', ownerGuildId: 'player-guild', systemId: target, planetId: planet.id, slotId,
+    claimId: 'claim_prefecture_player-guild_01', plantedAtTick: 0,
+  }]);
+  assert.ok(snap.claims.some((c) => c.claimId === 'claim_prefecture_player-guild_01' && c.landmarkId === target && c.ownerGuildId === 'player-guild'));
+  assert.equal(snap.occupancy[slotId], 'prefecture_player-guild_01');
+
+  // Structurally malformed: the constructor refuses it — a 400.
+  const bad = await req('POST', '/admin/guild/plant-prefecture', { guildId: 'player-guild', assetId });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /malformed plant-prefecture/);
 });
 
 // --- the saved-route store (transport-model.md §11.9, automation slice 2a) -------------------

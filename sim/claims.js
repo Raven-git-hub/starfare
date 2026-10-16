@@ -68,6 +68,18 @@ function systemControllers(state) {
   return out;
 }
 
+// systemHolder(state, systemId) -> the id of the guild holding `systemId`, or null when no guild does
+// (the system is unclaimed). The single-system form of `systemControllers` above, built on the same
+// `isSystemClaim` test and answering the same way when two rows ever named one system (the FIRST in
+// `state.claims` order), so `systemHolder(s, x) === g` exactly when `guildHolds(s, g, x)` for the guild
+// the map would name. The Prefecture / claims slice asks it twice, each time to tell THREE cases apart —
+// unclaimed, held by this guild, held by a rival: the ferry's unheld-system unload exception (a Prefecture
+// kit may unload into an unclaimed system or its own, never a rival's) and the plant's one-per-system gate.
+function systemHolder(state, systemId) {
+  const row = (state.claims || []).find((c) => isSystemClaim(c) && c.landmarkId === systemId);
+  return row ? row.ownerGuildId : null;
+}
+
 // controlNear(state, coords, within) -> every guild CONTROL FOOTPRINT that reaches to within `within` hexes of
 // hex `coords`. THE ONE answer to "which guild, if any, controls this hex?" (`within` 0) and to "whose control
 // is this hex in or beside?" (`within` 1), so the two questions cannot drift apart (roadmap 2.5 slice 15; the
@@ -109,4 +121,4 @@ function controlNear(state, coords, within) {
   return [...[...systems.values()].sort(byId), ...outposts.sort(byId)];
 }
 
-module.exports = { guildHolds, heldSystemIds, systemControllers, controlNear };
+module.exports = { guildHolds, heldSystemIds, systemControllers, systemHolder, controlNear };

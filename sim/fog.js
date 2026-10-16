@@ -21,6 +21,10 @@
 //                             are not — the dock names the rival's transports, which are never shown);
 //       · its deep-scan arrays → NOT IN THE VIEW AT ALL (§2: "transports and deep-scan arrays are never"
 //                             visible, unlike outposts and toll gates — until L3, deferred);
+//       · its Prefectures   → where each stands and whose (the Prefecture / claims slice): a structure, like an
+//                             Outpost, and the flag behind a claim that is public anyway — its system's whole
+//                             surface is shown live (§4 ruling 11), so its planet and slot are no secret.
+//                             Cut to RIVAL_PREFECTURE_FIELDS all the same, so a field added later stays hidden;
 //       · its claims        → kept (ownership is public), the claimed system's seed detail cut to L0;
 //       · its deliveries, pending builds, production preview and notices → not in the view.
 //   - GALAXY-WIDE AGGREGATES are coarsened to posted values (design.md §5: "the real supply figure is
@@ -63,6 +67,14 @@ const RIVAL_VENTURE_FIELDS = ['id', 'ownerGuildId', 'type', 'siteId', 'systemId'
 // queue/slots (which name the rival's craft) are operations, and go.
 const RIVAL_OUTPOST_FIELDS = ['id', 'ownerGuildId', 'coords', 'anchorSystemId'];
 
+// What a rival PREFECTURE's row keeps (the Prefecture / claims slice; docs/territory-model.md §4): today, every
+// field the row has — where the flag stands (system, planet, slot), whose it is, the claim it wrote and when.
+// Each is already public: the claim row is (ownership is public, §1), and a controlled system's whole surface is
+// shown live to everyone (§4 ruling 11), so the slot it occupies is too. A Prefecture is a STRUCTURE, the Outpost
+// family, which §2 rules always visible; design.md §2 calls it "a single, visible, destructible anchor". Kept as an
+// allow-list so a field added to the row later (a scan job, say) is hidden from rivals until someone rules it public.
+const RIVAL_PREFECTURE_FIELDS = ['id', 'ownerGuildId', 'systemId', 'planetId', 'slotId', 'claimId', 'plantedAtTick'];
+
 // What a RIVAL's system claim keeps of its resolved seed landmark: L0 — identity and position. The
 // god's-eye claim row resolves the whole system landmark, which also carries `terranHomeworldId`
 // (which of the rival's planets is its Terran homeworld — L1 of a planet the viewer has not learned),
@@ -95,14 +107,15 @@ const TOP_LEVEL = {
   ],
   filtered: [
     'galacticSupply', 'syndicate', 'guilds', 'production', 'ventures', 'occupancy', 'claims', 'outposts',
-    'deepScanArrays', 'shipments', 'nodeLockouts', 'syndicateBuilds', 'attention',
+    'deepScanArrays', 'prefectures', 'shipments', 'nodeLockouts', 'syndicateBuilds', 'attention',
   ],
 };
 
 // The classified keys the god's-eye snapshot OMITS WHEN EMPTY, so a snapshot may lack them. Every other
 // classified key is always present. `deepScanArrays` (2.5 (b1)) is omitted until an array exists, so a
-// galaxy without one serves exactly the god's-eye bytes it did before arrays existed.
-const OMIT_WHEN_EMPTY_TOP_LEVEL = ['deepScanArrays'];
+// galaxy without one serves exactly the god's-eye bytes it did before arrays existed; `prefectures` (the
+// Prefecture / claims slice) likewise until one is planted.
+const OMIT_WHEN_EMPTY_TOP_LEVEL = ['deepScanArrays', 'prefectures'];
 
 function pick(row, fields) {
   const out = {};
@@ -253,6 +266,8 @@ function fogForGuild(full, state, guildId) {
     .filter((v) => v.ownerGuildId === guildId || registered.has(v.id))
     .map((v) => (v.ownerGuildId === guildId ? v : rivalVentureRow(v)));
   const visibleVentureIds = new Set(ventures.map((v) => v.id));
+  // Every Prefecture's id — each one is public (below), so its occupancy of a slot is too.
+  const prefectureIds = new Set((full.prefectures || []).map((p) => p.id));
 
   const out = {};
   for (const key of Object.keys(full)) {
@@ -264,9 +279,12 @@ function fogForGuild(full, state, guildId) {
     else if (key === 'production') out.production = full.production.filter((p) => p.guildId === guildId);
     else if (key === 'ventures') out.ventures = ventures;
     else if (key === 'occupancy') {
+      // A site shows as occupied when its occupant is in this view: a venture the viewer may see, or a
+      // Prefecture (every one is public — a rival's is cut to its allow-list below, but kept).
       out.occupancy = {};
       for (const siteId of Object.keys(full.occupancy)) {
-        if (visibleVentureIds.has(full.occupancy[siteId])) out.occupancy[siteId] = full.occupancy[siteId];
+        const occupant = full.occupancy[siteId];
+        if (visibleVentureIds.has(occupant) || prefectureIds.has(occupant)) out.occupancy[siteId] = occupant;
       }
     } else if (key === 'claims') out.claims = full.claims.map((c) => claimRow(c, guildId));
     else if (key === 'outposts') out.outposts = full.outposts.map((o) => (o.ownerGuildId === guildId ? o : pick(o, RIVAL_OUTPOST_FIELDS)));
@@ -277,6 +295,12 @@ function fogForGuild(full, state, guildId) {
       // SOME rival owns an array — the view's shape must never depend on a rival's hidden state.
       const own = full.deepScanArrays.filter((a) => a.ownerGuildId === guildId);
       if (own.length) out.deepScanArrays = own;
+    }
+    else if (key === 'prefectures') {
+      // EVERY Prefecture, the viewer's own in full and a rival's cut to RIVAL_PREFECTURE_FIELDS — a public
+      // structure (above). The key follows the god's-eye lens: present exactly when some Prefecture exists, which
+      // tells the viewer nothing the public claim rows do not.
+      out.prefectures = full.prefectures.map((p) => (p.ownerGuildId === guildId ? p : pick(p, RIVAL_PREFECTURE_FIELDS)));
     }
     else if (key === 'shipments') out.shipments = full.shipments.filter((s) => s.ownerGuildId === guildId);
     else if (key === 'syndicateBuilds') out.syndicateBuilds = full.syndicateBuilds.filter((b) => b.ownerGuildId === guildId);
@@ -300,6 +324,6 @@ function fogForGuild(full, state, guildId) {
 
 module.exports = {
   fogForGuild, geographyFor, TOP_LEVEL, OMIT_WHEN_EMPTY_TOP_LEVEL,
-  RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS, RIVAL_SYSTEM_LANDMARK_FIELDS,
+  RIVAL_GUILD_FIELDS, RIVAL_VENTURE_FIELDS, RIVAL_OUTPOST_FIELDS, RIVAL_PREFECTURE_FIELDS, RIVAL_SYSTEM_LANDMARK_FIELDS,
   GALAXY_FUEL_FIELDS, SYNDICATE_PUBLIC_FIELDS,
 };

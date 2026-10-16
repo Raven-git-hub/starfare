@@ -1,8 +1,8 @@
 'use strict';
 
-// asset-recipes-final.test.js — the nine FINAL Tier-4 bills and their assembly times
-// (docs/asset-recipes.md "Tier-4 asset bills (3→4 recipes) — FINAL", RULED 27-09-26), as
-// carried by sim/asset-recipes.js.
+// asset-recipes-final.test.js — the ten FINAL Tier-4 bills and their assembly times
+// (docs/asset-recipes.md "Tier-4 asset bills (3→4 recipes) — FINAL", RULED 27-09-26; the tenth, the
+// Prefecture, RULED 16-10-26), as carried by sim/asset-recipes.js.
 //
 // The tripwires:
 //   - DOC ↔ CODE: every row of the doc's FINAL table is read from the doc itself and checked
@@ -12,10 +12,11 @@
 //   - BUILD_TICKS: the three new installation times are present, and the existing six did not
 //     move.
 //   - INSTALLATIONS: the outpost and the deep scan array are buildable and sellable (⤳ 15-10-26);
-//     the toll gate's bill is still data only, with no build or buy path.
-//   - AT REST: under the new bills and the 27-09-26 Tier-3 prices, every buildable kind's parts
+//     the Prefecture is buildable but NOT sellable — build-only (⤳ 16-10-26); the toll gate's bill is
+//     still data only, with no build or buy path.
+//   - AT REST: under the new bills and the 27-09-26 Tier-3 prices, every SELLABLE kind's parts
 //     cost still sits below its purchase baseline, so a fresh galaxy's Syndicate buy prices are
-//     unchanged.
+//     unchanged. (The build-only kinds have no buy price to keep.)
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -24,8 +25,8 @@ const path = require('node:path');
 
 const { createState } = require('../state.js');
 const {
-  ASSET_BILLS, VEHICLE_BILLS, INSTALLATION_BILLS, ALL_BILLS, OUTPOST, DEEP_SCAN_ARRAY, TOLL_GATE,
-  BUILD_TICKS, BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS,
+  ASSET_BILLS, VEHICLE_BILLS, INSTALLATION_BILLS, ALL_BILLS, OUTPOST, DEEP_SCAN_ARRAY, TOLL_GATE, PREFECTURE,
+  BUILD_TICKS, BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, INSTALLATION_KIT_BUY_BASELINE, kitKindForBill,
   assetBill, assertBillModulesAreTier3, priceAssetForPurchase, assetPurchaseBaseline,
 } = require('../asset-recipes.js');
 const { MINER, FACTORY } = require('../assets.js');
@@ -48,6 +49,7 @@ const KIND_OF_ROW = {
   'Deep Scan Array': DEEP_SCAN_ARRAY,
   'Toll Gate': TOLL_GATE,
   Outpost: OUTPOST,
+  Prefecture: PREFECTURE,
 };
 
 // readFinalTable() -> [{ name, assemblyTicks, bill }] for every row of the doc's FINAL table
@@ -93,12 +95,12 @@ function readFinalTable() {
 
 // --- 1. doc ↔ code ------------------------------------------------------------------------
 
-test('the doc\'s FINAL table has exactly the nine billed assets', () => {
+test('the doc\'s FINAL table has exactly the ten billed assets', () => {
   const names = readFinalTable().map((r) => r.name);
   assert.deepEqual(names.sort(), Object.keys(KIND_OF_ROW).sort());
 });
 
-test('each of the nine bills matches the doc exactly — every part and every quantity', () => {
+test('each of the ten bills matches the doc exactly — every part and every quantity', () => {
   for (const { name, bill } of readFinalTable()) {
     const kind = KIND_OF_ROW[name];
     const inCode = ALL_BILLS[kind] || INSTALLATION_BILLS[kind];
@@ -107,16 +109,16 @@ test('each of the nine bills matches the doc exactly — every part and every qu
   }
 });
 
-test('each of the nine assembly times in the doc is BUILD_TICKS', () => {
+test('each of the ten assembly times in the doc is BUILD_TICKS', () => {
   for (const { name, assemblyTicks } of readFinalTable()) {
     assert.equal(BUILD_TICKS[KIND_OF_ROW[name]], assemblyTicks, `${name}: the doc's assembly time is BUILD_TICKS`);
   }
 });
 
-test('the code carries exactly the nine bills, split across its three catalogs', () => {
+test('the code carries exactly the ten bills, split across its three catalogs', () => {
   assert.deepEqual(Object.keys(ASSET_BILLS).sort(), [FACTORY, MINER].sort());
   assert.deepEqual(Object.keys(VEHICLE_BILLS).sort(), [LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT].sort());
-  assert.deepEqual(Object.keys(INSTALLATION_BILLS).sort(), [DEEP_SCAN_ARRAY, OUTPOST, TOLL_GATE].sort());
+  assert.deepEqual(Object.keys(INSTALLATION_BILLS).sort(), [DEEP_SCAN_ARRAY, OUTPOST, PREFECTURE, TOLL_GATE].sort());
   // Every quantity a positive integer (§15.2: integer goods).
   for (const bill of [...Object.values(ALL_BILLS), ...Object.values(INSTALLATION_BILLS)]) {
     for (const [module, qty] of Object.entries(bill)) {
@@ -127,11 +129,12 @@ test('the code carries exactly the nine bills, split across its three catalogs',
 
 // --- 2. BUILD_TICKS -----------------------------------------------------------------------
 
-test('BUILD_TICKS: the three new installation times are present, and the existing six did not move', () => {
+test('BUILD_TICKS: the four installation times are present, and the existing six did not move', () => {
   // Typed ON PURPOSE (the ruled numbers), not derived from the doc like the test above.
   assert.equal(BUILD_TICKS[OUTPOST], 12960, 'outpost: 9 days');
   assert.equal(BUILD_TICKS[DEEP_SCAN_ARRAY], 10080, 'deep scan array: 7 days');
   assert.equal(BUILD_TICKS[TOLL_GATE], 8640, 'toll gate: 6 days');
+  assert.equal(BUILD_TICKS[PREFECTURE], 20160, 'Prefecture: 14 days (RULED 16-10-26)');
   assert.deepEqual(BUILD_TICKS, {
     [MINER]: 720,
     [FACTORY]: 960,
@@ -142,7 +145,8 @@ test('BUILD_TICKS: the three new installation times are present, and the existin
     [OUTPOST]: 12960,
     [DEEP_SCAN_ARRAY]: 10080,
     [TOLL_GATE]: 8640,
-  }, 'nine entries: the six existing values unchanged, plus the three new ones');
+    [PREFECTURE]: 20160,
+  }, 'ten entries: the six existing values unchanged, plus the four installations');
 });
 
 // --- 3. two installations are buildable, the toll gate is still data only -------------------
@@ -164,8 +168,22 @@ test('installations: the outpost and the deep scan array are buildable and sella
   assert.equal(BUILDABLE_KINDS.includes(TOLL_GATE), false, 'toll gate: a dockyard cannot build it');
   assert.equal(SYNDICATE_SELLABLE_KINDS.includes(TOLL_GATE), false, 'toll gate: the Syndicate does not sell it');
   assert.equal(priceAssetForPurchase(s, TOLL_GATE, s.tick), null, 'toll gate: cannot be priced for purchase');
-  // The same Tier-3 tripwire covers all three bills (it also ran at load time).
+  // The same Tier-3 tripwire covers all four bills (it also ran at load time).
   assert.doesNotThrow(() => assertBillModulesAreTier3(INSTALLATION_BILLS));
+});
+
+// ⤳ 16-10-26 (docs/asset-recipes.md, the Prefecture note; docs/territory-model.md §4): the Prefecture is the
+// tenth billed asset and the second BUILD-ONLY kind — a dockyard builds it, the Syndicate never sells it.
+test('the Prefecture: buildable (its bill, finishing as one idle prefecture kit), but NOT sellable — build-only, with no buy baseline', () => {
+  assert.equal(assetBill(PREFECTURE), INSTALLATION_BILLS[PREFECTURE], 'assetBill finds the doc\'s bill');
+  assert.equal(ALL_BILLS[PREFECTURE], INSTALLATION_BILLS[PREFECTURE], 'in the buildable catalog');
+  assert.equal(BUILDABLE_KINDS.includes(PREFECTURE), true, 'a dockyard builds it');
+  assert.equal(kitKindForBill(PREFECTURE), 'prefecture', 'a finished build mints one idle prefecture kit');
+  assert.equal(SYNDICATE_SELLABLE_KINDS.includes(PREFECTURE), false, 'the Syndicate does NOT sell it');
+  assert.equal(PREFECTURE in INSTALLATION_KIT_BUY_BASELINE, false, 'so it has no buy baseline');
+  // It is the one bill that uses the two former orphans (design.md §19 #68).
+  assert.equal(INSTALLATION_BILLS[PREFECTURE].claim_beacon, 2);
+  assert.equal(INSTALLATION_BILLS[PREFECTURE].habitation_module, 2);
 });
 
 // --- 4. the seam with the Syndicate purchase price ------------------------------------------
@@ -174,8 +192,11 @@ test('at rest, every buildable kind\'s parts cost stays below its baseline, so i
   // A fresh galaxy prices every module at its base. Under the FINAL bills and the 27-09-26
   // Tier-3 prices, `round(partsCost × 0.8)` must still lose to the baseline for every kind,
   // so the purchase price at rest is exactly the baseline it was before this slice.
+  // ⤳ 16-10-26: every buildable kind EXCEPT the Prefecture. It is build-only with no buy baseline (above), so it
+  // has no buy price to keep; its parts at rest (5 deep_scan_mast alone are 100M) are far above the flat floor
+  // assetPurchaseBaseline would fall back to, which is why a Prefecture buy must stay refused at the gate.
   const s = createState({ guilds: [], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 } });
-  for (const kind of BUILDABLE_KINDS) {
+  for (const kind of BUILDABLE_KINDS.filter((k) => k !== PREFECTURE)) {
     let partsCost = 0;
     for (const [module, qty] of Object.entries(ALL_BILLS[kind])) partsCost += qty * basePriceFor(module);
     assert.ok(partsCost * 0.8 < assetPurchaseBaseline(kind),

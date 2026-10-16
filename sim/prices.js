@@ -133,8 +133,9 @@ const SPECIALIST_BANDS = Object.freeze({
   interdiction_projector: Object.freeze({ base: 20_000_000, floor: 4_000_000, ceiling: 2_000_000_000 }),   // toll gate
 });
 
-// The band of the four UNCLASSIFIED modules — drive_module, droid_components, claim_beacon,
-// habitation_module. No asset bill uses them yet, and the ruling says they "default to a
+// The band of the two UNCLASSIFIED modules — drive_module, droid_components (claim_beacon and
+// habitation_module left it 16-10-26 for sub-tiers 3-2 and 3-3, when the Prefecture bill placed
+// them). No asset bill uses these two yet, and the ruling says they "default to a
 // sub-tier when first placed in a bill" WITHOUT saying which one. Picking a sub-tier here
 // would be inventing their price, and leaving them with no band would crash every galaxy
 // (they are priced goods, so a fresh galaxy seeds them). So they keep their STATUS QUO: the

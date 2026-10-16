@@ -21,7 +21,7 @@ sim/
 ├── actions.js        action constructors + validate-as-they-arrive intake   ✅ (foundGuild, establishVenture[mining|refining], paySyndicateFee)
 ├── tick.js           tick(state, actions) — pure; the eight §15.6 steps as named functions   ✅ (step 1 production real, incl. refining; steps 2–8 stubs)
 ├── seed.js           read-only window on data/seed.json (resolve a siteId/landmark)   ✅
-├── occupancy.js      derived site→venture map (never stored on the site)   ✅
+├── occupancy.js      derived site→occupant map: ventures and planted Prefectures (never stored on the site)   ✅
 ├── assets.js         ground-asset vocabulary + derived idle/deployed lookup   ✅
 ├── resources.js      the good vocabulary: raw + processed + fuel   ✅
 ├── recipes.js        the recipe catalog (raw→processed conversions)   ✅

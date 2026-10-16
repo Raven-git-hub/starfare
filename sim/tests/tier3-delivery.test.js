@@ -23,6 +23,14 @@
 //   6. ISOLATION: Tier-1/2 goods under every send control and order reproduce the pre-slice
 //      engine's bytes (hashes computed on HEAD 8af8b11 and pinned).
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -356,8 +364,8 @@ test('determinism: the same committed Tier-3 galaxy run twice gives the same byt
 // `reord` turns Syndicate Top-Up on, so the rescue no longer fires and their short days breach
 // again. The run is once more the pre-rescue engine's to the byte: the two hashes are the original
 // ones above, unchanged. Slice A's were 103ed0e1…b195 and bd81549e…48a1.
-const ISO_FINAL = '11fafaf8cd59b5cc649701f09151a5a7b399a7e438cf8f60de6b815d513c16a0';
-const ISO_EVERY_TICK = 'fe166027428d67b5c392d88bb780affca25e0a14f971fa5141bfcefd10a44a34';
+const ISO_FINAL = '03d016f9876ae166044738e84225f64fe0586f2a51a6b84a2364532bfaf60394';
+const ISO_EVERY_TICK = 'c5b6f34a70493d5f2b4da346ecc05a63de45d7151b40f84036cdd5b6ef83e063';
 
 function isolationRun() {
   const crypto = require('node:crypto');

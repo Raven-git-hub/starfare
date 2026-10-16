@@ -284,7 +284,8 @@ RETREATED (`territory-model.md` §5, the retreat rule). Added to the `sim/events
 `checkEventLog` accepts it); it is exactly the "future writer adds its own type" §7 left room for.
 
 **The writer — the retreat itself.** `resolveDeployArrival` (`sim/actions.js`) is the ONE place a deploy
-retreats; where it already flags the craft `deployFailed = { reason, tick }` (§5), it also records a
+retreats *(⤳ 16-10-26: the retreat, the flag and this write moved, unchanged, into `retreatKitCraft`, the ONE kit retreat,
+which a Prefecture kit's failed unload also calls — `docs/territory-model.md` §4's AS-BUILT note)*; where it already flags the craft `deployFailed = { reason, tick }` (§5), it also records a
 `deploy_failed` row through the same shared `recordEvent` the licence removers use (prune + append). One
 writer, so the craft flag and the message cannot disagree. Born unread; retention and acknowledge are
 §3 / §4’s, unchanged.
@@ -295,7 +296,11 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
   territory was lost in flight. The client's Reason fact has no label for it yet — it reads "—" — client slice.)*
   *(⤳ 15-10-26, roadmap 2.5 slice 14b: labelled **"Not attached"**.)* *(⤳ 15-10-26, slice 15: and
   `'rival-territory'` — the array's target became a rival's control in flight — labelled **"Rival territory"**.)*
-- `kind` — the deployable kind, `'outpost'` or (2.5 (b1)) `'deepScan'`.
+  *(⤳ 16-10-26, the Prefecture / claims slice, engine PR 1: and `'system-claimed'` — a Prefecture kit's unload target, an
+  unclaimed system, was claimed by a rival in flight. Engine only: the client has no label for it yet (it reads "—"), and
+  `sim/tests/deploy-failed-notice-client.test.js` pins that as awaited by the client PR.)*
+- `kind` — the deployable kind, `'outpost'` or (2.5 (b1)) `'deepScan'` — or (16-10-26) `'prefecture'`, for an unload
+  that retreated.
 - `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
 - `craftId` + `craftClass` — the transport (the facts line, and the lookup for Show on map). *(⤳ Now the forks'
   lookup: Show on map is replaced, below.)*

@@ -24,6 +24,14 @@
 //   7. THE OUTPOST PATH IS BYTE-IDENTICAL to main before this slice — hashes recorded on a60d98e.
 // The per-guild view (a rival's array hidden) is tested with the rest of the fog, in fog.test.js.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -151,7 +159,8 @@ test('vocabulary: deepScan is a kit kind packing deep_scan_array_kit — off-mar
   assert.equal(DEEP_SCAN_KIT, 'deep_scan_array_kit');
   assert.equal(kitGoodFor('deepScan'), DEEP_SCAN_KIT);
   assert.equal(kindForKit(DEEP_SCAN_KIT), 'deepScan');
-  assert.deepEqual(DEPLOYABLE_KITS, { outpost: OUTPOST_KIT, deepScan: DEEP_SCAN_KIT });
+  // ⤳ 16-10-26: the Prefecture's ground kit is the third row (the Prefecture / claims slice).
+  assert.deepEqual(DEPLOYABLE_KITS, { outpost: OUTPOST_KIT, deepScan: DEEP_SCAN_KIT, prefecture: 'prefecture_kit' });
   assert.equal(isDeployableGood(DEEP_SCAN_KIT), true);
   assert.equal(isStockpileGood(DEEP_SCAN_KIT), false, 'never a stockpile key, so never in supply');
   assert.equal(PRICED_GOODS.includes(DEEP_SCAN_KIT), false, 'never priced');
@@ -179,6 +188,10 @@ test('every kit kind has a deploy rule of its own — none throws, and each judg
   assert.deepEqual(answers.outpost, { valid: true });
   assert.equal(answers.deepScan.valid, false);
   assert.match(answers.deepScan.reason, /in or beside no territory guild "g1" holds — a Deep Scan Array deploys inside its guild's territory, or on open space beside it/);
+  // ⤳ 16-10-26: the ONE kit kind with no space-lane rule — the Prefecture's GROUND kit, planted on a slot, never
+  // deployed on a hex. The deploy rule refuses it BY NAME (it must not halt as a table out of step).
+  assert.equal(answers.prefecture.valid, false);
+  assert.match(answers.prefecture.reason, /carries a prefecture_kit — a Prefecture is not deployed on a hex; unload it into a system and plant it on a settlement slot \(plantPrefecture\)/);
 });
 
 test('seed: every system carries a whole-number claimRadius — the footprint the attached rule measures', () => {
@@ -527,9 +540,9 @@ test('DETERMINISM: two runs are byte-identical; save → restore is byte-identic
 // and retreat, and the range / landmark / occupied refusals of both triggers. If one of these moves, the
 // generalisation changed the outpost path: find out why before re-pinning.
 const OUTPOST_PATH_ON_MAIN = {
-  manualDeploy: { state: 'd2312910ea5b53917a09b32670fd2ffdcb6a80877cbc73ac195075bcd9aad00e', godsEye: '477796de578938cd31319b05340dcb1956b946bf15720c0d0763c78416cd8ec4' },
-  arrivalDeploy: { state: '6ad198ad0ab410f886895a3b7ad64b2d3fdc8359ad316707494e039b413eaa13', godsEye: '30b5cc916626c41dbaef7eed3b2b7d6c468ba54dc112f2c744a504218545c494' },
-  arrivalRetreat: { state: 'c8896430255af5bc6ffb6b477a06b9d44918a488e477992cd40657dc582518f5', godsEye: '8e5a2dca89e214555deadc25e7ad3f0afa4e4e6ff5c3126c1771968e079ea563' },
+  manualDeploy: { state: '01c7137dac86df1ef9d3a8c6721c916b0dcdf29c5c1bceb131d66603b846e483', godsEye: 'baad3c9cdf95ecb2114e8e740ef4939d23751504983d42f637c5e55ef161a9dd' },
+  arrivalDeploy: { state: '42e5a036242198b3a8ab8bb7586f0194c3cd5a3d93bcf4a19a5a8af2b9a395ce', godsEye: '4bff6cbec70782cffe62066a0b78b2057aa0136a15832e2baeca183a0fcc9fdf' },
+  arrivalRetreat: { state: '36ae5b85336d95deb59660a58121993e34989298a4846aaa92b3875e683df5fe', godsEye: '94a908766e3725ab91ffaa780533be814c9e08e1b2dcef59d941aa23ffa42392' },
   reasons: '73debece18be90a63c6876e2b67908ee3de8c72b86fce6f20b4a744cc4dd2df8',
 };
 // ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): founding now records the home system's
@@ -538,9 +551,9 @@ const OUTPOST_PATH_ON_MAIN = {
 // that the slots are the only thing that moved; the full states are re-pinned here. The god's-eye pins and
 // the refusals did not move (the lens carries no record).
 const OUTPOST_PATH_STATE_WITH_SLOTS = {
-  manualDeploy: 'ec4d7bb5f0907c0723096b299005157f5458933d5eff7b6d33dfe5bf05250838',
-  arrivalDeploy: '780bd5b0b6bd36de7d53e6ff54cbbd3bdaf7d828069cd2eff99a0f76cad33514',
-  arrivalRetreat: '14abae29093c152036bd39da69be8a3cbcd53dc7ca4a4b41ff566922b5b09ef3',
+  manualDeploy: 'd4e5813109f8071daf787b050b51679afe2bfcede3e56fe6605d4069ed7dd972',
+  arrivalDeploy: '603046620de47b47d68a46c2d1c2ffc455188a17c80c0e5b7b121ad5160a7364',
+  arrivalRetreat: '0997daabf595f8d658126a9fafedbae0a7984ea0bfad676a2eba532038d921d2',
 };
 
 test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placements, anchors, retreat and refusals', () => {

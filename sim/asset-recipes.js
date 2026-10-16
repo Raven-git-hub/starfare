@@ -4,13 +4,15 @@
 // (docs/asset-recipes.md "Tier-4 asset bills (3→4 recipes) — FINAL"; docs/build-yard.md §1).
 // A Tier-4 recipe is NOT a `recipes.js` row: its output is an ASSET, not a stockpile good, so
 // it never runs through the 2→3 resolver. This file is the machine-readable form of the doc's
-// nine FINAL bills — `assetKind -> { module: qty }` — in three catalogs:
+// ten FINAL bills — `assetKind -> { module: qty }` — in three catalogs:
 //
 //   - ASSET_BILLS        — miner, factory (the two ground assets).
 //   - VEHICLE_BILLS      — the four guild transports.
-//   - INSTALLATION_BILLS — outpost, deep scan array, toll gate. The outpost and the deep scan
-//                          array are buildable and sellable, and finish as a KIT; the toll gate is
-//                          still data only (see INSTALLATION_BILLS below for why).
+//   - INSTALLATION_BILLS — outpost, deep scan array, toll gate, Prefecture. The outpost and the
+//                          deep scan array are buildable and sellable, and finish as a KIT; the
+//                          Prefecture is buildable but NOT sellable (build-only, 16-10-26) and
+//                          finishes as a kit too; the toll gate is still data only (see
+//                          INSTALLATION_BILLS below for why).
 //
 // The Droid row of the doc has no bill yet (design-ahead, no entity), so it is not here.
 //
@@ -119,15 +121,20 @@ const VEHICLE_BILLS = Object.freeze({
   [SPYCRAFT]: SPYCRAFT_BILL,
 });
 
-// ── THE THREE INSTALLATION BILLS (RULED 27-09-26; two made buildable 15-10-26) ────────────────
-// The doc's FINAL table rules a bill and an assembly time for the outpost, the deep scan array and
-// the toll gate. All three are recorded here so the code carries all nine bills the doc does, and so
-// the Tier-3 tripwire below covers them. Two of them now have a build path and one does not
-// (docs/asset-purchase.md §"Installation kits", RULED 15-10-26):
+// ── THE FOUR INSTALLATION BILLS (RULED 27-09-26; two made buildable 15-10-26; the Prefecture 16-10-26) ──
+// The doc's FINAL table rules a bill and an assembly time for the outpost, the deep scan array, the
+// toll gate and (16-10-26) the Prefecture. All four are recorded here so the code carries all ten bills
+// the doc does, and so the Tier-3 tripwire below covers them. Three of them now have a build path and
+// one does not (docs/asset-purchase.md §"Installation kits", RULED 15-10-26):
 //   - outpost, deep scan array — BUILDABLE (dockyard) and SELLABLE (Syndicate). What a finished
 //                       build or delivery produces is not an entity of the bill kind but one idle
 //                       KIT in the guild's inventory, which the existing load → ferry → deploy loop
 //                       carries (KIT_KIND_FOR_BILL below is the translation);
+//   - Prefecture      — BUILDABLE but NOT SELLABLE (docs/asset-recipes.md, the 16-10-26 note): the
+//                       deliberate throttle on rapid expansion — a guild must build it. It finishes as
+//                       one idle `prefecture` kit like the two above, which is ferried (load → route →
+//                       unload) and then PLANTED on a settlement slot to claim a system
+//                       (docs/territory-model.md §4; sim/actions.js `plantPrefecture`);
 //   - toll gate       — still DATA ONLY: it has no entity and no kit row in DEPLOYABLE_KITS
 //                       (sim/resources.js), so making it buildable would invent its kit. `assetBill`
 //                       returns null for it, the dockyard refuses it and the Syndicate cannot price it.
@@ -140,6 +147,7 @@ const VEHICLE_BILLS = Object.freeze({
 const OUTPOST = 'outpost';
 const DEEP_SCAN_ARRAY = 'deep_scan_array';
 const TOLL_GATE = 'toll_gate';
+const PREFECTURE = 'prefecture';
 
 const DEEP_SCAN_ARRAY_BILL = Object.freeze({
   deep_scan_mast: 2,
@@ -173,16 +181,36 @@ const OUTPOST_BILL = Object.freeze({
   power_cells: 200,
 });
 
+// The Prefecture — the territorial claim anchor (design.md §2; docs/territory-model.md §4). Lifted
+// verbatim, in the doc's order, from docs/asset-recipes.md's 16-10-26 note (the FINAL table's tenth row).
+// It is the first bill to use `claim_beacon` and `habitation_module` (design.md §19 #68). The 5
+// deep_scan_mast are the price / throttle, and reserve a design-ahead in-system scan that is NOT built.
+const PREFECTURE_BILL = Object.freeze({
+  claim_beacon: 2,
+  habitation_module: 2,
+  deep_scan_mast: 5,
+  life_support_module: 10,
+  defence_system: 10,
+  chassis: 4,
+  control_module: 2,
+  comms_array: 3,
+  photovoltaic_array: 2,
+  power_cells: 8,
+  hull_plating: 8,
+});
+
 // installationKind -> bill. Only the BUILDABLE installations are merged into ALL_BILLS (below).
 const INSTALLATION_BILLS = Object.freeze({
   [DEEP_SCAN_ARRAY]: DEEP_SCAN_ARRAY_BILL,
   [TOLL_GATE]: TOLL_GATE_BILL,
   [OUTPOST]: OUTPOST_BILL,
+  [PREFECTURE]: PREFECTURE_BILL,
 });
 
-// The installations a dockyard can build (and the Syndicate sell) — the deep scan array and the
-// outpost, in the doc's table order. The toll gate is deliberately absent (see above).
-const BUILDABLE_INSTALLATION_KINDS = Object.freeze([DEEP_SCAN_ARRAY, OUTPOST]);
+// The installations a dockyard can build — the deep scan array, the outpost and the Prefecture, in
+// the doc's table order. The toll gate is deliberately absent (see above). The Syndicate sells only
+// the first two (SYNDICATE_SELLABLE_KINDS below).
+const BUILDABLE_INSTALLATION_KINDS = Object.freeze([DEEP_SCAN_ARRAY, OUTPOST, PREFECTURE]);
 
 // The merged view — every buildable/buyable kind's bill: ground assets, vehicles AND the buildable
 // installations. `assetBill` reads this, so one lookup answers "the bill for this kind" for every
@@ -202,14 +230,18 @@ const BUILDABLE_KINDS = Object.freeze([
 ]);
 
 // SYNDICATE_SELLABLE_KINDS — the kinds the Syndicate SELLS: sellable ⊂ buildable, diverging at
-// spycraft (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable (RULED
-// 22-09-26)"). It is `BUILDABLE_KINDS` MINUS `spycraft` — the two ground assets, the three
-// CARGO transports (light / medium / heavy), and the two installation kits (deep scan array,
-// outpost; RULED 15-10-26, docs/asset-purchase.md §"Installation kits"): seven kinds. Spycraft
-// is still the ONLY guild-build-only kind: a guild makes it in the dark at its own dockyard, the
-// Syndicate never sells it. Spelled as an explicit list (not a filter of BUILDABLE_KINDS) so it
-// reads as the deliberate sell catalog it is — the buy gate (buyAssetFromSyndicate) and the
-// snapshot's purchase quote read THIS, not BUILDABLE_KINDS, so a spycraft buy is refused loudly.
+// the BUILD-ONLY kinds (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable
+// (RULED 22-09-26)"). It is `BUILDABLE_KINDS` MINUS the two build-only kinds — the two ground
+// assets, the three CARGO transports (light / medium / heavy), and the two installation kits (deep
+// scan array, outpost; RULED 15-10-26, docs/asset-purchase.md §"Installation kits"): seven kinds.
+// The two build-only kinds, each for its own reason:
+//   - spycraft   — a guild makes it in the dark at its own dockyard (RULED 22-09-26);
+//   - prefecture — the deliberate throttle on rapid expansion by wealthy guilds: a guild must BUILD
+//                  its flag, there is no buy-it-and-skip path (RULED 16-10-26, docs/asset-recipes.md).
+//                  So it has no INSTALLATION_KIT_BUY_BASELINE either.
+// Spelled as an explicit list (not a filter of BUILDABLE_KINDS) so it reads as the deliberate sell
+// catalog it is — the buy gate (buyAssetFromSyndicate) and the snapshot's purchase quote read THIS,
+// not BUILDABLE_KINDS, so a buy of either build-only kind is refused loudly.
 const SYNDICATE_SELLABLE_KINDS = Object.freeze([
   ...BUILDABLE_ASSET_KINDS, LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
   DEEP_SCAN_ARRAY, OUTPOST,
@@ -221,11 +253,13 @@ const SYNDICATE_SELLABLE_KINDS = Object.freeze([
 // (sim/tick.js mintFinishedKind) looks the bill kind up HERE and mints one idle KIT of the kit kind.
 // This is the ONLY place the two spellings meet — nothing else translates one into the other. The
 // outpost happens to spell both the same way; it still needs its row, or a finished outpost would be
-// minted as a plain asset off the miner/factory numbering instead of the kit serial. The toll gate gets
-// its row (`toll_gate` → `tollGate`) in the slice that gives it a kit.
+// minted as a plain asset off the miner/factory numbering instead of the kit serial. So does the
+// Prefecture (16-10-26), for the same reason. The toll gate gets its row (`toll_gate` → `tollGate`) in the
+// slice that gives it a kit.
 const KIT_KIND_FOR_BILL = Object.freeze({
   [DEEP_SCAN_ARRAY]: 'deepScan',
   [OUTPOST]: 'outpost',
+  [PREFECTURE]: 'prefecture',
 });
 
 // THE LOAD-BEARING MECHANICAL TRIPWIRE (working practice #4). Every module named in every
@@ -248,8 +282,8 @@ function assertBillModulesAreTier3(bills) {
   }
 }
 
-// Run it now, at require time, over EVERY catalog (ground assets, the four ship bills AND the
-// three data-only installation bills), so a drift in ANY bill fails the whole suite loudly the
+// Run it now, at require time, over EVERY catalog (ground assets, the four ship bills AND all four
+// installation bills, the toll gate's data-only one included), so a drift in ANY bill fails the whole suite loudly the
 // instant this file is required.
 assertBillModulesAreTier3(ALL_BILLS);
 assertBillModulesAreTier3(INSTALLATION_BILLS);
@@ -324,13 +358,15 @@ const BUILD_TICKS = Object.freeze({
   [MEDIUM_TRANSPORT]: 960,    // 16 hours
   [HEAVY_TRANSPORT]: 10080,   // 1 week (7 × 1,440)
   [SPYCRAFT]: 10080,          // 1 week
-  // The three installations' assembly times (docs/asset-recipes.md FINAL table; docs/
-  // tier3-timed-production.md, RULED 27-09-26). All `[FIRST-CUT]`. The outpost's and the deep
-  // scan array's are LIVE (both buildable since 15-10-26); the toll gate's stays INERT, because
-  // the toll gate is not buildable (INSTALLATION_BILLS above), so no build counts it down.
+  // The four installations' assembly times (docs/asset-recipes.md FINAL table; docs/
+  // tier3-timed-production.md, RULED 27-09-26; the Prefecture's RULED 16-10-26). All `[FIRST-CUT]`.
+  // The outpost's and the deep scan array's are LIVE (both buildable since 15-10-26), and the
+  // Prefecture's is live from the claim slice; the toll gate's stays INERT, because the toll gate is
+  // not buildable (INSTALLATION_BILLS above), so no build counts it down.
   [OUTPOST]: 12960,           // 9 days (9 × 1,440)
   [DEEP_SCAN_ARRAY]: 10080,   // 7 days (7 × 1,440)
   [TOLL_GATE]: 8640,          // 6 days (6 × 1,440) — inert
+  [PREFECTURE]: 20160,        // 14 days (14 × 1,440)
 });
 
 // ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────
@@ -440,6 +476,7 @@ module.exports = {
   OUTPOST,
   DEEP_SCAN_ARRAY,
   TOLL_GATE,
+  PREFECTURE,
   ALL_BILLS,
   BUILDABLE_ASSET_KINDS,
   BUILDABLE_INSTALLATION_KINDS,

@@ -125,8 +125,9 @@ const loadedAt = (location, opts) => { const s = loaded(opts); return placeCraft
 // --- 1. vocabulary: a kit kind is not a venture kind ------------------------------------------------
 
 test('vocabulary: outpost is a KIT asset kind, and the venture kinds are untouched', () => {
-  // 'deepScan' joined 2.5 (b1) by its one DEPLOYABLE_KITS row (sorted, invariant 9).
-  assert.deepEqual(KIT_ASSET_KINDS, ['deepScan', 'outpost']);
+  // 'deepScan' joined 2.5 (b1) by its one DEPLOYABLE_KITS row (sorted, invariant 9); 'prefecture' 16-10-26 the
+  // same way (the Prefecture / claims slice).
+  assert.deepEqual(KIT_ASSET_KINDS, ['deepScan', 'outpost', 'prefecture']);
   assert.equal(isKitAssetKind('outpost'), true);
   assert.deepEqual(ASSET_KINDS, [FACTORY, MINER], 'the venture-deployable set is unchanged');
   assert.equal(isAssetKind('outpost'), false, 'so establishVenture can never name a kit');
@@ -167,7 +168,7 @@ test('grant gates: unknown guild, a system that is not on the seed, a kind with 
   const s = kitState();
   assert.match(refuse(s, grant({ guildId: 'nobody' })), /no guild with id "nobody"/);
   assert.match(refuse(s, grant({ systemId: 'sys_nope' })), /system "sys_nope" is not a system on the seed/);
-  assert.match(refuse(s, grant({ kind: 'tollGate' })), /"tollGate" is not a deployable kind with a kit \(known: outpost, deepScan\)/);
+  assert.match(refuse(s, grant({ kind: 'tollGate' })), /"tollGate" is not a deployable kind with a kit \(known: outpost, deepScan, prefecture\)/);
   assert.match(refuse(s, grant({ kind: 'outpost_kit' })), /not a deployable kind/, 'the kind, not the good id');
   assert.match(refuse(s, grant({ kind: MINER })), /not a deployable kind/, 'a machine is not a kit');
   // The action names a system now, not a vehicle.
