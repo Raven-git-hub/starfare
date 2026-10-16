@@ -26,7 +26,7 @@
 //                         exploration? ({ [planetId]: { tick, nodes: { [nodeId]: tick },
 //                           slots: { [slotId]: tick } } } — the learned-geography record,
 //                           exploration-model.md §7; absent when empty) }]
-//   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind }]
+//   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick }]
 //                          // SHARED territory rows; reference real seed landmarks
 //   state.reserve    : { reserveLevel, fuelPrice, avgDraw } // SHARED fuel reserve;
 //                          // fuelPrice is the ONE market price of deuterium_fuel and
@@ -2038,15 +2038,35 @@ function checkOrders(state) {
 // each must resolve to a real landmark of that exact kind (a citadel-kind claim
 // pointing at an outpost id fails, not resolves by luck). This is the referential
 // half of "live state references the seed by id" (design.md §15.3) for territory.
+//
+// ⤳ The seniority control map (docs/territory-model.md §2; roadmap 2.5, the Prefecture / claims slice, engine PR 2)
+// ranks claims, so this also guards the two facts that ranking needs to be well-defined — a corrupt row would
+// otherwise let the map quietly pick a winner (sim/claims.js halts on the first, too):
+//   - every `claimedAtTick` is a whole tick in [0, now] (§15.2 — every mutation records its tick; seniority is
+//     "the oldest claimedAtTick", so a missing or future tick cannot be ranked);
+//   - every `claimId` is unique (§15.4 "Ids never repeat"; the tie-break is "the lower claimId", which needs ids
+//     that differ).
+// NOT asserted: one system claim per system. Play cannot write two (founding refuses a claimed home, the plant a
+// held system), but several test galaxies home two guilds on one system on purpose; the map then gives that
+// centre to the FIRST row, as `systemHolder` does.
 function checkClaimIntegrity(state) {
   const out = [];
+  const seenIds = new Set();
   for (const c of state.claims || []) {
+    const where = `claim:${c.claimId}`;
+    if (seenIds.has(c.claimId)) {
+      out.push({ rule: 'claim-id-unique (design.md §15.4)', where, detail: { claimId: c.claimId } });
+    }
+    seenIds.add(c.claimId);
+    if (!Number.isInteger(c.claimedAtTick) || c.claimedAtTick < 0 || c.claimedAtTick > state.tick) {
+      out.push({ rule: 'claim-claimedAtTick-is-a-past-tick (§15.2)', where: `${where}.claimedAtTick`, detail: { claimedAtTick: c.claimedAtTick, tick: state.tick } });
+    }
     if (typeof c.landmarkId !== 'string' || typeof c.landmarkKind !== 'string') {
-      out.push({ rule: 'claim-references-landmark', where: `claim:${c.claimId}`, detail: { landmarkId: c.landmarkId, landmarkKind: c.landmarkKind } });
+      out.push({ rule: 'claim-references-landmark', where, detail: { landmarkId: c.landmarkId, landmarkKind: c.landmarkKind } });
       continue;
     }
     if (!getLandmark(c.landmarkId, c.landmarkKind)) {
-      out.push({ rule: 'claim-landmark-exists (seed.js)', where: `claim:${c.claimId}`, detail: { landmarkId: c.landmarkId, landmarkKind: c.landmarkKind } });
+      out.push({ rule: 'claim-landmark-exists (seed.js)', where, detail: { landmarkId: c.landmarkId, landmarkKind: c.landmarkKind } });
     }
   }
   return out;

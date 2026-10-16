@@ -59,6 +59,21 @@ function hexDistance(a, b) {
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
 }
 
+// hexesWithin(centre, reach) -> every axial hex within `reach` hexes of `centre`, the centre included — the
+// standard axial disk (for each q-offset dq, the r-offsets that keep |dq|, |dr| and |dq + dr| all within reach).
+// Pure geometry, no game number; the caller filters for the galaxy's bounds if it needs to. It lives beside
+// hexDistance because it is that distance's disk: every hex it lists is `hexDistance(centre, hex) <= reach`.
+// Two callers: the snapshot's deepScan lane (sim/snapshot.js) and the seniority control map (sim/claims.js).
+function hexesWithin(centre, reach) {
+  const out = [];
+  for (let dq = -reach; dq <= reach; dq += 1) {
+    const lo = Math.max(-reach, -dq - reach);
+    const hi = Math.min(reach, -dq + reach);
+    for (let dr = lo; dr <= hi; dr += 1) out.push({ q: centre.q + dq, r: centre.r + dr });
+  }
+  return out;
+}
+
 // --- where a craft IS, mid-leg (transport-model.md §2.3 / §2.4) ---------------------------------
 // The two functions below answer "which hex is this craft over, right now?" for a craft flying a
 // straight leg. The one caller today is the Cancel control (§11.10): a cancelled craft SNAPS to that
@@ -241,6 +256,6 @@ function arrivalTickFor(currentTick, distance) {
 }
 
 module.exports = {
-  CRAFT_SPEED, TOLL_BUFF, hexDistance, cubeRound, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
+  CRAFT_SPEED, TOLL_BUFF, hexDistance, hexesWithin, cubeRound, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
   nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor,
 };

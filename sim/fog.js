@@ -26,6 +26,9 @@
 //                             surface is shown live (§4 ruling 11), so its planet and slot are no secret.
 //                             Cut to RIVAL_PREFECTURE_FIELDS all the same, so a field added later stays hidden;
 //       · its claims        → kept (ownership is public), the claimed system's seed detail cut to L0;
+//       · its control       → kept: `controlMap`, the seniority-resolved hexes (territory-model.md §2), is a
+//                             function of the public claims and the seed, so it passes through whole — the same
+//                             map in every view (the Prefecture / claims slice, engine PR 2);
 //       · its deliveries, pending builds, production preview and notices → not in the view.
 //   - GALAXY-WIDE AGGREGATES are coarsened to posted values (design.md §5: "the real supply figure is
 //     hidden; players see only the value and its history"): no Σ-of-every-guild total survives that a
@@ -99,11 +102,14 @@ const SYNDICATE_PUBLIC_FIELDS = [];
 
 // EVERY top-level key of the god's-eye snapshot, classified. `public` passes through untouched;
 // `filtered` is rewritten below. A key in neither list fails tests/fog.test.js.
+// `controlMap` (the seniority control map, docs/territory-model.md §2) is public: every row is resolved from the
+// public claim rows (ownership is public, exploration-model.md §1) and the public seed geometry, so it carries
+// nothing fogged and every guild sees the same map.
 const TOP_LEVEL = {
   public: [
     'schemaVersion', 'tick', 'calendar', 'prices', 'priceHistory',
     'fuelPriceHistory', 'priceBase', 'goodVolumes', 'haulerTiers', 'feeQuote', 'tier3Contract',
-    'assetPurchaseQuote',
+    'assetPurchaseQuote', 'controlMap',
   ],
   filtered: [
     'galacticSupply', 'syndicate', 'guilds', 'production', 'ventures', 'occupancy', 'claims', 'outposts',

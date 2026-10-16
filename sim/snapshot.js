@@ -37,10 +37,10 @@ const {
   volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD,
 } = require('./fuel.js');
 const {
-  nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor, hexDistance, legFuelBurn,
+  nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor, hexDistance, hexesWithin, legFuelBurn,
 } = require('./transport.js');
 const { grantFor, targetReserve, DEUTERIUM_INFLUX_PER_CYCLE } = require('./issuance.js');
-const { heldSystemIds } = require('./claims.js');
+const { heldSystemIds, resolveControl } = require('./claims.js');
 const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
@@ -800,6 +800,12 @@ function computeAttention(state) {
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
+//     controlMap: [ { q, r, guildId, claimId } ],
+//       // 2.5, the Prefecture / claims slice, engine PR 2 (docs/territory-model.md §2) — the SENIORITY CONTROL
+//       // MAP: every hex a held system's footprint covers, with the ONE guild that controls it and the claim that
+//       // won it (oldest claimedAtTick; a system always holds its own centre; a tie -> the lower claimId). The
+//       // engine resolves it (`resolveControl`, sim/claims.js) so the client paints it and resolves nothing.
+//       // Sorted by q then r; ALWAYS EMITTED (`[]` when no system is held). Public — the same in every view.
 //     deepScanArrays?: [ { id, ownerGuildId, coords: {q,r}, anchorSystemId,
 //                          scan?: { level: 'L1'|'L2', targetSystemId? | targetPlanetId?,
 //                                   startedTick, completeTick } } ],
@@ -950,19 +956,6 @@ function attachedHexes(state, guildId) {
     .filter((hex) => isHexInBounds(hex.q, hex.r) && isGround(hex))
     .filter((hex) => attachedPlacement(state, guildId, hex).ok)
     .sort((a, b) => a.q - b.q || a.r - b.r);
-}
-
-// hexesWithin(centre, reach) -> every axial hex within `reach` hexes of `centre`, the centre included — the
-// standard axial disk (for each q-offset dq, the r-offsets that keep |dq|, |dr| and |dq + dr| all within reach).
-// Pure geometry, no game number; the caller filters for the galaxy's bounds.
-function hexesWithin(centre, reach) {
-  const out = [];
-  for (let dq = -reach; dq <= reach; dq += 1) {
-    const lo = Math.max(-reach, -dq - reach);
-    const hi = Math.min(reach, -dq + reach);
-    for (let dr = lo; dr <= hi; dr += 1) out.push({ q: centre.q + dq, r: centre.r + dr });
-  }
-  return out;
 }
 
 // routeQuoteFor(hex, fuelPrice) -> one `fuelCost` entry — what a Syndicate trade through the node on
@@ -2184,6 +2177,16 @@ function buildGodsEyeSnapshot(state) {
     ventures,
     occupancy,
     claims,
+    // The SENIORITY CONTROL MAP (docs/territory-model.md §2; roadmap 2.5, the Prefecture / claims slice, engine PR
+    // 2): one row per controlled hex, `{ q, r, guildId, claimId }`, sorted by q then r — where two held systems'
+    // footprints overlap, the row already names the ONE winner (the oldest claim; a system always keeps its own
+    // centre; at equal ticks the lower claimId). Resolving that is a game rule, so the engine does it
+    // (`resolveControl`, sim/claims.js) and the client only paints the rows (§18 — the deployRange precedent: the
+    // engine says WHERE). The SYSTEM layer only: an Outpost's own hex is in `outposts`, not here.
+    // ALWAYS EMITTED as an array (a stable [] when no system is held), beside the `claims` it is derived from.
+    // PUBLIC: a function of the public claim rows and the seed, so every per-guild view carries it whole
+    // (sim/fog.js). Derived telemetry: no serialized byte, no determinism hash, no schema bump.
+    controlMap: resolveControl(state),
     // The guild Outposts (design.md §4 / §15.4) — SHARED single-hex infrastructure rows, sorted by
     // stable id (built above). ALWAYS EMITTED as an array (a stable [] when a galaxy holds none),
     // unlike the omit-when-empty STATE field: additive derived-on-read telemetry, no serialized byte.
