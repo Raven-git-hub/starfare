@@ -41,14 +41,17 @@ const failed = (id, kind, cause) => ({
 
 // noticePage(events) -> the page's notice code (and kit-kinds table) running for player A, whose view carries
 // `events`, on a stub DOM.
-function noticePage(events) {
+function noticePage(events, vehicles = []) {
   const nodes = {};
   const stub = (id) => ({ id, textContent: '', innerHTML: '', style: {}, hidden: false,
     classList: { add() {}, remove() {}, contains: () => false, toggle() {} } });
-  const snapshot = { guilds: [{ id: A, events, vehicles: [] }], attention: { notices: [] } };
+  const snapshot = { guilds: [{ id: A, events, vehicles }], attention: { notices: [] } };
+  const planned = [];   // every __planKitRoute call a fork makes: [craftId, action]
   const sandbox = {
     document: { getElementById: (id) => nodes[id] || (nodes[id] = stub(id)) },
     window: {
+      // (copied into this realm, so deepEqual compares the action, not which vm built it)
+      __planKitRoute: (craft, action) => planned.push([craft.id, JSON.parse(JSON.stringify(action))]),
       __player: () => ({ guildId: A }),
       __snapshot: () => snapshot,
       __sendAction: () => Promise.resolve({ accepted: true }),
@@ -61,7 +64,8 @@ function noticePage(events) {
     const m = sandbox.document.getElementById('noticeFacts').innerHTML.match(/<span class="k">Reason<\/span><span class="v[^"]*">([^<]*)<\/span>/);
     return m ? m[1] : null;
   };
-  return { page: sandbox, title: () => sandbox.document.getElementById('noticeTitle').textContent, reasonFact };
+  return { page: sandbox, title: () => sandbox.document.getElementById('noticeTitle').textContent, reasonFact,
+    hidden: (id) => sandbox.document.getElementById(id).hidden, planned };
 }
 
 test('the title names the structure in title case: "Deployment Failed — Deep Scan Array" / "… — Outpost"', () => {
@@ -74,23 +78,51 @@ test('the title names the structure in title case: "Deployment Failed — Deep S
   assert.equal(page.noticeRowTitle(outpost), 'Deployment Failed &mdash; <span class="who">Outpost</span>');
 });
 
-// ⤳ 16-10-26 (the Prefecture / claims slice, ENGINE PR 1): the engine gained a fifth retreat reason, 'system-claimed'
-// (a Prefecture kit's target system claimed by a rival in flight). This PR is engine + operator CLI only, so the
-// notice does not name it yet — it reads "—", as 'not-attached' once did. It is listed HERE, by name, so the gap is
-// pinned rather than hidden: the client PR labels it and empties this list, and the test below then holds it to that.
-const AWAITING_CLIENT_LABEL = ['system-claimed'];
-
-test('the Reason fact has a label for EVERY reason the engine retreats on — "Rival territory" for the new one', () => {
+// ⤳ 16-10-26 (the Prefecture / claims slice): engine PR 1 gave the engine a fifth retreat reason, 'system-claimed' (a
+// Prefecture kit's target system claimed by a rival in flight), and pinned it here as awaiting its label. Client PR
+// B1 — which lets a player ferry a Prefecture kit, so can meet that retreat — labels it "System claimed", and the
+// awaited list is gone: every reason is held below.
+test('the Reason fact has a label for EVERY reason the engine retreats on — "Rival territory", "System claimed"', () => {
   const { page } = noticePage([]);
   for (const reason of DEPLOY_FAILED_REASONS) {
-    if (AWAITING_CLIENT_LABEL.includes(reason)) {
-      assert.equal(page.DEPLOY_FAILED_REASON[reason], undefined, `${JSON.stringify(reason)} is labelled now — take it off AWAITING_CLIENT_LABEL`);
-      continue;
-    }
     assert.equal(typeof page.DEPLOY_FAILED_REASON[reason], 'string', `the engine can retreat on ${JSON.stringify(reason)}, which the notice cannot name`);
   }
   assert.equal(page.DEPLOY_FAILED_REASON['rival-territory'], 'Rival territory');
   assert.equal(page.DEPLOY_FAILED_REASON['not-attached'], 'Not attached');
+  assert.equal(page.DEPLOY_FAILED_REASON['system-claimed'], 'System claimed');
+});
+
+// A heavy as the retreat leaves it, in its published shape: idle, off any route, its kit aboard.
+const retreated = (id, good) => ({ id, class: 'heavyTransport', status: 'idle', cargo: { [good]: 1 }, location: { q: 1, r: 2 } });
+
+test('a retreated Prefecture kit (client PR B1): "Deployment Failed — Prefecture", "System claimed", NO Redeploy, and Return plans the unload', () => {
+  const n = failed(8, 'prefecture', 'system-claimed');
+  const craft = retreated(n.payload.craftId, 'prefecture_kit');
+  const { page, title, reasonFact, hidden, planned } = noticePage([n], [craft]);
+  page.openNotice(8);
+  assert.equal(title(), 'Deployment Failed — Prefecture');
+  assert.equal(reasonFact(), 'System claimed');
+  // A ground kit is never deployed on a hex, so the fork that opens the deploy map is not offered…
+  assert.equal(hidden('noticeRedeploy'), true, 'a Prefecture kit offers no Redeploy');
+  assert.equal(hidden('noticeReturn'), false, 'its Return is offered');
+  // …and even asked for, the deploy fork plans the unload, never { type:'deploy', kind:'prefecture' }.
+  page.noticeFork('deploy');
+  page.openNotice(8);
+  page.noticeFork('unload');
+  assert.deepEqual(planned, [[craft.id, { type: 'unload' }], [craft.id, { type: 'unload' }]]);
+});
+
+test('a space kit\'s notice is unchanged: both forks shown, Redeploy plans the deploy map, Return the unload', () => {
+  const n = failed(9, 'outpost', 'occupied');
+  const craft = retreated(n.payload.craftId, 'outpost_kit');
+  const { page, hidden, planned } = noticePage([n], [craft]);
+  page.openNotice(9);
+  assert.equal(hidden('noticeRedeploy'), false);
+  assert.equal(hidden('noticeReturn'), false);
+  page.noticeFork('deploy');
+  page.openNotice(9);
+  page.noticeFork('unload');
+  assert.deepEqual(planned, [[craft.id, { type: 'deploy', kind: 'outpost' }], [craft.id, { type: 'unload' }]]);
 });
 
 test('the popup, opened on an array that met a rival\'s territory, reads the new title and "Rival territory"', () => {

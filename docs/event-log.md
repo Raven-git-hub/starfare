@@ -298,7 +298,9 @@ writer, so the craft flag and the message cannot disagree. Born unread; retentio
   `'rival-territory'` — the array's target became a rival's control in flight — labelled **"Rival territory"**.)*
   *(⤳ 16-10-26, the Prefecture / claims slice, engine PR 1: and `'system-claimed'` — a Prefecture kit's unload target, an
   unclaimed system, was claimed by a rival in flight. Engine only: the client has no label for it yet (it reads "—"), and
-  `sim/tests/deploy-failed-notice-client.test.js` pins that as awaited by the client PR.)*
+  `sim/tests/deploy-failed-notice-client.test.js` pins that as awaited by the client PR.)* *(⤳ 16-10-26, client PR B1,
+  which lets a player ferry a Prefecture kit: labelled **"System claimed"**; the title reads "Deployment Failed —
+  Prefecture".)*
 - `kind` — the deployable kind, `'outpost'` or (2.5 (b1)) `'deepScan'` — or (16-10-26) `'prefecture'`, for an unload
   that retreated.
 - `targetHex` — `{ q, r }`, the hex the deploy could not be placed on.
@@ -396,7 +398,11 @@ what the notice itself does:
 - **What a fork does.** It finds the live craft by `payload.craftId`, as Show on map did, and acts only while that craft
   is still idle, off any route, with the kit of `payload.kind` aboard. Then it closes the popup and opens the planner for
   that craft (`__flyTo` closes the Guild Hall itself). Redeploy opens the deploy map, Return the planner's unload mode;
-  both commit in the craft's own Dispatch popup.
+  both commit in the craft's own Dispatch popup. *(⤳ 16-10-26, the Prefecture / claims client PR B1: a GROUND kit — a
+  retreated Prefecture kit, `kind: 'prefecture'` — is never deployed on a hex, so its notice shows **Return alone**;
+  Redeploy, which would open the deploy map, stays hidden, and the deploy fork plans the unload even if asked. Its
+  Return's unload mode reads the kind off the kit aboard and, as the engine allows a Prefecture kit, also accepts an
+  unclaimed system — `territory-model.md` §4, "AS-BUILT — client PR B1"; the wording is on the decision checklist.)*
 - **Nothing to act on.** A craft that has moved on (a fork already taken, flying again, moved by an operator) opens
   nothing. The footer's empty note slot, now `#noticeNote`, reads "Nothing left to resolve." `openNotice` clears it on
   every open.

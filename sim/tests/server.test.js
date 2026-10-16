@@ -3365,7 +3365,9 @@ test('GET / serves the delivery notices — the Trader, passive, Dismiss only', 
   assert.match(open, /el\('noticeArt'\)\.style\.backgroundPosition = trade \? 'right bottom' : '';/);
   assert.match(html, /#tp-trade \.tw-thero \.art\{[^}]*url\("assets\/mission\/Trader\.jpg"\)[^}]*background-position:right bottom;/,
     'the framing is the TRADE hero\'s own, for the same art');
-  assert.match(open, /el\('noticeRedeploy'\)\.hidden = !fleet;/, 'Redeploy shows for the pilot\'s notice alone');
+  // (Since the Prefecture / claims client PR B1 a ground kit's deploy_failed hides Redeploy too — still never shown
+  // off the pilot's notice; deploy-failed-notice-client.test.js holds the ground case.)
+  assert.match(open, /el\('noticeRedeploy'\)\.hidden = !fleet \|\| isGroundKitKind\(p\.kind\);/, 'Redeploy shows for the pilot\'s notice alone');
   assert.match(open, /el\('noticeReturn'\)\.hidden = !fleet;/, 'Return shows for the pilot\'s notice alone');
   assert.match(open, /else if\(trade\) paras = deliveryBody\(n\);/);
   assert.match(open, /\} else if\(trade\)\{\s*facts = deliveryFacts\(n\);/);

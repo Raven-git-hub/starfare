@@ -243,8 +243,9 @@ consumes resolved control yet, and the client's footprint render is untouched); 
   the two re-banded goods' price rows (`sim/tests/rebanded-goods-delta.test.js`).
 - **Not built (design-ahead):** §2's seniority map (engine PR 2 — *⤳ BUILT 16-10-26, §2's AS-BUILT note; its client
   render too, client PR A*); the client (the plant affordance, the kit's row, the `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` /
-  `deploy-failed-notice-client.test.js`); teardown / eviction (§19 #67), hostile removal (§19 #69), corridors (§3),
-  squatting, and the in-system planet-scan.
+  `deploy-failed-notice-client.test.js`; *⤳ the kit's row, its ferry and the label BUILT 16-10-26, client PR B1 —
+  "AS-BUILT — client PR B1" below; the plant affordance is client PR B2*); teardown / eviction (§19 #67), hostile
+  removal (§19 #69), corridors (§3), squatting, and the in-system planet-scan.
 
 **⤳ RULED 16-10-26 — a planted Prefecture is a PUBLICLY VISIBLE structure.** A rival sees its row, cut to
 `RIVAL_PREFECTURE_FIELDS` (`sim/fog.js`), as it sees a rival Outpost's. Grounds: the claim it wrote is public (ownership
@@ -252,6 +253,31 @@ is public, §1 / `exploration-model.md` §1), a controlled system's whole surfac
 ruling 11), and `design.md` §2 calls the Prefecture "a single, visible, destructible anchor". This **ratifies the as-built
 engine PR 1 behaviour** (the fog classification PR 1 made in code only; its decision-checklist item 3) — no code change.
 A field added to the row later stays hidden from rivals until it is ruled public (the allow-list).
+
+**AS-BUILT — client PR B1: ferry a Prefecture kit to an unheld system (16-10-26; roadmap 2.5, the Prefecture / claims
+slice; `client/game.html`, one label in `client/console.html`; no engine change).** The player can now do step 1 of the
+two-step ground flow above — the FERRY — from the page; the plant (step 2) is client PR B2, and until it lands a ferried
+kit is planted with the operator CLI (`tools/admin.js plant-prefecture`). Built to the ruling above and `design.md` §18:
+the client mirrors the engine's gate as guidance, and the engine re-checks at dispatch and on arrival. No new number.
+- **The kit-kinds row.** The client's one kit table gains `prefecture` (`good: 'prefecture_kit'`, `bill: 'prefecture'`,
+  "Prefecture kit" / "Prefecture") marked **`ground: true`** — the engine's one kit with no `DEPLOYABLE_STRUCTURES` row. A
+  ground row carries no deploy-map words and no art (none drawn: the popup shows its plain panel). Every screen that asks
+  "is this a ground kit?" asks the row, never a list of its own; a sim test holds the flag to `PREFECTURE_KIT_KIND`.
+- **The ferry.** The idle kit's row reads **Ferry**, and opens the kit's existing popup: the same carrier pick
+  (`carriersFor` — idle, empty heavies berthed at the kit's system) and the same commit (`loadKit`, then the dispatch,
+  only if the load was accepted). Only the planner differs: Plan Route opens the planner's **unload mode** for a kit still
+  in inventory (`__planFerry`; Finalise returns to the popup), so the route ends `{ type: 'unload' }` at a system, never
+  the hex-deploy map. The deploy map is never offered for a ground kit: asked for one, the planner throws.
+- **The gate.** `unloadRefusal` mirrors `unloadKitCheck`'s exception: a ground kit may end on a system its guild holds
+  or one **nobody** holds; a rival-held system reads "Held by a rival guild", a non-system "Not a system", and Finalise
+  holds. Unload mode learns the kit's kind from the popup, or — for a kit already aboard (the Return fork, the Dispatch
+  popup's Edit Route) — off the hold, as the engine does. Outpost and Deep Scan Array kits are unchanged: held-only.
+- **The ferry's failure.** A retreated Prefecture kit's `deploy_failed` notice now reads "Deployment Failed — Prefecture",
+  Reason "System claimed", and offers **Return** only — no Redeploy, which would open the hex-deploy map. Its Return plans
+  the unload, which (read off the kit aboard) may end on an unclaimed system, as the ferry may.
+- **Proved** by `sim/tests/prefecture-ferry-client.test.js` (the gate held against the engine's own dispatch for every
+  kit kind and class of target, the planner, Finalise, the popup's commit order on a stub DOM, the idle row) and the
+  extended `kit-kinds-client` / `deploy-failed-notice-client` tests; and headless against a live server (roadmap 2.5).
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

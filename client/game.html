@@ -3932,7 +3932,13 @@ select.field{appearance:none; cursor:pointer;}
      rival     — (a kind whose rule refuses a rival's control, the array alone) the deploy map's reason for
                  refusing a hex inside a rival's territory, instead of `outside`. Words only: which hexes are
                  legal is still the kind's painted lane.
-   (client/console.html, a separate page, keeps its own two labels for the dockyard picker.)
+     ground    — (the Prefecture alone, roadmap 2.5 — the Prefecture / claims slice, client PR B1) a GROUND kit:
+                 never deployed on a hex, so it has no deploy-map words (target / outside / rival) and the deploy
+                 map is never opened for it. Its idle row FERRIES it instead — a carrier, then a route ending in
+                 an unload — and, as the engine's unloadKitCheck allows for this kind only, it may unload into a
+                 system NOBODY holds as well as one its guild holds (docs/territory-model.md §4). It is planted
+                 from there (client PR B2). It has no `art` yet: none has been drawn.
+   (client/console.html, a separate page, keeps its own labels for the dockyard picker.)
    ============================================================================ */
 (function(){
   // Frozen, so no screen can edit a row it was handed.
@@ -3943,11 +3949,20 @@ select.field{appearance:none; cursor:pointer;}
     deepScan: Object.freeze({ good: 'deep_scan_array_kit', bill: 'deep_scan_array', label: 'Deep Scan Array kit', structure: 'Deep Scan Array',
                 art: 'assets/units/deepscan.jpg',
                 target: 'a dashed hex in or beside your territory', outside: 'Not in or beside your territory',
-                rival: 'Inside rival territory' })
+                rival: 'Inside rival territory' }),
+    prefecture: Object.freeze({ good: 'prefecture_kit', bill: 'prefecture', label: 'Prefecture kit', structure: 'Prefecture',
+                ground: true })
   });
-  // __kitKind(kind) -> the row for a kit kind ('outpost' | 'deepScan'), or null for anything else (a miner).
-  // An own-property read, so an inherited name ('toString') is never a kit — the engine's kitGoodFor discipline.
+  // __kitKind(kind) -> the row for a kit kind ('outpost' | 'deepScan' | 'prefecture'), or null for anything else
+  // (a miner). An own-property read, so an inherited name ('toString') is never a kit — the engine's kitGoodFor
+  // discipline.
   window.__kitKind = function(kind){ return Object.prototype.hasOwnProperty.call(KITS, kind) ? KITS[kind] : null; };
+  // __kitKindForGood(good) -> the kit kind a hold good is ('prefecture_kit' → 'prefecture'), or null for a good that
+  // is not a kit. How the planner learns which kit a heavy carries — the engine reads an unload's kind off the hold
+  // the same way (kindForKit).
+  window.__kitKindForGood = function(good){
+    return Object.keys(KITS).filter(function(k){ return KITS[k].good === good; })[0] || null;
+  };
   // __kitLabelForBill(billKind) -> the player label for a commission/buy kind that finishes as a kit
   // ('deep_scan_array' → "Deep Scan Array kit"), or null for a kind that does not (a miner, a transport).
   window.__kitLabelForBill = function(billKind){
@@ -4047,11 +4062,14 @@ select.field{appearance:none; cursor:pointer;}
   // heavy whose kit is aboard, on a route that ends on a system the guild holds. The { type:'unload' } action is
   // added to the last stop on the way out, as the deploy is. There is no range ring: an unload is not range-bound.
   // The deploy map and unload mode are the planner's two KIT modes (isKitPlan).
-  // `fromInventory` says where a kit route's Finalise goes. It is true only for a FRESH deploy, opened by the Deploy
-  // Outpost popup with the kit still in inventory: Finalise goes back to that popup, which loads the kit at its
-  // commit. With the kit already aboard (the deploy_failed message's Redeploy / Return) it is false, and Finalise
-  // goes to the heavy's own Dispatch popup, the ordinary route commit.
-  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, unload:bool, fromInventory:bool, deployQuote:{key, quote}|null }
+  // `unloadKind` (the Prefecture / claims slice, client PR B1) is the kind of the kit unload mode is carrying, or
+  // null when it is not known. It decides where the kit may unload (unloadRefusal): a GROUND kit — the Prefecture —
+  // may also end on a system nobody holds, which is how unload mode FERRIES a Prefecture kit to the ground it will claim.
+  // `fromInventory` says where a kit route's Finalise goes. It is true only when the kit is still in inventory —
+  // a FRESH deploy, or a fresh ferry, opened by the kit's popup: Finalise goes back to that popup, which loads the
+  // kit at its commit. With the kit already aboard (the deploy_failed message's Redeploy / Return) it is false, and
+  // Finalise goes to the heavy's own Dispatch popup, the ordinary route commit.
+  let PLAN = null;              // { vehicle, origin, waypoints:[{anchor, action?},…], candidate:anchor|null, candidateArmed:bool, candidateAction:action|null, routeName:string, loop:bool, deploy:kind|null, unload:bool, unloadKind:kind|null, fromInventory:bool, deployQuote:{key, quote}|null }
   let planActive = false;       // true while the map is in planning mode (the click branch + draw pass read this)
 
   // Automation 2b — Load Route. `liveSavedRoutes` is the player's guild's saved routes, pushed by
@@ -4255,32 +4273,40 @@ select.field{appearance:none; cursor:pointer;}
   // the popup so its Save field starts on that name (re-saving it updates the lane in place, §11.9).
   // `loop` (automation 3c) — see PLAN above.
   // `kit` (2.2 deploy pipeline, territory-model.md §5 REVISED) opens one of the two KIT modes instead (see PLAN
-  // above): `{ deploy: kind, fromInventory }` the DEPLOY MAP, or `{ unload: true }` UNLOAD MODE. Both are the same
-  // mode, chrome, chip, list and draw pass, retitled, at the ruled 4× (DEPLOY_MAP_ZOOM), with #app.kitroute hiding
-  // Load Route; the deploy map also draws the range ring. `vehicle` is the heavy carrying (or about to carry) the
-  // kit. Nothing is loaded or sent from the map. Omitted for every ordinary route.
+  // above): `{ deploy: kind, fromInventory }` the DEPLOY MAP, or `{ unload: true, kind, fromInventory }` UNLOAD
+  // MODE (`kind` the kit being carried, when known). Both are the same mode, chrome, chip, list and draw pass,
+  // retitled, at the ruled 4× (DEPLOY_MAP_ZOOM), with #app.kitroute hiding Load Route; the deploy map also draws
+  // the range ring. `vehicle` is the heavy carrying (or about to carry) the kit. Nothing is loaded or sent from the
+  // map. Omitted for every ordinary route.
   function startPlanning(vehicle, waypoints, routeName, loop, kit) {
     if (!vehicle || !vehicle.location) return;
     kit = kit || {};
+    // A GROUND kit (the Prefecture) is never deployed on a hex, so the deploy map is never opened for it. No
+    // button sends one here; if one ever did, fail loudly rather than offer a map the engine refuses.
+    if (kit.deploy && isGroundKit(kit.deploy)) throw new Error('the deploy map was asked for a ground kit (' + kit.deploy + ') — it is ferried, never deployed on a hex');
     const kitMode = !!(kit.deploy || kit.unload);
     // A kit route's stops carry no action (the kit action is added to the last one on the way out), so a route
     // that Edit Route hands back drops the deploy or unload its last stop carried.
     const seed = (waypoints || []).map(kitMode ? (wp) => ({ anchor: wp.anchor }) : copyWaypoint);
     PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: seed, candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
-             deploy: kit.deploy || null, unload: !!kit.unload, fromInventory: !!kit.fromInventory, deployQuote: null };
+             deploy: kit.deploy || null, unload: !!kit.unload, unloadKind: (kit.unload && kit.kind) || null,
+             fromInventory: !!kit.fromInventory, deployQuote: null };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
     const app = document.getElementById('app');
     app.classList.add('planning');
     app.classList.toggle('kitroute', kitMode);
+    // Unload mode carrying a ground kit is a FERRY ("Ferrying Prefecture kit"); any other kit is being returned.
+    const ferry = PLAN.unload && isGroundKit(PLAN.unloadKind);
     document.getElementById('plan-banner-title').textContent = PLAN.deploy
       ? 'Deploying ' + deployWords().structure + ' · ' + prettyClass(vehicle.class)
+      : ferry ? 'Ferrying ' + window.__kitKind(PLAN.unloadKind).label + ' · ' + prettyClass(vehicle.class)
       : PLAN.unload ? 'Returning Kit · ' + prettyClass(vehicle.class)
       : 'Planning Route · ' + prettyClass(vehicle.class);
     document.getElementById('plan-banner-sub').textContent = PLAN.deploy
       ? 'Click a hex to add a turning point · end on ' + deployWords().target + ' · arrow keys pan'
-      : PLAN.unload ? 'Click a hex to add a turning point · end on a system you hold · arrow keys pan'
+      : PLAN.unload ? 'Click a hex to add a turning point · end on ' + unloadWhere() + ' · arrow keys pan'
       : 'Click a hex to add a turning point · arrow keys pan';
     if (c) window.__flyTo(c.q, c.r, kitMode ? DEPLOY_MAP_ZOOM : Math.max(VECTOR_ZOOM_THRESHOLD + 2, 6));
     // __flyTo leaves the system-info panel open on the origin; the planner has its own list, so hide it
@@ -4312,14 +4338,15 @@ select.field{appearance:none; cursor:pointer;}
   // is (canFinalise). (Nothing else blocks Finalise — a stop the popup can fix, like an idle one-stop
   // route at the berth, is gated at Dispatch instead, so the player can always REACH the popup to fix it.)
   // A KIT route (territory-model.md §5 REVISED) goes out with its kit action on the last stop (kitWaypoints),
-  // and where it goes depends on where the kit is. A FRESH deploy (fromInventory) goes to the Deploy popup
-  // instead: that popup holds the kit, shows the same Planned Route, and loads the kit at its commit. A
-  // kit already aboard (Redeploy / Return) goes to the Dispatch popup like any route: nothing to load.
+  // and where it goes depends on where the kit is. A kit still in inventory (fromInventory) — a FRESH deploy, or
+  // a fresh Prefecture ferry — goes back to the kit's popup instead: that popup holds the kit, shows the same
+  // Planned Route, and loads the kit at its commit. A kit already aboard (Redeploy / Return) goes to the
+  // Dispatch popup like any route: nothing to load.
   function finalisePlanning() {
     if (!canFinalise()) return;
     const vehicle = PLAN.vehicle;
     const waypoints = isKitPlan() ? kitWaypoints() : PLAN.waypoints.map(copyWaypoint);
-    const toDeployPopup = !!PLAN.deploy && PLAN.fromInventory;
+    const toDeployPopup = isKitPlan() && PLAN.fromInventory;
     exitPlanning(true); // clears the .planning class + the chip; keeps PLAN for the popup / Edit Route
     if (toDeployPopup) {
       if (window.__kitDeployFinalise) window.__kitDeployFinalise(vehicle, waypoints);
@@ -4381,7 +4408,7 @@ select.field{appearance:none; cursor:pointer;}
     box.appendChild(mkRow({ cls: 'origin', ix: '◎', name: anchorLabel(PLAN.origin) + '  · origin' }));
     // A KIT route (territory-model.md §5) with no stop yet: a quiet prompt for where the route must end.
     if (isKitPlan() && !PLAN.waypoints.length) {
-      const where = PLAN.deploy ? deployWords().target : 'a system you hold';
+      const where = PLAN.deploy ? deployWords().target : unloadWhere();
       box.appendChild(mkRow({ ix: '1', name: '—', note: 'no stops yet — end the route on ' + where }));
       return;
     }
@@ -4760,13 +4787,33 @@ select.field{appearance:none; cursor:pointer;}
   // quote, so the Dispatch popup asks the quote at Finalise, as it does for an ordinary route. PRESENTATION
   // ONLY (§18): "held" is the snapshot's own claim list, and the engine's unloadKitCheck, at dispatch and again
   // on arrival, is the authority.
+  // (The Prefecture / claims slice, client PR B1.) The same mode is the Prefecture kit's FERRY: opened from the
+  // kit's idle row with the kit still in inventory (fromInventory), it plans the route a heavy will fly the kit
+  // along, and the kit's popup loads it at its commit. A ground kit may also end on a system nobody holds.
+
+  // isGroundKit(kind) -> is `kind` a GROUND kit — the Prefecture — by its kit-kinds row? The table decides, not a
+  // list kept here. False for every other kind, and for an unknown or missing one.
+  function isGroundKit(kind) {
+    const row = window.__kitKind ? window.__kitKind(kind) : null;
+    return !!(row && row.ground);
+  }
+
+  // unloadWhere() -> where unload mode's route must end, in the words the banner and the empty list read.
+  function unloadWhere() {
+    return isGroundKit(PLAN.unloadKind) ? 'an unclaimed system or one you hold' : 'a system you hold';
+  }
 
   // unloadRefusal(anchor) -> why unload mode refuses this stop as the route's end, or '' when the kit may unload
   // there. It must be a system (a click on one makes a system anchor) that the player's guild holds: the
   // snapshot's claims, the same list isActionableAnchor reads (the client's view of the engine's guildHolds).
+  // ONE EXCEPTION, the engine's own (unloadKitCheck; territory-model.md §4, RULED 16-10-26): a GROUND kit — the
+  // Prefecture — may also unload into a system NOBODY holds, never into a rival's. `systemToGuild` is every
+  // guild's system claims, the client's view of the engine's systemHolder. Every other kit is unchanged.
   function unloadRefusal(a) {
     if (!a || a.landmarkKind !== 'system') return 'Not a system';
-    if (!PLAYER_GUILD.ownedSystemIds.includes(a.landmarkId)) return 'Not a system you hold';
+    if (PLAYER_GUILD.ownedSystemIds.includes(a.landmarkId)) return '';
+    if (!isGroundKit(PLAN.unloadKind)) return 'Not a system you hold';
+    if (systemToGuild.has(a.landmarkId)) return 'Held by a rival guild';
     return '';
   }
 
@@ -6228,13 +6275,25 @@ select.field{appearance:none; cursor:pointer;}
   // with no waypoints (Plan Route) or the finalised route (Edit Route). Its Finalise hands the route back to the
   // popup (__kitDeployFinalise), which loads the kit at its commit.
   window.__planDeploy = function (vehicle, kind, waypoints) { startPlanning(vehicle, waypoints, '', false, { deploy: kind, fromInventory: true }); };
+  // (The Prefecture / claims slice, client PR B1) __planFerry is __planDeploy for a GROUND kit: the same popup's
+  // Plan Route / Edit Route open UNLOAD MODE instead of the deploy map — a route for the chosen carrier that ends
+  // in an unload, the kit (`kind`) still in inventory. Its Finalise hands the route back to the popup too.
+  window.__planFerry = function (vehicle, kind, waypoints) { startPlanning(vehicle, waypoints, '', false, { unload: true, kind: kind, fromInventory: true }); };
   // …and __planKitRoute plans for a heavy whose kit is ALREADY ABOARD: the deploy_failed message's Redeploy /
   // Return, and the Dispatch popup's Edit Route of the route they made. `action` is the kit action the route ends
-  // in: { type:'deploy', kind } opens the deploy map, { type:'unload' } unload mode. Its Finalise goes to the
+  // in: { type:'deploy', kind } opens the deploy map, { type:'unload' } unload mode. An unload names no kind, so
+  // the kind is read off the kit in the hold (kitKindAboard), as the engine reads it. Its Finalise goes to the
   // heavy's Dispatch popup (__dispatchFinalise), the ordinary route commit. Nothing loads: the kit is in the hold.
   window.__planKitRoute = function (vehicle, action, waypoints) {
-    startPlanning(vehicle, waypoints, '', false, action.type === 'unload' ? { unload: true } : { deploy: action.kind, fromInventory: false });
+    startPlanning(vehicle, waypoints, '', false, action.type === 'unload'
+      ? { unload: true, kind: kitKindAboard(vehicle) }
+      : { deploy: action.kind, fromInventory: false });
   };
+  // kitKindAboard(vehicle) -> the kind of the kit in the craft's published hold, or null when it carries none.
+  function kitKindAboard(vehicle) {
+    const goods = Object.keys((vehicle && vehicle.cargo) || {});
+    return goods.map((g) => window.__kitKindForGood(g)).filter(Boolean)[0] || null;
+  }
   window.__abandonPlanning = function () { if (planActive || PLAN) exitPlanning(false); };
   window.__fmtETA = fmtETA;
   // Automation 1b: the Dispatch popup's Finalise list uses the SAME action gate and the SAME summary
@@ -11141,11 +11200,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // An idle KIT — an undeployed Outpost or Deep Scan Array (2.2 deploy pipeline, territory-model.md §5 asset-
   // initiated; the array, 2.5 slice 14b) — carries a Deploy button that opens the deploy popup for that kit, and
   // reads as its kit label. Which kinds are kits is the kit-kinds table's answer, not a list kept here. Miners
-  // and factories stay plain rows.
+  // and factories stay plain rows. A GROUND kit (the Prefecture, client PR B1) is never deployed on a hex: its
+  // button reads Ferry, and the same popup ferries it to a system instead.
   function machineHtml(a){
     var kit = window.__kitKind && window.__kitKind(a.kind);
     var deploy = kit
-      ? '<button class="ops-idle-deploy" type="button" data-kit-deploy="' + esc(a.id) + '">Deploy</button>'
+      ? '<button class="ops-idle-deploy" type="button" data-kit-deploy="' + esc(a.id) + '">' + (kit.ground ? 'Ferry' : 'Deploy') + '</button>'
       : '';
     return '<div class="ops-idle-machine">'
       +   '<span class="mid">' + esc(a.id) + '</span>'
@@ -11514,7 +11574,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       return;
     }
     // DEPLOY on an idle kit (2.2 deploy pipeline, asset-initiated; any kit kind, 2.5 slice 14b) — opens the Deploy popup for that
-    // kit, which re-reads the kit off the snapshot by id. Checked beside Dispatch / Dock, ahead of the toggles.
+    // kit, which re-reads the kit off the snapshot by id. Checked beside Dispatch / Dock, ahead of the toggles. (A
+    // ground kit's button reads Ferry; the popup branches on the kind.)
     var kitBtn = e.target.closest('.ops-idle-deploy');
     if(kitBtn){
       if(window.__openKitDeploy) window.__openKitDeploy(kitBtn.getAttribute('data-kit-deploy'));
@@ -11967,9 +12028,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 
   // payload.cause -> the Reason fact: the reasons a deploy retreats on (§10) — the Outpost's two, and the Deep
   // Scan Array's two: 'not-attached' (2.5 (b1); labelled in slice 14b — it read "—"), the hex is no longer in or
-  // beside the guild's territory; and 'rival-territory' (slice 15), the hex is inside a rival's control now.
+  // beside the guild's territory; and 'rival-territory' (slice 15), the hex is inside a rival's control now. And
+  // the Prefecture kit's one (the Prefecture / claims slice; labelled in client PR B1, which ferries it):
+  // 'system-claimed', the unclaimed system it was ferried to was claimed by a rival while it flew.
   var DEPLOY_FAILED_REASON = { 'occupied':'Hex taken', 'out-of-range':'Out of range', 'not-attached':'Not attached',
-    'rival-territory':'Rival territory' };
+    'rival-territory':'Rival territory', 'system-claimed':'System claimed' };
 
   // A camelCase-splitting display name (heavyTransport -> "Heavy Transport"). Display vocabulary
   // only (§18) — a local copy, the Dispatch popup's prettyClass is out of this IIFE's scope.
@@ -12267,7 +12330,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // The Trader stands at the right edge of her picture, so she is framed as the TRADE tab's hero frames
     // the same art; '' hands every other portrait back to the card's own framing.
     el('noticeArt').style.backgroundPosition = trade ? 'right bottom' : '';
-    el('noticeRedeploy').hidden = !fleet;
+    // A GROUND kit (a retreated Prefecture kit, client PR B1) has no Redeploy: it is never deployed on a hex. Its
+    // Return plans the unload, which — read off the kit aboard — may end on an unclaimed system, as the ferry may.
+    el('noticeRedeploy').hidden = !fleet || isGroundKitKind(p.kind);
     el('noticeReturn').hidden = !fleet;
     el('noticeShowMap').hidden = !packed;
     el('noticeNote').textContent = '';
@@ -12344,8 +12409,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       return;
     }
     closeNotice();
-    var action = type === 'deploy' ? { type:'deploy', kind: p.kind } : { type:'unload' };
+    // A ground kit shows no Redeploy (openNotice), and plans the unload even if one were ever asked for.
+    var action = type === 'deploy' && !isGroundKitKind(p.kind) ? { type:'deploy', kind: p.kind } : { type:'unload' };
     if(window.__planKitRoute) window.__planKitRoute(craft, action, []);
+  }
+
+  // isGroundKitKind(kind) -> is the kit kind a GROUND kit (the Prefecture), by its kit-kinds row?
+  function isGroundKitKind(kind){
+    var kit = window.__kitKind ? window.__kitKind(kind) : null;
+    return !!(kit && kit.ground);
   }
 
   // The outpost_packed notice's one control (§12): close the popup and fly the map to the packed heavy
@@ -13611,6 +13683,10 @@ function paintInventoryHero(d){
    loadKit fires only at Deploy, so closing this popup, Edit Route, or cancelling the map leaves the kit in
    inventory. PRESENTATION ONLY (§18): the kit and the craft are snapshot rows, the quote is the engine's, and the
    engine's loadKit and dispatch are the authority — the dropdown offers the carriers loadKit accepts.
+   A GROUND kit — the Prefecture (roadmap 2.5, the Prefecture / claims slice, client PR B1; territory-model.md §4)
+   — is never deployed on a hex, so for it this popup is the FERRY: the same carrier pick and the same commit
+   (loadKit, then the dispatch), but Plan Route opens the planner's UNLOAD MODE (__planFerry) instead of the deploy
+   map, so the route ends in { type:'unload' } at a system, and the words read Ferry. The plant is client PR B2.
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -13663,12 +13739,13 @@ function paintInventoryHero(d){
     if(!kit || !spec) return;
     if(window.__abandonPlanning) window.__abandonPlanning();
     KD = freshKD(kit);
-    $('kdEyebrow').textContent = 'Deploy ' + spec.structure;
+    $('kdEyebrow').textContent = spec.ground ? 'Ferry ' + spec.label : 'Deploy ' + spec.structure;
     $('kdName').textContent = spec.label + ' · #' + idSuffix(kit.id);
     $('kdSechead').textContent = spec.structure;
     $('kdKind').textContent = spec.structure;
     $('kdStitle').textContent = spec.label;
-    $('kdArt').style.backgroundImage = "url('" + spec.art + "')";
+    // A kind with no portrait yet (the Prefecture) shows the plain panel rather than a broken image.
+    $('kdArt').style.backgroundImage = spec.art ? "url('" + spec.art + "')" : 'none';
     $('kdStored').textContent = (window.__systemName && window.__systemName(kit.systemId)) || kit.systemId;
     renderPrePlan();
     $('deploy-overlay').classList.add('open');
@@ -13714,7 +13791,15 @@ function paintInventoryHero(d){
     if(!carrier){ renderCarriers(); return; }
     KD.carrier = carrier;
     $('deploy-overlay').classList.remove('open');
-    if(window.__planDeploy) window.__planDeploy(carrier, KD.kit.kind, []);
+    planKitRoute(carrier, []);
+  }
+
+  // planKitRoute(carrier, waypoints) — open the planner for this popup's kit: the deploy map for a space kit, or
+  // unload mode (the ferry) for a GROUND kit, which is never deployed on a hex. The kit-kinds row decides.
+  function planKitRoute(carrier, waypoints){
+    var spec = window.__kitKind ? window.__kitKind(KD.kit.kind) : null;
+    var plan = spec && spec.ground ? window.__planFerry : window.__planDeploy;
+    if(plan) plan(carrier, KD.kit.kind, waypoints);
   }
 
   // kitDeployFinalise(vehicle, waypoints) — called BY the deploy map's Finalise (the map has already left
@@ -13759,9 +13844,12 @@ function paintInventoryHero(d){
       '</div>' +
       (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>' : '') +
       (KD.refused ? '<div class="dp-refuse">' + esc(KD.refused) + '</div>' : '');
+    // The commit's word: Deploy, or Ferry for a ground kit (the same load-then-dispatch commit either way).
+    var spec = window.__kitKind ? window.__kitKind(KD.kit.kind) : null;
+    var verb = spec && spec.ground ? ['Ferry', 'Ferrying…'] : ['Deploy', 'Deploying…'];
     $('kdActions').innerHTML =
       '<button class="dp-btn" id="kdEditBtn" type="button">Edit Route</button>' +
-      '<button class="dp-btn primary" id="kdDeployBtn" type="button">' + (KD.sending ? 'Deploying…' : 'Deploy') + '</button>';
+      '<button class="dp-btn primary" id="kdDeployBtn" type="button">' + (KD.sending ? verb[1] : verb[0]) + '</button>';
     $('kdEditBtn').disabled = KD.sending;
     $('kdDeployBtn').disabled = KD.sending || !window.__quoteAllows(q);
     $('kdEditBtn').addEventListener('click', onEditRoute);
@@ -13773,7 +13861,7 @@ function paintInventoryHero(d){
   function onEditRoute(){
     if(KD.sending || !KD.carrier) return;
     $('deploy-overlay').classList.remove('open');
-    if(window.__planDeploy) window.__planDeploy(KD.carrier, KD.kit.kind, KD.waypoints);
+    planKitRoute(KD.carrier, KD.waypoints);
   }
 
   // Deploy → the COMMIT, in the ruled order (§5). First loadKit moves the kit from the system's inventory into

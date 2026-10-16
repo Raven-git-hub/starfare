@@ -1464,3 +1464,18 @@ through `deployRange.deepScan.hexes`, which now spans the inside of each held di
   (`game.html` TRADE → Constructed, `console.html` dockyard); the array's plain-panel and construction-image fallbacks
   are gone.
 - **Proved** headless against a live server — 27 checks, zero console errors (`docs/roadmap.md`, slice 15).
+
+## Revision — the Prefecture kit's ferry *(16-10-26, roadmap 2.5, the Prefecture / claims slice, client PR B1, client-only)*
+
+The full as-built is `docs/territory-model.md` §4, "AS-BUILT — client PR B1"; this is the client's view of it.
+
+- **No new snapshot read.** The ferry reads what the page already has: the guild's `assets` and `vehicles`, and the
+  snapshot's `claims` (who holds which system — the planner's `systemToGuild`), the same facts the engine's
+  `systemHolder` reads.
+- **The kit-kinds table grows a ground row.** `prefecture` is the first row marked `ground: true`; `__kitKindForGood`
+  reads a hold good back to its kind. `client/console.html` gains the matching dockyard label ("Prefecture kit").
+- **What the player sees:** an idle Prefecture kit with a **Ferry** button; a "Ferry Prefecture kit" popup with the usual
+  Carrier dropdown; a "Ferrying Prefecture kit" planner that accepts an unclaimed system or a held one, and says why it
+  refuses a rival's system or a non-system; then Ferry, which loads the kit and sends the heavy. On arrival the kit is idle
+  in that system, listed under it in OPERATIONS → Idle. The plant is client PR B2.
+- **Proved** headless against a live server — 26 checks, zero console errors (`docs/roadmap.md`, 2.5).
