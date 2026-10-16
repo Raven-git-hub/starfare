@@ -191,7 +191,10 @@ The player client reads, for the **player's own guild only**: `tick`; the guild'
 resolved per-system per-good report — forks, reserve, commitment window — as the
 console already renders); its `ventures[]` (and `occupancy`) for its own sites;
 and `claims[]` for **territory control** (who owns which system — visible to all
-in-world), and — for **every** guild — `outposts[]`, the public guild-Outpost
+in-world) *(⤳ 16-10-26, the Prefecture / claims client PR A: and the public
+`controlMap`, the engine's hex-by-hex answer where held systems' footprints overlap,
+which the map's territory paint reads as sent and never works out itself —
+`territory-model.md` §2's "AS-BUILT — client PR A")*, and — for **every** guild — `outposts[]`, the public guild-Outpost
 structure layer (a structure's location is public §7; its economics are not — the
 map draws each in its owner's colour and the panel names owner / anchor / static
 class figures only). *(AS-BUILT — roadmap 2.2 outpost slice 2, `client/game.html`:
@@ -1454,6 +1457,8 @@ through `deployRange.deepScan.hexes`, which now spans the inside of each held di
   view (`sim/fog.js`) is what keeps a rival's array off the map.
 - **Words, not rules:** the deploy map says "in or beside your territory", and for a hex off the lane inside a rival's
   painted disk "Inside rival territory" — chosen from the territory the map already paints; the lane decides the hex.
+  *(⤳ 16-10-26, client PR A: the paint is now the seniority `controlMap`, but these words still read a rival's WHOLE
+  disk, as the array's placement rule still does — `territory-model.md` §2's "AS-BUILT — client PR A".)*
   The failed-deploy title is "Deployment Failed — <structure>" and the new reason reads "Rival territory".
 - **Art:** `client/assets/units/deepscan.jpg` in the kit-kinds row, the deploy popup, and both "Building" heroes
   (`game.html` TRADE → Constructed, `console.html` dockyard); the array's plain-panel and construction-image fallbacks

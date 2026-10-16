@@ -4670,8 +4670,10 @@ select.field{appearance:none; cursor:pointer;}
     return words.rival && heldBySomeone && inRivalTerritory(c) ? words.rival : 'Not a bare hex';
   }
 
-  // inRivalTerritory(a) -> true when the hex lies inside a system disk a RIVAL holds, as the territory layer paints
-  // it (the system's seed claimRadius — the disk computeTerritoryMap fills). WORDS ONLY: deployRefusal asks it to
+  // inRivalTerritory(a) -> true when the hex lies inside a system disk a RIVAL holds (the system's seed claimRadius).
+  // This is the WHOLE disk, not the seniority map the territory layer paints: the engine's array placement still
+  // refuses any hex a rival's footprint covers, even one the player's older claim controls (roadmap decision
+  // checklist, the Prefecture engine PR 2 item 3), so these words follow that rule. WORDS ONLY: deployRefusal asks it to
   // choose the refusal for a hex ALREADY outside the painted lane; it decides nothing. A rival's Outpost hex never
   // reaches it — that is refused first, as not a bare hex. (centreRefusal asks it of a held system's centre too.)
   function inRivalTerritory(a) {
@@ -4852,7 +4854,8 @@ select.field{appearance:none; cursor:pointer;}
   function col(key, a) { const c = COLOR_RGB[key]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
   function rgbaFrom(rgb, a) { return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`; }
 
-  // all axial hexes within `radius` rings of `center` — used to expand a claim into its territory
+  // all axial hexes within `radius` rings of `center` — the Outpost deploy lane's disks (deployReach). Territory
+  // is not expanded with it any more: the engine sends each controlled hex (controlMap).
   function hexesInRadius(center, radius) {
     const out = [];
     for (let dq = -radius; dq <= radius; dq++) {
@@ -4862,20 +4865,23 @@ select.field{appearance:none; cursor:pointer;}
     return out;
   }
 
-  // territory = Syndicate outposts (own hex) + any loaded guilds' claimed systems (their claimRadius)
-  // + guild outposts (own hex) + the placeholder guild's claims, drawn last so it wins overlaps.
+  // territory = Syndicate outposts (own hex) + the held systems' control (the engine's controlMap)
+  // + guild outposts and toll gates (own hex each), painted over it.
   // Returns "q,r" -> { r, g, b, label } — color AND owner name in one lookup, used by rendering, click, and the panel.
   function computeTerritoryMap() {
     const map = new Map();
     galaxy.outposts.forEach(o => map.set(`${o.coords.q},${o.coords.r}`, { r:232, g:185, b:58, label: 'Syndicate' }));
 
     if (claimsData) {
-      systemToGuild.forEach((guildId, systemId) => {
-        const sys = systemById.get(systemId);
-        const guild = guildById.get(guildId);
-        if (!sys || !guild) return;
-        hexesInRadius(sys.coords, sys.claimRadius || 1).forEach(h =>
-          map.set(`${h.q},${h.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name }));
+      // The system layer is the snapshot's controlMap, one row per controlled hex. Where two held systems'
+      // disks overlap, the ENGINE has already given each hex to one claim by seniority (territory-model.md §2:
+      // the oldest claim; a system keeps its own centre; a tie goes to the lower claimId). So the map paints
+      // each row in its guild's colour and decides nothing (design.md §18): it does not expand disks, and the
+      // player's own guild does not win overlaps. So a hex the player's disk reaches can show a rival's colour:
+      // the rival's claim is older, or the hex is the rival system's own centre.
+      claimsData.controlMap.forEach(row => {
+        const guild = guildById.get(row.guildId);
+        if (guild) map.set(`${row.q},${row.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name });
       });
       claimsData.guildOutposts.forEach(o => {
         const guild = guildById.get(o.guildId);
@@ -4889,13 +4895,6 @@ select.field{appearance:none; cursor:pointer;}
         if (guild) map.set(`${gt.coords.q},${gt.coords.r}`, { r: guild.color.r, g: guild.color.g, b: guild.color.b, label: guild.name, isGate: true });
       });
     }
-
-    PLAYER_GUILD.ownedSystemIds.forEach(id => {
-      const sys = systemById.get(id);
-      if (!sys) return;
-      hexesInRadius(sys.coords, sys.claimRadius || 1).forEach(h =>
-        map.set(`${h.q},${h.r}`, { r: 67, g: 217, b: 200, label: PLAYER_GUILD.name }));
-    });
 
     return map;
   }
@@ -6042,7 +6041,9 @@ select.field{appearance:none; cursor:pointer;}
       };
     });
 
-    claimsData = { guilds: parsed.guilds, systemClaims: parsed.systemClaims, guildOutposts, tollGates: [], tollPaths: [] };
+    // `controlMap` is the snapshot's resolved control, [ { q, r, guildId, claimId } ], kept as it arrived:
+    // computeTerritoryMap paints its rows and nothing else paints system territory.
+    claimsData = { guilds: parsed.guilds, systemClaims: parsed.systemClaims, controlMap: parsed.controlMap || [], guildOutposts, tollGates: [], tollPaths: [] };
     guildOutpostByKey = new Map(guildOutposts.map(o => [`${o.coords.q},${o.coords.r}`, o]));
     // By id too: a Syndicate delivery to an Outpost names its destination by id, and the in-flight
     // pass resolves the leg's far end here, as a system delivery resolves its end from systemById.
@@ -6080,7 +6081,7 @@ select.field{appearance:none; cursor:pointer;}
   window.__loadGalaxy = loadGalaxy;
 
   // The one door live state enters the map through. Called by the shell after every
-  // /snapshot read with { myGuildId, myGuildName, guilds:[{id,name}], systemClaims, outposts }.
+  // /snapshot read with { myGuildId, myGuildName, guilds:[{id,name}], systemClaims, controlMap, outposts }.
   // The map computes nothing from it: it colours hexes and labels owners.
   window.__setLiveTerritory = function (live) {
     // EVERY guild goes into the lookup — the player's own included, so the system
@@ -6094,12 +6095,13 @@ select.field{appearance:none; cursor:pointer;}
       color: g.id === live.myGuildId ? { r: 67, g: 217, b: 200 } : RIVAL_RGB,
     }));
     const claims = { ...(live.systemClaims || {}) };
-    // The player's own systems also drive the self-coloured territory fill and the
-    // only labels the map draws for a guild (both keyed off this list).
+    // The player's own systems drive the only labels the map draws for a guild. They no longer
+    // drive the territory fill: that is the engine's controlMap, where the player's guild can lose
+    // a contested hex to an older claim.
     PLAYER_GUILD.ownedSystemIds = Object.keys(claims).filter((id) => claims[id] === live.myGuildId);
     PLAYER_GUILD.name = live.myGuildName || 'Your Guild';
     PLAYER_GUILD.guildId = live.myGuildId; // so the label pass tags only the player's OWN outposts
-    loadClaims({ guilds, systemClaims: claims, outposts: live.outposts || [] });
+    loadClaims({ guilds, systemClaims: claims, controlMap: live.controlMap || [], outposts: live.outposts || [] });
     // The panel is written on the click, so an open Guild Outpost panel re-reads its Hold line here:
     // a delivery landing or a sale while it is open moves `used`. Looked up by id on the rows this
     // poll just rebuilt; an outpost no longer in them leaves the line as it was.
@@ -8088,12 +8090,13 @@ var POLL_MS = 1000;
 var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollTimer:null, needFound:false, recipes:[], recipeOut:{}, goods:{ raw:[], processed:[], tier3:[] } };
 // Everything the client holds from the live snapshot. Nothing here is computed:
 //   systemClaims  { systemId: ownerGuildId }   from claims[] (the shared, in-world layer)
+//   controlMap    [ { q, r, guildId, claimId } ]  verbatim: who controls each hex, seniority already resolved
 //   guildNameById { guildId: name }            names only — no guild's economics
 //   occupancy     { siteId: ventureId }        verbatim from the snapshot
 //   siteInfo      { siteId: {...} }            the player-safe read of who holds a site
 //   known         { systemId: { planetId: {...} } }  geography.known: the earned L1/L2 detail
 //   myArrays      [ { id, coords, anchorSystemId, scan? } ]  the player's own Deep Scan Arrays
-var LIVE = { systemClaims:{}, guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'', known:{},
+var LIVE = { systemClaims:{}, controlMap:[], guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'', known:{},
              myVentures:{}, myAssets:[], myArrays:[], windowN:null,
              // The last snapshot as it arrived. The TRADE panel reads its prices,
              // priceHistory and the player guild's stockpiles straight off this —
@@ -8400,6 +8403,10 @@ function applySnapshot(snap){
   (snap.claims || []).forEach(function(c){
     if (c.landmarkKind === 'system') LIVE.systemClaims[c.landmarkId] = c.ownerGuildId;
   });
+  // The held systems' control on the map, hex by hex (docs/territory-model.md §2). Where two systems' disks
+  // overlap the engine has already picked the one guild that controls each hex, so this is read, never
+  // worked out from the claims above (design.md §18). Public: the same whole map in every guild's view.
+  LIVE.controlMap = snap.controlMap || [];
   // The map detail this guild has EARNED past L0 (exploration-model.md §7): its own surveys plus
   // every controlled system at full L2, grouped { systemId: { planetId: { archetype, nodes:
   // { nodeId: resourceType }, slots: { slotId: true } } } }. The detail screen reads a planet's
@@ -8495,6 +8502,7 @@ function applySnapshot(snap){
       myGuildName: GAME.guildName,
       guilds: (snap.guilds || []).map(function(g){ return { id:g.id, name:g.name || g.id }; }),
       systemClaims: LIVE.systemClaims,
+      controlMap: LIVE.controlMap,
       // Guild outposts — the full public list across all guilds (client-wiring §7: location is
       // public, economics are not). Passed through verbatim; the map derives names + colours it.
       outposts: snap.outposts || [],
