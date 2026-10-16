@@ -88,7 +88,10 @@ depends on the guild's situation.
   public; no system claim = unclaimed). Together they are this bullet's L0, unchanged: a split of where each
   fact travels, not a change to what L0 is.)* *(⤳ AS-BUILT 13-10-26, the board-widening slice: the board also
   carries every Syndicate waystation and the Citadel — §4 ruling 12's 13-10-26 note — so the "always visible"
-  waystations above reach a viewer on the board too.)*
+  waystations above reach a viewer on the board too.)* *(⤳ AS-BUILT 16-10-26, the Prefecture / claims slice, engine
+  PR 2: the controller's footprint, resolved hex by hex by `territory-model.md` §2's seniority rule, rides the
+  snapshot's **`controlMap`** beside `claims` — public, the same in every view, since it is a function of the claims
+  and the seed.)*
 - **L1 — a system's planet archetypes.** Cut by **either**: a transport sitting idle in the
   system (instant, but costs the trip — fuel + travel time), **or** a Deep Scan Array L1 scan
   of the system (no trip, but takes time). The player picks whichever is cheaper for the case.
@@ -124,7 +127,9 @@ depends on the guild's situation.
   hidden until **L3** — that is now espionage's whole job. A craft sent to a rival system reveals
   nothing new.
 - **Rival structures.** Outposts and toll gates are **always** visible; transports and deep-scan
-  arrays are **never** (until L3).
+  arrays are **never** (until L3). *(⤳ **RULED 16-10-26:** a planted **Prefecture** is a publicly visible
+  structure too — a rival sees its row cut to `RIVAL_PREFECTURE_FIELDS`, ratifying the as-built engine PR 1 fog;
+  grounds and detail in `territory-model.md` §4.)*
 - **Syndicate.** Waystations always; your **own** buy-order deliveries visible (already built and
   ruled — out of scope, untouched here); rivals' deliveries not.
 - **Galaxy-wide aggregates — coarsened to posted values (RULED 06-10-26).** `design.md` §5: "the
@@ -522,6 +527,12 @@ footprint and changes no territory.
   in flight. A galaxy created BEFORE slice 17 keeps its persisted seed (never regenerated), side-by-side starters
   and all, so "refused for both" is still live engine code there until the seniority control map lands; it stays
   tested on a hand-edited seed (`sim/tests/deep-scan-centre.test.js`).)*
+  *(⤳ 16-10-26, the Prefecture / claims slice, engine PR 2 — **the seniority control map is BUILT**
+  (`sim/claims.js` `controlledBy` / `resolveControl`, `territory-model.md` §2's AS-BUILT note), **but this rule is not
+  yet switched to it:** `attachedPlacement` still refuses a hex any rival footprint covers, so "refused for both" is
+  still the code. And the premise "it cannot arise" no longer holds on any galaxy: a Prefecture may be planted on a
+  system whose disk overlaps a rival's (the PR 1 test fixture's target sits 2 hexes from a home). Switching the rule moves deploy
+  legality and the `deepScan` lane, so it is its own slice — on the roadmap's decision checklist to sequence.)*
 - **Map visibility — RULED 15-10-26.** A guild's OWN Deep Scan Arrays are drawn on its galaxy map.
   A rival's array is **never drawn**. Seeing one is a detection matter, deferred with transport
   detection (L3), exactly as a rival's transport is. Today a rival's array is already absent from a

@@ -28,6 +28,7 @@ const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { withoutRebandedGoods } = require('./rebanded-goods-strip.js');
+const { withoutControlMap } = require('./control-map-strip.js');
 const { outpostDeployScript } = require('./outpost-deploy-script.js');
 const { kitFerryScript } = require('./kit-ferry-script.js');
 
@@ -74,8 +75,10 @@ function digestsOf(name, run) {
   for (const [step, s] of Object.entries(run.steps)) {
     out[`${name}.${step}`] = {
       state: hashState(withoutRebandedGoods(s)),
-      godsEye: hashState(withoutRebandedGoods(buildSnapshot(s))),
-      ownView: hashState(withoutRebandedGoods(buildSnapshot(s, s.guilds[0].id))),
+      // ⤳ 16-10-26 (the Prefecture / claims slice, engine PR 2): and through the control-map strip (tests/control-map-strip.js)
+      // — every snapshot and view gained the public `controlMap` and nothing else moved, so the pins still stand.
+      godsEye: hashState(withoutRebandedGoods(withoutControlMap(buildSnapshot(s)))),
+      ownView: hashState(withoutRebandedGoods(withoutControlMap(buildSnapshot(s, s.guilds[0].id)))),
     };
   }
   out[`${name}.reasons`] = hashState(run.reasons);

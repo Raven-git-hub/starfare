@@ -49,6 +49,7 @@ const { tick } = require('../tick.js');
 const { hashState } = require('../serialize.js');
 const { saveState, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
+const { withoutControlMap } = require('./control-map-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { DEEP_SCAN_KIT } = require('../resources.js');
 const { CENTRE_KIND } = require('../deep-scan-arrays.js');
@@ -482,7 +483,9 @@ test('NO-OP: with no array on a centre the STATE is byte-identical to main, and 
   const ringArray = accept(placed.s, deployAsset('g1', placed.craftId));
   for (const [name, s] of [['bare', bare], ['ringArray', ringArray]]) {
     assert.equal(hashState(s), ON_MAIN[name].state, `"${name}": a serialized byte moved`);
-    const lens = buildSnapshot(s);
+    // ⤳ 16-10-26 (the Prefecture / claims slice, engine PR 2): and through the control-map strip (tests/control-map-strip.js)
+    // — every snapshot and view gained the public `controlMap` and nothing else moved, so the pins still stand.
+    const lens = withoutControlMap(buildSnapshot(s));
     assert.notEqual(sha(JSON.stringify(lens)), ON_MAIN[name].godsEye, `"${name}": the lens should carry the new centres`);
     assert.equal(sha(JSON.stringify(withoutHeldCentres(lens, s))), ON_MAIN[name].godsEye, `"${name}": the lens moved by more than the centres`);
   }

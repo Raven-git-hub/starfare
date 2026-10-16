@@ -15,7 +15,9 @@ outpost kit and a manual outpost deploy — is now BUILT; see the AS-BUILT note 
 its second rung — the deploy as a dispatch's on-arrival action, with the arrival re-validation and the
 retreat rule — is BUILT too (the slice-2 AS-BUILT note). Everything else here stays design-ahead.)* *(⤳ 16-10-26: §4's
 claim action — the Prefecture kit, its ferry into unheld ground with the arrival retreat, and the plant that writes the
-claim — is BUILT, engine + operator CLI (§4's "AS-BUILT — engine PR 1"). §2's seniority map is next, engine PR 2.)*
+claim — is BUILT, engine + operator CLI (§4's "AS-BUILT — engine PR 1"). §2's seniority map is next, engine PR 2.)* *(⤳ 16-10-26:
+§2's seniority control map is BUILT in the engine and carried by the snapshot (§2's "AS-BUILT — engine PR 2"); the client
+render is the next PR.)*
 
 ---
 
@@ -37,7 +39,9 @@ exists to avoid:
 
 Everything below §1 is the second layer. It is **design-ahead for detection (2.5)**: no
 current system reads it, so it is specified now (while settled) and built when a consumer
-exists — not before.
+exists — not before. *(⤳ 16-10-26: its first consumer exists — the map paint, through the snapshot — so §2's
+controlled / uncontrolled half is BUILT, derived exactly as above and storing nothing (§2's "AS-BUILT — engine PR
+2"). §3's semi-controlled half waits for detection.)*
 
 ## 2. The control footprint & the first-settled rule
 
@@ -66,6 +70,44 @@ to shave their territory is a real play. A contested hex resolves by **seniority
 
 This is the same "earliest valid wins" spirit as the roadmap's first-valid-wins contest
 stub and Gate 3's earliest-established tie-break.
+
+**AS-BUILT — engine PR 2: the seniority control map (16-10-26; roadmap 2.5, the first Prefecture / claims slice; engine
++ snapshot, no client).** Built to the four bullets above, no design change and **no new number** (the rule is the
+claims' own ticks and ids over the seed's `claimRadius`).
+- **The resolver** is `sim/claims.js`, built ON `controlNear` — the coverage question ("which footprints cover this
+  hex?") is still asked there and nowhere else; a held system's footprint now also names its claim row (`claimId`,
+  `claimedAtTick`). One private rule, `controllingFootprint`, applies the bullets in order: the hex's held-system
+  footprints are the candidates; if the hex is a held system's own centre, that system's holder wins (asked of
+  `systemHolder`, so the two can never disagree); otherwise the oldest `claimedAtTick` wins, ties to the lower `claimId`
+  (byte order). Two exports read off that one rule: **`controlledBy(state, coords)`** → the controlling guild's id, or
+  `null` when no held system's footprint covers the hex; **`resolveControl(state)`** → the whole map. The map only
+  decides WHERE TO ASK (a net of every hex in a held disk) and puts each hex to the same rule, so a map row and
+  `controlledBy` for that hex are one answer.
+- **Derived, never stored.** Both are pure reads of `state.claims` and the seed, recomputed on every call: a claim added
+  or removed changes the answer with nothing to reconcile (tested by deleting the senior claim — the junior expands to
+  its full footprint). No state key, no serialized byte, no determinism hash.
+- **The snapshot shape.** A top-level **`controlMap: [ { q, r, guildId, claimId } ]`** — one row per controlled hex,
+  naming the ONE guild that controls it and the claim that won it, sorted by q then r (invariant 9), emitted right after
+  `claims`. ALWAYS EMITTED (`[]` when no system is held; in a live galaxy every guild's home is held, so it is never
+  empty). The engine resolves seniority and the client only paints the rows (`design.md` §18 — the `deployRange`
+  precedent). **Public L0:** every row is a function of the public claim board and the seed, so `sim/fog.js` classifies
+  it `public` and every guild's view carries the same whole map. No schema bump.
+- **Scope — the SYSTEM layer.** The rule above is ruled for claimed systems; an Outpost writes no claim row (no
+  `claimedAtTick`), so its one-hex footprint is not in the map (it stays in `outposts`, and `controlNear` still lists it).
+  A Deep Scan Array's hex could not be anyway: a rival's array is never visible. How an Outpost hex inside a rival's disk
+  resolves is on the roadmap's decision checklist. Hexes are listed as the footprint covers them, the galaxy's rim
+  included, as the client paints a disk today.
+- **The tripwires.** `checkClaimIntegrity` now also asserts the two facts seniority needs: every `claimedAtTick` a whole
+  tick in [0, now] (§15.2) and every `claimId` unique (§15.4) — and the resolver HALTS, naming the claim, on a covering
+  claim with no whole tick. `sim/tests/control-map.test.js` pins each bullet on a real plant (the PR 1 fixture: g2's
+  Prefecture 2 hexes from g1's home) and on two ADJACENT seed systems (the own-centre override; the senior takes 3 of the
+  4 contested hexes), the tie-break both ways, the recompute, determinism, the views, and an ORACLE — the rule written
+  out again in the test and asked of every hex around a dense cluster of claims, ties included.
+- **What moved.** Every snapshot and every per-guild view gained the `controlMap` key and nothing else: each pinned
+  snapshot golden is still asserted against its pre-PR hash through `sim/tests/control-map-strip.js` (which refuses to
+  be vacuous). No state golden moved. Not built: the client render (`client/game.html` `computeTerritoryMap` still
+  paints raw disks; next PR), §3's corridors, and the Deep Scan Array rule's switch to seniority
+  (`exploration-model.md` §5 — still "refused for both"; on the decision checklist).
 
 ## 3. Semi-controlled space — a detection zone, not a safe zone
 
@@ -130,7 +172,7 @@ onto a fully-visible galaxy. It does not change the claim *row* (still `landmark
 - **Arrival retreat (RULED 16-10-26 — the outpost's logic and messages).** If a rival has claimed the target system in flight, the ferry does not strand the craft in rival space: it **RETREATS exactly as a failed outpost deploy does** — `retreatLanding` toward the nearest held system (always exists, §4), kit aboard, the `deployFailed` flag, and the `deploy_failed` pilot's notice with its Redeploy / Return forks (`event-log.md` §10) — adding ONE new `DEPLOY_FAILED_REASONS` entry for "target system already claimed". The mid-flight un-settle HALT (§8) does **not** apply: a ground asset has no range anchor and the target is unheld by design, so there is nothing to lose but the system to a faster rival.
 - **One residual edge (working rule 7, on paper).** A rival claiming the target in the gap between a clean unload and the plant leaves the kit idle in now-rival ground; the plant then refuses ("already claimed") and the player hauls the kit out. Benign until hostile mechanics exist; the plant's unclaimed-system check is the guard.
 - **Acquire — BUILD-ONLY.** The Prefecture is dockyard-built, **not Syndicate-sold** (`docs/asset-recipes.md`, `docs/phase-1-tuning.md`) — the deliberate throttle on rapid expansion. Otherwise it rides the solved kit pipeline (`BUILDABLE_INSTALLATION_KINDS`, `mintKitAsset`, `KIT_KIND_FOR_BILL`) exactly as the array does.
-- **The seniority control map (§2) is BUILT in this slice** — the 7-hex footprint with overlap resolved by `claimedAtTick` (own-centre override, tie-break lower `claimId`), derived and recomputed on change, extending `controlNear` / the client's `computeTerritoryMap`. (It was ruled-not-built; `controlNear` already hands back every overlapping footprint for the resolver to decide.)
+- **The seniority control map (§2) is BUILT in this slice** — the 7-hex footprint with overlap resolved by `claimedAtTick` (own-centre override, tie-break lower `claimId`), derived and recomputed on change, extending `controlNear` / the client's `computeTerritoryMap`. (It was ruled-not-built; `controlNear` already hands back every overlapping footprint for the resolver to decide.) *(⤳ Engine half BUILT 16-10-26, engine PR 2 — §2's AS-BUILT note; the client's `computeTerritoryMap` is the next PR.)*
 - **Scope — claim-only.** Teardown / un-claim / eviction (and so its goods question, §19 #67), hostile removal (§19 #69), the semi-controlled corridors (§3), squatting (Gate 3 stays hard), and the Prefecture's design-ahead **in-system planet-scan** function are all **OUT** of this first slice. It is the solo claim lever: survey → build → ferry → plant → claim → the seniority map. Losing ground comes later.
 
 **AS-BUILT — engine PR 1: acquire + the claim action (16-10-26; roadmap 2.5, the first Prefecture / claims slice; engine
@@ -175,9 +217,17 @@ consumes resolved control yet, and the client's footprint render is untouched); 
   a real Deep Scan Array survey → load → ferry → plant → claim → Gate 3 open, ledger balanced), and live through
   `tools/admin.js` on a `seat-demo --seed 42` galaxy, surviving a restart. No pre-existing path moved a byte apart from
   the two re-banded goods' price rows (`sim/tests/rebanded-goods-delta.test.js`).
-- **Not built (design-ahead):** §2's seniority map (engine PR 2); the client (the plant affordance, the kit's row, the
-  `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` / `deploy-failed-notice-client.test.js`);
-  teardown / eviction (§19 #67), hostile removal (§19 #69), corridors (§3), squatting, and the in-system planet-scan.
+- **Not built (design-ahead):** §2's seniority map (engine PR 2 — *⤳ BUILT 16-10-26, §2's AS-BUILT note*); the client
+  (the plant affordance, the kit's row, the `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` /
+  `deploy-failed-notice-client.test.js`); teardown / eviction (§19 #67), hostile removal (§19 #69), corridors (§3),
+  squatting, and the in-system planet-scan.
+
+**⤳ RULED 16-10-26 — a planted Prefecture is a PUBLICLY VISIBLE structure.** A rival sees its row, cut to
+`RIVAL_PREFECTURE_FIELDS` (`sim/fog.js`), as it sees a rival Outpost's. Grounds: the claim it wrote is public (ownership
+is public, §1 / `exploration-model.md` §1), a controlled system's whole surface is public (`exploration-model.md` §4
+ruling 11), and `design.md` §2 calls the Prefecture "a single, visible, destructible anchor". This **ratifies the as-built
+engine PR 1 behaviour** (the fog classification PR 1 made in code only; its decision-checklist item 3) — no code change.
+A field added to the row later stays hidden from rivals until it is ruled public (the allow-list).
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

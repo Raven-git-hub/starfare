@@ -322,7 +322,12 @@ test('THE LANE equals the independent oracle over the whole galaxy, for both gui
 
 test('controlNear: within 0 is who controls the hex; within 1 adds the footprints beside it; systems first, then Outposts, each by id', () => {
   let s = galaxy({ g1Extra: [gap.a], g2Extra: [gap.b] });
-  assert.deepEqual(controlNear(s, HOME_HEX, 0), [{ guildId: 'g1', kind: 'system', id: HOME.id, anchorSystemId: HOME.id }], 'the centre is in the disk');
+  // ⤳ 16-10-26 (the Prefecture / claims slice, engine PR 2): a held system's footprint also names its claim row —
+  // `claimId` and `claimedAtTick`, what the seniority control map ranks (sim/claims.js `controlledBy`).
+  const homeClaim = s.claims.find((c) => c.landmarkId === HOME.id);
+  assert.deepEqual(controlNear(s, HOME_HEX, 0), [{
+    guildId: 'g1', kind: 'system', id: HOME.id, anchorSystemId: HOME.id, claimId: homeClaim.claimId, claimedAtTick: homeClaim.claimedAtTick,
+  }], 'the centre is in the disk');
   assert.deepEqual(controlNear(s, gap.hex, 0), [], 'the gap hex is nobody\'s');
   assert.deepEqual(controlNear(s, gap.hex, 1).map((f) => f.id), [gap.a, gap.b].sort(), 'but it is beside both disks');
   // An Outpost controls its own hex only (no aura yet): an Outpost row follows the systems.
