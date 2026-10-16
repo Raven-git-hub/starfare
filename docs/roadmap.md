@@ -5742,8 +5742,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      its guild holds, and nothing un-holds a system yet, so a live lockout on an unheld slot cannot occur today. Rule
      whether a Prefecture must respect one once un-claiming exists (#67).
   7. **A Prefecture may be planted in an unfounded STARTER system.** Nothing refuses it, and a founding refuses any claimed
-     system — so a Prefecture there takes that starter out of the founding pool. Rule whether starter systems are off
-     limits (or reserved) for a Prefecture.
+     system — so a Prefecture there takes that starter out of the founding pool. **RULED 16-10-26 — ALLOWED (pressure over
+     prohibition):** claiming a frontier starter is a legitimate, if aggressive, play; the 14-day build-only cost and the
+     storyteller / GP are the checks, not a hard prohibition. No code change. Revisit if live multi-guild founding shows
+     real pool pressure.
   8. **The fixture galaxy's target sits 2 hexes from a home**, so the two control footprints overlap; PR 1 resolves
      nothing (it writes the claim only). Recorded for PR 2's tests.
   9. **`sim/actions.js` is now ~6,450 lines** (+~200 this slice), flagged per CLAUDE.md; the Prefecture's vocabulary went
