@@ -176,20 +176,26 @@ test('validate: refuses when FUEL is short — reached only once credits pass (t
 // --- 2b. the sell catalog DIVERGES from the build catalog at spycraft (2.1d/2.2) ----------------
 // docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable (RULED 22-09-26)".
 
-test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus spycraft (rule-4 tripwire)', () => {
+// ⤳ 16-10-26 (docs/asset-recipes.md, the Prefecture note): spycraft is no longer the ONLY build-only kind. The
+// Prefecture is the second — the deliberate throttle on rapid expansion — so the relation is now "minus the two".
+const BUILD_ONLY_KINDS = [SPYCRAFT, 'prefecture'];
+
+test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus the two build-only kinds, spycraft and the Prefecture (rule-4 tripwire)', () => {
   // The load-bearing set relation, asserted both ways so a future kind added to ONE catalog can
-  // never silently skip the other: spycraft is buildable but NOT sellable, and every OTHER
-  // buildable kind IS sellable.
-  assert.ok(BUILDABLE_KINDS.includes(SPYCRAFT), 'spycraft is a BUILDABLE kind (a guild builds it)');
-  assert.ok(!SYNDICATE_SELLABLE_KINDS.includes(SPYCRAFT), 'spycraft is NOT sellable (guild-build-only)');
+  // never silently skip the other: each build-only kind is buildable but NOT sellable, and every
+  // OTHER buildable kind IS sellable.
+  for (const kind of BUILD_ONLY_KINDS) {
+    assert.ok(BUILDABLE_KINDS.includes(kind), `${kind} is a BUILDABLE kind (a guild builds it)`);
+    assert.ok(!SYNDICATE_SELLABLE_KINDS.includes(kind), `${kind} is NOT sellable (guild-build-only)`);
+  }
   for (const kind of BUILDABLE_KINDS) {
-    if (kind === SPYCRAFT) continue;
+    if (BUILD_ONLY_KINDS.includes(kind)) continue;
     assert.ok(SYNDICATE_SELLABLE_KINDS.includes(kind), `${kind} is buildable AND sellable`);
   }
-  // The sell set is precisely the buildable set with spycraft removed — nothing more, nothing less.
+  // The sell set is precisely the buildable set with the build-only kinds removed — nothing more, nothing less.
   assert.deepEqual(
     [...SYNDICATE_SELLABLE_KINDS].sort(),
-    BUILDABLE_KINDS.filter((k) => k !== SPYCRAFT).sort(),
+    BUILDABLE_KINDS.filter((k) => !BUILD_ONLY_KINDS.includes(k)).sort(),
   );
 });
 
@@ -200,8 +206,10 @@ test('validate: the buy gate ACCEPTS each of the five sellable kinds and REFUSES
   for (const kind of SYNDICATE_SELLABLE_KINDS) {
     assert.equal(validateAction(s, buy(kind, DEST)).valid, true, `buy ${kind} accepted`);
   }
-  // A spycraft buy is refused LOUDLY, naming it guild-build-only (not merely hidden from the UI).
-  reject(s, buy(SPYCRAFT, DEST), /guild-build-only/);
+  // A spycraft buy is refused LOUDLY, naming it guild-build-only (not merely hidden from the UI) — and so is a
+  // Prefecture buy (16-10-26), naming its own kind.
+  reject(s, buy(SPYCRAFT, DEST), /the Syndicate does not sell spycraft, it is guild-build-only/);
+  reject(s, buy('prefecture', DEST), /the Syndicate does not sell prefecture, it is guild-build-only/);
 });
 
 // --- 3. apply -----------------------------------------------------------------

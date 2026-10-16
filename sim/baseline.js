@@ -176,12 +176,13 @@ const TICKS_PER_UNIT = Object.freeze({
 // production resolver, the price engine's capacity and the invariants all ask it, so they can
 // never disagree about a good (a good is all-timed or all-continuous — never both).
 //
-// NULL for the four UNCLASSIFIED modules (drive_module, droid_components, claim_beacon,
-// habitation_module). The ruling makes every Tier-3 good timed, but their timer depends on the
-// sub-tier they have not been given yet (the same open question that keeps them on the old
-// uniform price band). Picking one would invent a number, so they stay CONTINUOUS — their
-// status quo — until their sub-tier is ruled; then they become timed with no code change. This
-// is on docs/roadmap.md's decision checklist.
+// NULL for the two UNCLASSIFIED modules (drive_module, droid_components). The ruling makes every
+// Tier-3 good timed, but their timer depends on the sub-tier they have not been given yet (the
+// same open question that keeps them on the old uniform price band). Picking one would invent a
+// number, so they stay CONTINUOUS — their status quo — until their sub-tier is ruled; then they
+// become timed with no code change. This is on docs/roadmap.md's decision checklist. (⤳ 16-10-26:
+// claim_beacon and habitation_module were the other two. The Prefecture bill gave them sub-tiers
+// 3-2 and 3-3, so — with no code change, as promised — they are timed now: 30 and 60 ticks/unit.)
 function ticksPerUnitFor(good) {
   if (!Object.prototype.hasOwnProperty.call(TIER3_PRICE_CLASS, good)) return null; // not Tier 3
   const priceClass = TIER3_PRICE_CLASS[good];

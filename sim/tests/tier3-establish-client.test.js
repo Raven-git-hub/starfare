@@ -59,7 +59,7 @@ test('HEADLINE: tier3Contract lists exactly the timed goods, and its y, floor(y)
   const s = galaxy(TIMED.map((good) => factory(`f_${good}`, 'g1', good)));
   const snap = buildSnapshot(s);
   assert.deepEqual(Object.keys(snap.tier3Contract).sort(), [...TIMED].sort(), 'the timed goods, and only them');
-  assert.equal(TIMED.length, 21);
+  assert.equal(TIMED.length, 23); // 21 until claim_beacon and habitation_module were placed (16-10-26)
 
   for (const good of TIMED) {
     const t = snap.tier3Contract[good];
@@ -94,11 +94,12 @@ test('HEADLINE: tier3Contract lists exactly the timed goods, and its y, floor(y)
   assert.deepEqual(snap.tier3Contract.deep_scan_mast, { weeklyOutput: 2, committedUnitsCeiling: 2, termDays: 7 });
 });
 
-test('no Tier-1/2 good and none of the four unclassified modules is listed — they keep the Tier-1/2 licence', () => {
+test('no Tier-1/2 good and none of the two unclassified modules is listed — they keep the Tier-1/2 licence', () => {
   const t = buildSnapshot(galaxy([])).tier3Contract;
   for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS]) assert.equal(t[good], undefined, good);
   const unclassified = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null);
-  assert.deepEqual([...unclassified].sort(), ['claim_beacon', 'drive_module', 'droid_components', 'habitation_module']);
+  // ⤳ 16-10-26: four became two — claim_beacon and habitation_module are timed now (the Prefecture bill).
+  assert.deepEqual([...unclassified].sort(), ['drive_module', 'droid_components']);
   for (const good of unclassified) assert.equal(t[good], undefined, `${good} has no timer`);
 });
 

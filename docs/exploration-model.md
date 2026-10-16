@@ -259,6 +259,7 @@ A guild's snapshot view = **L0 (always) ∪ its record (permanent) ∪ the live 
     record's `slots` track** exists (§7's AS-BUILT note). The third (the retired leak) stays retired. The
     fourth — **the claim gate** — is still **recorded, not enforced**: no gate reads a slot yet, and there
     is no slot read (`knowsSlot`) until the Prefecture / claims slice adds what its gate needs (§8).)*
+    *(⤳ 16-10-26: ENFORCED by the Prefecture / claims slice — `knowsSlot` and the plant's survey gate, §8's AS-BUILT note.)*
 
 **Settled 08-10-26 — the simplification:**
 
@@ -1169,6 +1170,16 @@ already the gate's data source from birth.
 > P" — is representable and populated, by founding and by the guild's own L2 survey. Still **recorded, not
 > enforced**: no claim or establish validation reads it, and no slot read (`knowsSlot`) is added until the
 > Prefecture / claims slice needs one.)*
+>
+> **⤳ AS-BUILT 16-10-26 (roadmap 2.5, the Prefecture / claims slice, engine PR 1) — ENFORCED.** The gate is now
+> live. `knowsSlot(guild, slotId)` (`sim/exploration.js`, exported) is the mirror of `knowsNode`, reading the record's
+> `slots` track — and only the record, never the live controlled-system projection of the view. `plantPrefecture`
+> (`sim/actions.js`) refuses a slot the guild does not know: "guild G has not surveyed planet P — slot S is not in its
+> exploration record, and a Prefecture plants only on a planet its guild has surveyed to full L2". Since a survey
+> reveals the whole surface at once, that one read IS "planet surveyed to full L2", and surveying a different planet of
+> the same system opens nothing (tested). `checkPrefectureIntegrity` (`sim/invariants.js`) also asserts every tick that a
+> planted Prefecture's slot is still in its owner's record (the record never shrinks). Establish validation is
+> unchanged: the gate is the claim's, not the venture's.
 
 ## 9. Scope & the vertical split
 

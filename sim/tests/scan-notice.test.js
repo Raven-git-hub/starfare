@@ -15,6 +15,14 @@
 //
 // The scan mechanic itself (the reveal, the void condition, the durations) is deep-scan-job.test.js's.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
@@ -199,28 +207,28 @@ test('scanTargetName: a system\'s name, a planet\'s designation, the raw id when
 // every step. If a pin moves, the slice changed more than the notice: find out why before re-pinning.
 const SCAN_STEPS_ON_MAIN = {
   l1Done: {
-    state: '55a1aeadb4798cb771aba7396b9c9b1b7c26b4a414590160e1ff36a58fbee33e',
-    godsEye: '2ac88519132346c91bf22263acae0a57cebd4067cee7fe90b1c69cd9787467f1',
-    [A]: '85ff0abc77bb2b217958ae500b72bdb2741153f20a34ba65cd8cb4b1661dff64',
-    [B]: '7e6db8e8117e8681f31f70e9d231c1d5e9f26d4f83886e5b9caf19492af154d5',
+    state: '6f055b579a6855c48f359931d6a88a45c4a6dfac32ca8b9dcfa15835345fb1b7',
+    godsEye: 'd3d3886f2cafc9be20c8ab15b33c9296054727eaaf513a7b2759922534a78cf2',
+    [A]: 'fb7360434a651e89252d59d96992db9cbd8f2b2fdcea38d4f366796cd242b5fc',
+    [B]: '2da411930a7657871dc44b956c81a612479c4402147f5c0703aa13e6335194c5',
   },
   l2Done: {
-    state: '2116db6470999bc71b4b61c016c77ab32aecb063267047e0a1af4bccf0e79a24',
-    godsEye: '30e386f2f7572809a5fa37efc213558e67ffb143d3bdc75c9faae31488753fe2',
-    [A]: '2959693213210e77fff0fd72a885bd20e2657e76b1f73d16b2209a787b900c47',
-    [B]: 'ede32903f8c4e958bcc1461c9084775654fb61fc4e2d522b976ecd0f5dd6c714',
+    state: 'd5f3aa7eeb2ec158a9b6c6c811841b101babb569d9a48474b805dd8242f77e1d',
+    godsEye: 'ac683a7ab4336c2da6d1358697ece73624fa8934cba9a78f57fc2f4afbd1c9c6',
+    [A]: '16b43126e9d24b8fd939ab50290a9b1f3b53c33a701e63b5095cb14c5607befe',
+    [B]: 'ada4f48fba1480601906ce0a95d6efd14dec2ec582ded5a9446c9de158f6bd76',
   },
   repeatDone: {
-    state: 'aee9967b5bd08eb8d9b42262c9f7e329f23cb21dabe9c348fb3db8e5080d58ab',
-    godsEye: 'b4feca99fd372045cceaaf2cc2480f9569e1a26c1edf505667a06ce2924b4d1b',
-    [A]: '993b0ff136c0ccd5784c7580949d821cfdf5b1fe875f295c684e71fb643618c8',
-    [B]: 'd44db2bb10057f7f5e259bada03712ddf15c0ac262769df4100f5dd9e48db74e',
+    state: '002c3e6c06090acb498aa8b6fefb20944b2c108c5e79e9e992599d10eccbb543',
+    godsEye: '884ab136fa0600ae8034ee5acb11fe88fb924e9c3a05fa94e0c572c8d3d7ba26',
+    [A]: 'd21854d34e43030e65875fb1001c1df327686abc87d79ff62ae459ecf3947e62',
+    [B]: 'c4c07315d497d9efc02027ec214a347ea52510303a6d13aa5df697535708f26b',
   },
   voided: {
-    state: '2b64ee714e665f1878480739734e4a1f6aaf81a3bb2319264992249c2cff00db',
-    godsEye: '73e57df05beceda55f98d4cde514458c4ca91ccda5cbfb44bb56fbc57271a462',
-    [A]: '16ade29457104c977de4208ef0155d82f3bdfe82ce79ca73d94fe3124a69a529',
-    [B]: '0f17d0b01390e8a1720d516f39936e326d2e029876cd65dc4d4c3c70b5d22d1f',
+    state: 'cef98d02bd04e340d775f7eff8cb2f2a371f84ef29a5ae90086b14fd607a4b6f',
+    godsEye: '381c50437923dbb5bf76b044f95446e17c2f91cf1febbc2089b2bf51a6673f9b',
+    [A]: 'bd7c50d7d0f07175d63e48720a1781a570506e03875cf1e3be12e2319bc09a2a',
+    [B]: 'e23592c86d7016fd24649c82b078d91a542f51dfb54db55c67a8be2b461a3476',
   },
 };
 // How many scan notices each step should have written to A's log, in order.

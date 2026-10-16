@@ -109,6 +109,7 @@ function createGuild({
   vehicleSerial = 0,
   outpostSerial = 0,
   deepScanArraySerial = 0,
+  prefectureSerial = 0,
   savedRoutes = [],
   savedRouteSerial = 0,
   syndicateCommissionSerial = 0,
@@ -383,6 +384,12 @@ function createGuild({
     // (`deepScanArray_<guild>_NN`) is never reissued. Guarded by `checkDeepScanArrayIntegrity`; OMITTED
     // when 0 so a guild that has placed no array carries no key (invariant 9).
     ...(deepScanArraySerial !== 0 ? { deepScanArraySerial } : {}),
+    // prefectureSerial: the per-guild MONOTONIC Prefecture mint counter (roadmap 2.5, the Prefecture /
+    // claims slice), the sibling of `outpostSerial` above — bumped at each plant, never decremented, so a
+    // Prefecture's id (`prefecture_<guild>_NN`) AND its claim's (`claim_prefecture_<guild>_NN`, the same NN)
+    // are never reissued (sim/prefectures.js). Guarded by `checkPrefectureIntegrity`; OMITTED when 0 so a
+    // guild that has planted none carries no key and serializes byte-identically to pre-slice (invariant 9).
+    ...(prefectureSerial !== 0 ? { prefectureSerial } : {}),
     // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — named, origin-free waypoint
     // lists the guild can load onto any craft. Nested here, a sibling of `vehicles`, because a saved
     // route is guild-owned bookkeeping: ownership is "the guild whose array holds it". Each row goes
@@ -1006,6 +1013,38 @@ function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, created
   };
 }
 
+// Prefecture (SHARED, design.md §2 "The Prefecture"; docs/territory-model.md §4 — the territorial claim
+// anchor; roadmap 2.5, the Prefecture / claims slice). Lives in `state.prefectures` (assembled below), beside
+// `state.outposts`; the id/serial rules are sim/prefectures.js's. Planted only by `plantPrefecture`
+// (sim/actions.js), from an idle `prefecture` kit, on a settlement slot of a planet its guild has surveyed.
+//
+//   id            — `prefecture_<guild>_NN`, never reissued.
+//   ownerGuildId  — the guild that planted it.
+//   systemId      — the system it claims (its slot's system).
+//   planetId      — the planet its slot is on.
+//   slotId        — the SETTLEMENT SLOT it occupies (a seed site id). A Prefecture is the first non-venture
+//                   occupant of a site (design.md §2: "occupancy must learn to see a non-venture occupant"):
+//                   sim/occupancy.js reads this field, so no venture can be seated on top of it.
+//   claimId       — the `landmarkKind: 'system'` claim row the plant wrote (`claim_prefecture_<guild>_NN`,
+//                   the same NN). The claim row is still the one source of truth for who holds the system
+//                   (sim/claims.js); this is the link back to it.
+//   plantedAtTick — the tick it was planted (§15.2) — the same tick as its claim row's `claimedAtTick`.
+//
+// `systemId` and `planetId` are DENORMALISED from the slot (the seed is the one map, §15.3), kept so a
+// reader need not resolve the seed to know where the flag stands — the venture's `systemId` precedent.
+// `checkPrefectureIntegrity` halts if either drifts from the seed. This file ASSEMBLES the shape; legality
+// is `plantPrefecture`'s, and the invariant asserts it every tick.
+function createPrefecture({ id, ownerGuildId, systemId, planetId, slotId, claimId, plantedAtTick }) {
+  if (id === undefined) throw new Error('createPrefecture: id is required');
+  if (ownerGuildId === undefined) throw new Error('createPrefecture: ownerGuildId is required');
+  if (systemId === undefined) throw new Error('createPrefecture: systemId is required');
+  if (planetId === undefined) throw new Error('createPrefecture: planetId is required');
+  if (slotId === undefined) throw new Error('createPrefecture: slotId is required');
+  if (claimId === undefined) throw new Error('createPrefecture: claimId is required');
+  if (plantedAtTick === undefined) throw new Error('createPrefecture: plantedAtTick is required');
+  return { id, ownerGuildId, systemId, planetId, slotId, claimId, plantedAtTick };
+}
+
 // Saved route (OWNED, transport-model.md §11.9 — a row in `guild.savedRoutes`). A NAMED, ORIGIN-FREE
 // route the guild can load onto any craft: `waypoints` is the SAME §11.1 list a dispatched route uses
 // (`[{ anchor, action? }]`, each action a `{ type: 'dock', manifest }`). It stores NO origin and NO
@@ -1210,6 +1249,15 @@ function createState(scenario) {
     ...(Array.isArray(scenario.deepScanArrays) && scenario.deepScanArrays.length
       ? { deepScanArrays: scenario.deepScanArrays.map(createDeepScanArray) }
       : {}),
+    // prefectures: the SHARED Prefecture rows (design.md §2; docs/territory-model.md §4; roadmap 2.5, the
+    // Prefecture / claims slice) — top-level beside `outposts` / `deepScanArrays`, because a Prefecture is
+    // territory infrastructure on a slot, not a guild's inventory item. OMITTED when there is none, exactly
+    // like them: `plantPrefecture` is its only mint path, so a galaxy that has planted none carries no key and
+    // serializes byte-identically to pre-slice (invariant 9). A scenario or a restored save that HANDS ONE IN
+    // keeps it, copied through `createPrefecture`.
+    ...(Array.isArray(scenario.prefectures) && scenario.prefectures.length
+      ? { prefectures: scenario.prefectures.map(createPrefecture) }
+      : {}),
     // IN-FLIGHT (§15.1). Today's only occupant is the Syndicate BUY delivery
     // (design.md §6): `{ ownerGuildId, cargo, destinationSystemId, arrivalTick }` —
     // or, for a BUY to a guild Outpost, `destinationOutpostId` in place of
@@ -1317,6 +1365,7 @@ module.exports = {
   createVehicle,
   createOutpost,
   createDeepScanArray,
+  createPrefecture,
   createSavedRoute,
   createReserve,
   createSyndicate,

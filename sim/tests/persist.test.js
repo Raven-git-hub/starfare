@@ -14,6 +14,14 @@
 //   4. no-op proof — the pure (flag-unset) engine path is byte-identical to
 //      before this change; persistence is strictly opt-in.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { HOME_SYSTEM, HOME_PLANET, HOME_MINE, HOME_MINE_2 } = require('./home-anchor.js');
@@ -475,20 +483,20 @@ const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'd08a394e5aba62d53744704e28f648c4be7
 // proof (not a standing test — the bands are frozen module constants): with every module put back on
 // the old uniform 100 / 20 / 100,000 band and the rest of the slice in place, both previous values
 // (99fe2e11… and d99ea97b…) came back byte for byte.
-const GOLDEN_HASH_WITH_TIER3_CATALOG = 'c49c8e4c27dcfc26cab74baa5ce78f06e3fa8295bfe50901197d2dac2fe4eb6e';
+const GOLDEN_HASH_WITH_TIER3_CATALOG = '45c0fef1d2db6172f93b3a7c7aef57bd74c24cec11db4379e1e3861eba59347f';
 
 // ASSET SYSTEMID (2.1b, 12-09-26): the full hash with a `systemId` on every asset row —
 // the 25 founding-granted starter machines plus the one the mine occupies, all at the
 // guild's home system. The delta from GOLDEN_HASH_WITH_TIER3_CATALOG is that single
 // per-asset key, proven by asserting `withoutAssetSystemId(s)` returns the value above.
 // (⤳ re-pinned 27-09-26 for the Tier-3 re-band — see the note above GOLDEN_HASH_WITH_TIER3_CATALOG.)
-const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'ffa2b309ebd3b3308b1c2f3de4b0bf6464c9b6372086d521e1d618ac63fffd79';
+const GOLDEN_HASH_WITH_ASSET_SYSTEMID = '5e2d78e0f4330d53a0fa1852e3797bd9558f9badf4a8ca6956e6606e2e524b03';
 
 // THE HUMAN STARTER PACKAGE (design.md §13, RULED 04-10-26): the full hash once FOUND — a HUMAN
 // founding, `isBot` absent — opens on STARTER_HUMAN_CREDITS (not its 120) and is granted the four
 // starter craft and the Outpost kit. The delta from GOLDEN_HASH_WITH_ASSET_SYSTEMID is that package
 // alone, proven by asserting `withoutStarterPackage(s)` returns the value above.
-const GOLDEN_HASH_WITH_STARTER_PACKAGE = '3b6506503e5d17383f49520f261ebba20d2ee9976ad59c212b48f0264ed98a98';
+const GOLDEN_HASH_WITH_STARTER_PACKAGE = '44ec36335b3e578a77ec5e55cf82e1bd2bb7910d23ca1e4caa9afa5efffffd5d';
 
 // THE EXPLORATION RECORD (docs/exploration-model.md §6/§7, roadmap 2.5 engine slice 1, 05-10-26):
 // the full hash once FOUND also seeds the guild's `exploration` record with its whole home system
@@ -496,14 +504,14 @@ const GOLDEN_HASH_WITH_STARTER_PACKAGE = '3b6506503e5d17383f49520f261ebba20d2ee9
 // GOLDEN_HASH_WITH_STARTER_PACKAGE is that ONE added guild key, proven by asserting
 // `withoutExploration(s)` returns the value above. (One guild, so the end-of-tick public-register
 // observation has no rival to read and writes nothing here.)
-const GOLDEN_HASH_WITH_EXPLORATION = 'dec279894ce250bf7f182ad3d5bec8b8ece3a3b858b6a38533f96a94df4566fe';
+const GOLDEN_HASH_WITH_EXPLORATION = '0c9eec681fe1a362b82da8c2da98b79687a82043e57d65736dcdeafef2a21370';
 
 // THE SETTLEMENT SURFACE (docs/exploration-model.md §4 ruling 10, §7 — roadmap 2.5, the settlement-surface
 // engine slice, 09-10-26): every record entry now carries a `slots` map beside `nodes`, and founding fills
 // the home system's slots. The delta from GOLDEN_HASH_WITH_EXPLORATION is exactly those maps — proven by
 // asserting `stripRecordSlots(s)` (tests/slot-strip.js) returns the value above. It is the newest,
 // OUTERMOST strip.
-const GOLDEN_HASH_WITH_SETTLEMENT_SLOTS = '7442e30c2438df1b91631fe6bcc7e4b2d511f38bee29aa5c8389fe42ce7bc58f';
+const GOLDEN_HASH_WITH_SETTLEMENT_SLOTS = '5956ce7f1ff96ab36ab1ebf8884e57242dab41904fb5bec12bd6b8196419a716';
 
 // withoutExploration(state) -> a COPY with every guild's `exploration` key removed — the plain
 // added-key strip. It is the newest, OUTERMOST strip: peel it and every earlier golden returns.

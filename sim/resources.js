@@ -161,6 +161,7 @@ const TIER3_PRICE_CLASS = Object.freeze({
   hull_plating: '3-1',
   power_cells: '3-1',
   // 3-2 — standard gear
+  claim_beacon: '3-2',          // RULED 16-10-26 — a signalling device, by analogy to comms_array (the Prefecture bill)
   comms_array: '3-2',
   photovoltaic_array: '3-2',
   reactor_housing: '3-2',
@@ -170,6 +171,7 @@ const TIER3_PRICE_CLASS = Object.freeze({
   chassis: '3-3',
   control_module: '3-3',
   defence_system: '3-3',
+  habitation_module: '3-3',     // RULED 16-10-26 — a habitat, by analogy to life_support_module (the Prefecture bill)
   life_support_module: '3-3',
   sensor_suite: '3-3',
   // specialists — each one's band (prices.js) and timer (baseline.js) is its own row
@@ -180,11 +182,11 @@ const TIER3_PRICE_CLASS = Object.freeze({
   interdiction_projector: SPECIALIST,
   medium_reactor_engine: SPECIALIST,
   stealth_module: SPECIALIST,
-  // unclassified — no asset uses them yet (see UNCLASSIFIED_TIER3_BAND in prices.js)
-  claim_beacon: UNCLASSIFIED,
+  // unclassified — no asset uses them yet (see UNCLASSIFIED_TIER3_BAND in prices.js). claim_beacon and
+  // habitation_module left this group 16-10-26, when the Prefecture bill became their first consumer
+  // (design.md §19 #68; docs/phase-1-tuning.md). The Droid's two parts stay: the Droid is design-ahead.
   drive_module: UNCLASSIFIED,
   droid_components: UNCLASSIFIED,
-  habitation_module: UNCLASSIFIED,
 });
 
 // The goods that may key a guild stockpile and appear as a galactic-supply row:
@@ -212,19 +214,25 @@ const TIER3_GOOD_SET = new Set(TIER3_GOODS);
 // In a hold it takes a whole heavy hold (fuel.js `volumeOf` -> ASSET_CARGO_VOLUME), so only a heavy
 // transport can carry one, and only one at a time — no separate class rule is needed.
 //
-// Keyed by the KIND of structure the kit deploys as. Adding a kind later (toll gate, the Prefecture) is
-// one new row here — a data change, not a refactor. Two kits exist:
-//   - 'outpost'  -> outpost_kit          (roadmap 2.2, the deploy pipeline);
-//   - 'deepScan' -> deep_scan_array_kit  (roadmap 2.5 (b1), the Deep Scan Array — docs/exploration-model.md
-//                                         §5). The kind is the lane key the deploy range was designed under
-//                                         (docs/territory-model.md §5 "Lane-keyed so tollGate and deepScan
-//                                         slot in"); the good is named after the structure it packs.
+// Keyed by the KIND of structure the kit deploys as. Adding a kind later (the toll gate) is one new row
+// here — a data change, not a refactor. Three kits exist:
+//   - 'outpost'    -> outpost_kit          (roadmap 2.2, the deploy pipeline);
+//   - 'deepScan'   -> deep_scan_array_kit  (roadmap 2.5 (b1), the Deep Scan Array — docs/exploration-model.md
+//                                           §5). The kind is the lane key the deploy range was designed under
+//                                           (docs/territory-model.md §5 "Lane-keyed so tollGate and deepScan
+//                                           slot in"); the good is named after the structure it packs;
+//   - 'prefecture' -> prefecture_kit       (roadmap 2.5, the Prefecture / claims slice — docs/territory-model.md
+//                                           §4). A GROUND kit, not a space one: it is never deployed on a hex.
+//                                           It is unloaded into a system's idle list and PLANTED on a settlement
+//                                           slot (sim/actions.js `plantPrefecture`), so it has no deploy rule —
+//                                           `deployCheck` refuses it (sim/actions.js PLANTED_KIT_KIND).
 // The one row is what makes 'deepScan' a kit asset kind (sim/assets.js KIT_ASSET_KINDS) and lets the
 // grant, load, unload and ferry carry it with no further change. WHERE each kind may be placed is the
 // deploy rule's (sim/actions.js `deployCheck`), not this table's.
 const OUTPOST_KIT = 'outpost_kit';
 const DEEP_SCAN_KIT = 'deep_scan_array_kit';
-const DEPLOYABLE_KITS = Object.freeze({ outpost: OUTPOST_KIT, deepScan: DEEP_SCAN_KIT });
+const PREFECTURE_KIT = 'prefecture_kit';
+const DEPLOYABLE_KITS = Object.freeze({ outpost: OUTPOST_KIT, deepScan: DEEP_SCAN_KIT, prefecture: PREFECTURE_KIT });
 
 // Every deployable good, sorted for a stable order (invariant 9), like the lists above.
 const DEPLOYABLE_GOODS = Object.freeze(Object.values(DEPLOYABLE_KITS).sort());
@@ -286,6 +294,6 @@ function kindForKit(good) {
 module.exports = {
   RAW_RESOURCES, PROCESSED_GOODS, STOCKPILE_GOODS, TIER3_GOODS, FUEL_GOOD, DEUTERIUM,
   TIER3_PRICE_CLASS, SPECIALIST, UNCLASSIFIED,
-  OUTPOST_KIT, DEEP_SCAN_KIT, DEPLOYABLE_KITS, DEPLOYABLE_GOODS,
+  OUTPOST_KIT, DEEP_SCAN_KIT, PREFECTURE_KIT, DEPLOYABLE_KITS, DEPLOYABLE_GOODS,
   isRawResource, isFuel, isProcessedGood, isTier3Good, isStockpileGood, isDeployableGood, kitGoodFor, kindForKit,
 };

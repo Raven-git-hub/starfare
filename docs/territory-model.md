@@ -13,7 +13,9 @@ here marked `[FIRST-CUT]` are placeholders for the tuner (`phase-1-tuning.md`) /
 decision checklist, never fixed here (working rule 5). *(29-09-26: §5's first rung — the deployable
 outpost kit and a manual outpost deploy — is now BUILT; see the AS-BUILT note at the end of §5. 30-09-26:
 its second rung — the deploy as a dispatch's on-arrival action, with the arrival re-validation and the
-retreat rule — is BUILT too (the slice-2 AS-BUILT note). Everything else here stays design-ahead.)*
+retreat rule — is BUILT too (the slice-2 AS-BUILT note). Everything else here stays design-ahead.)* *(⤳ 16-10-26: §4's
+claim action — the Prefecture kit, its ferry into unheld ground with the arrival retreat, and the plant that writes the
+claim — is BUILT, engine + operator CLI (§4's "AS-BUILT — engine PR 1"). §2's seniority map is next, engine PR 2.)*
 
 ---
 
@@ -130,6 +132,52 @@ onto a fully-visible galaxy. It does not change the claim *row* (still `landmark
 - **Acquire — BUILD-ONLY.** The Prefecture is dockyard-built, **not Syndicate-sold** (`docs/asset-recipes.md`, `docs/phase-1-tuning.md`) — the deliberate throttle on rapid expansion. Otherwise it rides the solved kit pipeline (`BUILDABLE_INSTALLATION_KINDS`, `mintKitAsset`, `KIT_KIND_FOR_BILL`) exactly as the array does.
 - **The seniority control map (§2) is BUILT in this slice** — the 7-hex footprint with overlap resolved by `claimedAtTick` (own-centre override, tie-break lower `claimId`), derived and recomputed on change, extending `controlNear` / the client's `computeTerritoryMap`. (It was ruled-not-built; `controlNear` already hands back every overlapping footprint for the resolver to decide.)
 - **Scope — claim-only.** Teardown / un-claim / eviction (and so its goods question, §19 #67), hostile removal (§19 #69), the semi-controlled corridors (§3), squatting (Gate 3 stays hard), and the Prefecture's design-ahead **in-system planet-scan** function are all **OUT** of this first slice. It is the solo claim lever: survey → build → ferry → plant → claim → the seniority map. Losing ground comes later.
+
+**AS-BUILT — engine PR 1: acquire + the claim action (16-10-26; roadmap 2.5, the first Prefecture / claims slice; engine
++ operator CLI, no client).** Built to the ruling above, no design change and no new number. The slice is split in two
+engine PRs: this one builds everything above **except §2's seniority control map**, which is engine PR 2 (nothing
+consumes resolved control yet, and the client's footprint render is untouched); the client is its own PR.
+- **Acquire.** The Prefecture is the tenth FINAL bill and a BUILD-ONLY kit (`docs/asset-recipes.md`, AS-BUILT note): a
+  finished dockyard build mints one idle `prefecture` kit (good `prefecture_kit`) through the existing kit mint; the
+  Syndicate refuses to sell it. `claim_beacon` / `habitation_module` take sub-tiers 3-2 / 3-3 (`docs/phase-1-tuning.md`).
+- **The vocabulary** is `sim/prefectures.js` (the `outposts.js` mirror): `PREFECTURE_KIT_KIND` ('prefecture' — the one
+  GROUND kit), the ids `prefecture_<guild>_NN` and `claim_prefecture_<guild>_NN` (ONE stored serial,
+  `guild.prefectureSerial`, numbers both, so a Prefecture and its claim share NN and neither is ever reissued). The
+  space-lane deploy rule refuses the ground kit by name (`deployCheck`, and a `deploy` waypoint naming it), so it can
+  never reach the space lane.
+- **The ferry exception.** `unloadKitCheck` lifts its held-system gate for a Prefecture kit only: it may drop into an
+  **unclaimed** system (or one its guild holds), never a rival's — that refusal is `failure: 'system-claimed'`, asked up
+  front by the dispatch (a doomed trip is never flown) and again on arrival. Every other kit keeps the gate word for word.
+  `systemHolder(state, systemId)` (`sim/claims.js`, on the same `isSystemClaim` match as `guildHolds`) tells the three
+  cases apart.
+- **The arrival retreat.** If a rival claimed the target in flight, `resolveRouteArrival` retreats the craft through the
+  ONE kit retreat, `retreatKitCraft` — the deploy's retreat, moved out of `resolveDeployArrival` unchanged and now
+  shared by both triggers: `retreatLanding` toward the nearest held system, the kit aboard, `deployFailed = { reason:
+  'system-claimed', tick }`, and the `deploy_failed` notice (`cause: 'system-claimed'`, `kind: 'prefecture'`). One new
+  `DEPLOY_FAILED_REASONS` entry, `system-claimed`. The Return / Redeploy forks work from there (engine side).
+- **The plant.** `plantPrefecture { guildId, assetId, slotId }` (`sim/actions.js`; operator `POST
+  /admin/guild/plant-prefecture`, `tools/admin.js plant-prefecture`; a player sends the same action through `POST
+  /action`). Exempt from Gate 3. Refused, in order: the asset is not an idle Prefecture kit of this guild; the slot is
+  not a real settlement slot in the kit's own system; the guild has not surveyed the slot's planet (`knowsSlot` —
+  `exploration-model.md` §8, ENFORCED here); the slot is occupied (a venture or a Prefecture); any guild holds the system
+  (a rival, or itself — home included). The apply consumes the kit, writes the claim row (`landmarkKind: 'system'`,
+  `claimedAtTick` this tick, not contested — `foundGuild`'s shape) and mints the Prefecture row into
+  `state.prefectures` (omit-when-empty): `{ id, ownerGuildId, systemId, planetId, slotId, claimId, plantedAtTick }`.
+  First to plant wins within a batch (state-as-it-stands).
+- **Occupancy** learned its non-venture occupant (`sim/occupancy.js`): `computeOccupancy` maps a Prefecture's slot to
+  its id, and `siteOccupantOf` is the one "is this site free?" question all three establishes and the plant ask.
+- **Plumbing.** Snapshot: an omit-when-empty `prefectures` block (sorted by id), and the slot in `occupancy`. Fog: a
+  Prefecture is a public structure — a rival sees it, cut to `RIVAL_PREFECTURE_FIELDS` (today every field: each is
+  already public through the claim row and ruling 11's live L2). State/persist: plain JSON, covered by the hash; a save
+  restores it. Invariant: `checkPrefectureIntegrity` (shape, the slot, the claim link — exactly one matching claim row —
+  one per system, one occupant per slot, the survey still in the record, the serial).
+- **Proved** by `sim/tests/prefecture-ferry.test.js` and `prefecture-plant.test.js` (the round trip: dockyard build →
+  a real Deep Scan Array survey → load → ferry → plant → claim → Gate 3 open, ledger balanced), and live through
+  `tools/admin.js` on a `seat-demo --seed 42` galaxy, surviving a restart. No pre-existing path moved a byte apart from
+  the two re-banded goods' price rows (`sim/tests/rebanded-goods-delta.test.js`).
+- **Not built (design-ahead):** §2's seniority map (engine PR 2); the client (the plant affordance, the kit's row, the
+  `system-claimed` label — pinned as awaited in `kit-kinds-client.test.js` / `deploy-failed-notice-client.test.js`);
+  teardown / eviction (§19 #67), hostile removal (§19 #69), corridors (§3), squatting, and the in-system planet-scan.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
@@ -322,7 +370,8 @@ system. The **kit stays aboard** and the craft is **idle** there. It is a forced
 travel** — no fuel, no time, no toll or fine, no supply move — so nothing is lost but the trip and its
 non-refundable fuel (`transport-model.md` §11.3). The craft is flagged **`deployFailed = { reason,
 tick }`** (`occupied` / `out-of-range`; *⤳ and for a Deep Scan Array `not-attached`, 2.5 (b1), and
-`rival-territory`, slice 15 — `DEPLOY_FAILED_REASONS`, `sim/outposts.js`*), the `laneEnded` pattern, so the player can see why; the next
+`rival-territory`, slice 15 — `DEPLOY_FAILED_REASONS`, `sim/outposts.js`; ⤳ and for a Prefecture kit's unload,
+`system-claimed`, 16-10-26 — §4's AS-BUILT note*), the `laneEnded` pattern, so the player can see why; the next
 dispatch clears it. *(⤳ 02-10-26: so does unloading the kit — `unloadKit`, "AS-BUILT — asset-initiated slice 1"
 below.)* *(Deferred, not built: guaranteeing the landing hex is not itself rival or contested
 space. Pulling toward the nearest held system is the ruled behaviour; refining the landing needs the

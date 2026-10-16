@@ -103,6 +103,7 @@ const {
   createSpawnOutpostAction, createRemoveOutpostAction,
   createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction, createCancelRouteAction,
   createGrantKitAction, createDeployAssetAction, createLoadKitAction, createUnloadKitAction,
+  createPlantPrefectureAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1351,6 +1352,42 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying deployAsset (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/guild/plant-prefecture { guildId, assetId, slotId } — THE CLAIM ACT (docs/territory-model.md §4;
+  // roadmap 2.5, the Prefecture / claims slice): plant the named idle Prefecture kit on a settlement slot of the
+  // system it sits in, and the guild comes to hold that system. Under /admin/guild/ beside grant-kit: it touches no
+  // vehicle. Gated and routed like the deploy endpoints above, through the SAME validate → journal → apply path
+  // POST /action uses (applyOneAction), so a plant survives restart and replays. (The player client will send the
+  // same action through POST /action in the client slice.)
+  if (method === 'POST' && path === '/admin/guild/plant-prefecture') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","assetId":"asset_g1_prefecture_02","slotId":"pl_05037_s01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, assetId and slotId' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — an idle Prefecture kit in the slot's system, a
+      // free settlement slot the guild has surveyed, a system nobody holds — is validateAction's job, below.
+      action = createPlantPrefectureAction({ guildId: body.guildId, assetId: body.assetId, slotId: body.slotId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed plant-prefecture request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying plantPrefecture (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

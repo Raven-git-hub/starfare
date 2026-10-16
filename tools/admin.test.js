@@ -530,6 +530,20 @@ test('the deploy-pipeline bodies: a missing required flag throws rather than pos
   assert.throws(() => A.deployAssetBody({ guild: 'g1' }), /deploy-asset: --id is required/);
 });
 
+// --- the claim act (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) -------------------
+
+test('plantPrefectureBody: the exact POST /admin/guild/plant-prefecture body — the kit and the slot, nothing else', () => {
+  assert.deepEqual(
+    A.plantPrefectureBody(A.parseArgs(['plant-prefecture', '--guild', 'g1', '--asset', 'asset_g1_prefecture_02', '--slot', 'pl_02133_s01']).flags),
+    { guildId: 'g1', assetId: 'asset_g1_prefecture_02', slotId: 'pl_02133_s01' },
+    'no system and no planet: the engine reads both off the slot',
+  );
+  assert.throws(() => A.plantPrefectureBody({ asset: 'a', slot: 's' }), /plant-prefecture: --guild is required/);
+  assert.throws(() => A.plantPrefectureBody({ guild: 'g1', slot: 's' }), /plant-prefecture: --asset is required/);
+  assert.throws(() => A.plantPrefectureBody({ guild: 'g1', asset: 'a' }), /plant-prefecture: --slot is required/);
+  assert.deepEqual([...A.CLAIM_COMMANDS], ['plant-prefecture']);
+});
+
 test('DEPLOY_COMMANDS lists the deploy subcommands (grant-kit / load-kit / unload-kit / deploy-asset)', () => {
   assert.deepEqual([...A.DEPLOY_COMMANDS].sort(), ['deploy-asset', 'grant-kit', 'load-kit', 'unload-kit']);
 });

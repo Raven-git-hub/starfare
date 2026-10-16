@@ -29,6 +29,14 @@
 //      slice, and its god's-eye lens differs only by the centres the lanes gained (hashes recorded on 8795070);
 //      two runs are identical; save → restore is byte-identical.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -447,8 +455,8 @@ test('THE LANE, next door, on a galaxy created before the spacing repair: once a
 // array deployed by hand on the first free hex of home's ring, in hexesAt's scan order) and hashing its state
 // (hashState) and its god's-eye lens (JSON.stringify(buildSnapshot(state))). No array stands on a centre in either.
 const ON_MAIN = {
-  bare: { state: '836f879aaeebce63d20ea42b0e0163dcaad296ee5687c305644676eff014e9a5', godsEye: '2f1a0d8638ea563146c41929b3574c08db1d698c7fa313cfc2831dc4c3a18605' },
-  ringArray: { state: '05c1b0313dad747ff5362d5eb15502daf7ed78655ee909f2920dfbd93057d852', godsEye: 'd57619a4f4a7c815eff86d984bdc4f5c19f60effe7d28f21eeca4d403fce0b5a' },
+  bare: { state: 'a844d99281849245152c2cffb1876db803b8820c764f904b717972c76af29466', godsEye: '7976ec8ffb128fb1074c7515ddb575ddf2c2e800a3c50e71d97bd598193aaf5a' },
+  ringArray: { state: '9b3739fe11391149a1f9dfd505354eb045304e6d26cb581eb3228e4dad927d68', godsEye: '6f96a2efa223a62f03d97d946f66feea89606a5eadc436050a08fee2a6f73186' },
 };
 
 // withoutHeldCentres(snapshot) -> the lens with each guild's held centres taken back out of its deepScan lane —

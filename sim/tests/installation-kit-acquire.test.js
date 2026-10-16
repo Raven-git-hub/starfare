@@ -72,12 +72,13 @@ const creditTotal = (s) => s.guilds.reduce((sum, g) => sum + g.credits, 0) + s.s
 
 // --- 1. the bridge ---------------------------------------------------------------------------------------------
 
-test('the bridge: one frozen map, deep_scan_array → deepScan and outpost → outpost — and nothing else finishes as a kit', () => {
-  assert.deepEqual({ ...KIT_KIND_FOR_BILL }, { [DEEP_SCAN_ARRAY]: 'deepScan', [OUTPOST]: 'outpost' });
+test('the bridge: one frozen map, deep_scan_array → deepScan, outpost → outpost and (16-10-26) prefecture → prefecture — and nothing else finishes as a kit', () => {
+  assert.deepEqual({ ...KIT_KIND_FOR_BILL }, { [DEEP_SCAN_ARRAY]: 'deepScan', [OUTPOST]: 'outpost', prefecture: 'prefecture' });
   assert.ok(Object.isFrozen(KIT_KIND_FOR_BILL));
   for (const kitKind of Object.values(KIT_KIND_FOR_BILL)) assert.ok(kitKind in DEPLOYABLE_KITS, `${kitKind} is a real kit kind`);
   assert.equal(kitKindForBill(DEEP_SCAN_ARRAY), 'deepScan');
   assert.equal(kitKindForBill(OUTPOST), 'outpost');
+  assert.equal(kitKindForBill('prefecture'), 'prefecture');
   // Not a row: the toll gate (no kit yet), the KIT spelling itself, every other buildable kind, and junk.
   for (const kind of [TOLL_GATE, 'deepScan', 'miner', 'heavyTransport', SPYCRAFT, 'toString', 'nonsense']) {
     assert.equal(kitKindForBill(kind), null, kind);
@@ -90,21 +91,22 @@ test('the bridge tripwire BITES: a value that is not a kit, a key that is not bu
     /maps "deep_scan_array" to "deep_scan_array", which is not a kit kind/);
   assert.throws(() => assertKitBridge({ ...KIT_KIND_FOR_BILL, [TOLL_GATE]: 'deepScan' }, BUILDABLE_KINDS),
     /row for "toll_gate", which is not a buildable kind/);
-  assert.throws(() => assertKitBridge({ [OUTPOST]: 'outpost' }, BUILDABLE_KINDS),
+  assert.throws(() => assertKitBridge({ [OUTPOST]: 'outpost', prefecture: 'prefecture' }, BUILDABLE_KINDS),
     /"deep_scan_array" is a buildable installation with no KIT_KIND_FOR_BILL row/);
   // Making the toll gate buildable before it has a kit is exactly the third shape.
   assert.throws(() => assertKitBridge(KIT_KIND_FOR_BILL, [...BUILDABLE_KINDS, TOLL_GATE]),
     /"toll_gate" is a buildable installation with no KIT_KIND_FOR_BILL row/);
 });
 
-test('the vocabularies: both kinds join ALL_BILLS, BUILDABLE_KINDS and SYNDICATE_SELLABLE_KINDS; spycraft is still the ONLY build-only kind', () => {
+test('the vocabularies: both kinds join ALL_BILLS, BUILDABLE_KINDS and SYNDICATE_SELLABLE_KINDS; the build-only kinds are spycraft and (16-10-26) the Prefecture', () => {
   for (const kind of [DEEP_SCAN_ARRAY, OUTPOST]) {
     assert.equal(ALL_BILLS[kind], INSTALLATION_BILLS[kind], kind);
     assert.ok(BUILDABLE_KINDS.includes(kind), kind);
     assert.ok(SYNDICATE_SELLABLE_KINDS.includes(kind), kind);
   }
   assert.ok(SYNDICATE_SELLABLE_KINDS.every((k) => BUILDABLE_KINDS.includes(k)), 'sellable ⊂ buildable');
-  assert.deepEqual(BUILDABLE_KINDS.filter((k) => !SYNDICATE_SELLABLE_KINDS.includes(k)), [SPYCRAFT]);
+  // ⤳ 16-10-26: spycraft is no longer the ONLY build-only kind — the Prefecture is the second (docs/asset-recipes.md).
+  assert.deepEqual(BUILDABLE_KINDS.filter((k) => !SYNDICATE_SELLABLE_KINDS.includes(k)), [SPYCRAFT, 'prefecture']);
   assert.equal(TOLL_GATE in ALL_BILLS, false, 'the toll gate has no buildable bill');
   assert.equal(BUILDABLE_KINDS.includes(TOLL_GATE), false, 'the toll gate is not buildable');
   assert.equal(SYNDICATE_SELLABLE_KINDS.includes(TOLL_GATE), false, 'the toll gate is not sold');

@@ -31,6 +31,14 @@
 // Every tier is covered (a Tier-1 mine, a Tier-2 factory, a timed Tier-3 week), and conservation is
 // checked across every boundary crossed.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -430,17 +438,17 @@ function isolationRun(switchOn) {
 // by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
 // other hash here did not move. Before: 556532c4…cd12c and b755a87f…1264.
 const ISO_ON_IS_THE_OLD_RESCUE = {
-  final: '7eb4426c1a491e2bfc9605f37a72a27a60e3200ed6afdbca9930b58c3fdef48a',
-  everyTick: '6c206885906cc36bdd03c259faf2ce08db8bdb1b891e0bf6ea48adceb922d713',
+  final: '293d8136627f41d765da7c7d676af323d93ab2e63d2c55ab82ff7909e82eb442',
+  everyTick: '3ae2c56c4d1627240a73da53a374fe85f18514a49ea57072850b95290bb640c3',
   previews: 'da5c423a39ec00cfb992e0f4d36579aeff84f9ac454d3df8b3652e85d8528aad',
-  snapshots: 'c39ed79fe94507284caeac34e368047e58a7809ac725702ed88639270a3d0150',
+  snapshots: '5b0a253c02bd024a4576a7f04235f1ee318a14f03e9e338c900c87e1f38f9b3e',
   counts: { rescued: 104752, met: 21, breach: 2 },
 };
 const ISO_OFF_IS_NO_RESCUE = {
-  final: 'a337c8cd11fbb8f8b2abec6b419674e2cf317f56a4905268a6b7f217d895449a',
-  everyTick: '90b6e6d162637fc01524bab19b03fbdf049f1a5403aed95908aa45c99f9785d0',
+  final: '0f5e2d3a55252dc17f756dced6b05f3ab03586483125c27a72eaafe97f565a5e',
+  everyTick: '5f2df9c11b52bd5115285cea214ba8ba0da7045938ebd9f36c7865104a98ab9b',
   previews: 'ce91994da972a1ae281ed8df18c7053bb5bb43e5b2417b35fddd3fbd9c04222c',
-  snapshots: 'caa9653f40f34c3872e5c4d56732873e8d7b57c21b5dadf5547d52b3ceb6095d',
+  snapshots: '772dad8766a448763129534a52cbc1135c818b9f29cc1d284dfb7e063ce41d2d',
   counts: { rescued: 0, met: 0, breach: 23 },
 };
 

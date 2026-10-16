@@ -6,7 +6,7 @@
 //
 // What this file proves, in order:
 //   1. THE NUMBERS — TICKS_PER_UNIT is the ruled table, every classified Tier-3 good resolves to
-//      its timer, and Tier-1/2 goods (and the four unclassified modules) stay continuous. Every
+//      its timer, and Tier-1/2 goods (and the two unclassified modules — four until 16-10-26) stay continuous. Every
 //      timer divides the week, so every weekly output y is WHOLE (RULED 28-09-26), and the
 //      load-time tripwire that enforces it bites on a timer that does not.
 //   2. THE TIMER — a factory mints exactly one whole unit every TICKS_PER_UNIT ticks, 0 between.
@@ -98,15 +98,16 @@ test('WHOLE WEEKS: every timed good\'s weekly output y = 10,080 ÷ TICKS_PER_UNI
     fuel_tank: 672, comms_array: 336, chassis: 168, // one good per uniform sub-tier: 3-1, 3-2, 3-3
     extraction_head: 28, fabrication_line: 21, medium_reactor_engine: 14, interdiction_projector: 7,
     heavy_reactor_engine: 4, stealth_module: 3, deep_scan_mast: 2, // the three retimed 28-09-26
+    claim_beacon: 336, habitation_module: 168, // ⤳ 16-10-26: placed in sub-tiers 3-2 / 3-3 by the Prefecture bill
   };
   for (const [good, y] of Object.entries(typedY)) {
     assert.equal(TIER3_WINDOW_N / ticksPerUnitFor(good), y, `${good}: 10,080 ÷ ${ticksPerUnitFor(good)} = ${y}`);
   }
-  // Every timed good — not only the ten typed above — divides the week with nothing left over, and
+  // Every timed good — not only the twelve typed above — divides the week with nothing left over, and
   // the y the ENGINE derives for a licence (pace × week, off the signing's own basis) is that same
   // whole number exactly, with floor(y) = y: nothing is left for the ceiling to cut off.
   const timed = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
-  assert.equal(timed.length, 21);
+  assert.equal(timed.length, 23); // 21 until 16-10-26
   for (const good of timed) {
     const t = ticksPerUnitFor(good);
     assert.equal(TIER3_WINDOW_N % t, 0, `${good}: the ${t}-tick timer divides the week`);
@@ -133,20 +134,22 @@ test('WHOLE WEEKS: the load-time tripwire FIRES on a timer that does not divide 
   assert.throws(() => assertWholeWeeklyOutput(['stealth_module'], () => 2880), /"stealth_module".*2880/);
   assert.throws(() => assertWholeWeeklyOutput(['deep_scan_mast'], () => 4320), /"deep_scan_mast".*4320.*2\.3333/);
   // A good with NO timer (null) is continuous and has no weekly y, so it is skipped — this is how
-  // the four unclassified modules pass.
+  // the two unclassified modules pass.
   assert.doesNotThrow(() => assertWholeWeeklyOutput(['drive_module', 'titanium'], () => null));
 });
 
-test('every classified Tier-3 good resolves to its timer; Tier-1/2 and the four unclassified modules stay continuous', () => {
+test('every classified Tier-3 good resolves to its timer; Tier-1/2 and the two unclassified modules stay continuous', () => {
   for (const good of TIER3_GOODS) {
     const cls = TIER3_PRICE_CLASS[good];
     const expected = cls === UNCLASSIFIED ? null : TICKS_PER_UNIT[cls === SPECIALIST ? good : cls];
     assert.equal(ticksPerUnitFor(good), expected, `${good} (${cls})`);
   }
-  // The four no bill uses yet have no sub-tier, so no ruled timer: continuous, their status quo
-  // (on the decision checklist — not guessed).
-  assert.deepEqual(TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null),
-    ['claim_beacon', 'drive_module', 'droid_components', 'habitation_module']);
+  // The two no bill uses yet have no sub-tier, so no ruled timer: continuous, their status quo
+  // (on the decision checklist — not guessed). ⤳ 16-10-26: claim_beacon (3-2, 30 ticks) and habitation_module
+  // (3-3, 60 ticks) left this list when the Prefecture bill gave them sub-tiers — timed now, with no code change.
+  assert.deepEqual(TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null), ['drive_module', 'droid_components']);
+  assert.equal(ticksPerUnitFor('claim_beacon'), 30, 'claim_beacon is 3-2: 30 ticks a unit, 336 a week');
+  assert.equal(ticksPerUnitFor('habitation_module'), 60, 'habitation_module is 3-3: 60 ticks a unit, 168 a week');
   for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS]) {
     assert.equal(ticksPerUnitFor(good), null, `${good} is continuous (Tier 1/2 unchanged)`);
   }
@@ -155,7 +158,7 @@ test('every classified Tier-3 good resolves to its timer; Tier-1/2 and the four 
 
 test('every timed recipe outputs exactly ONE unit per batch — the model\'s "one whole unit"', () => {
   const timed = listRecipes().filter((r) => ticksPerUnitFor(r.output.good) !== null);
-  assert.equal(timed.length, 21, 'the 21 classified Tier-3 modules');
+  assert.equal(timed.length, 23, 'the 23 classified Tier-3 modules (21 until claim_beacon and habitation_module were placed, 16-10-26)');
   for (const r of timed) assert.equal(r.output.qty, 1, `${r.id} makes one unit`);
 });
 

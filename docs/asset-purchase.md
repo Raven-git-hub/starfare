@@ -35,6 +35,11 @@ catalogs deliberately DIVERGE at spycraft:
   `buyAssetFromSyndicate` gate): a new **`SYNDICATE_SELLABLE_KINDS`** = `BUILDABLE_KINDS` **minus
   `spycraft`** — miner, factory, light / medium / heavy transport (five kinds). *(⤳ 15-10-26: seven kinds — the deep
   scan array and outpost kits joined both catalogs, §"Installation kits". Spycraft is still the one exception.)*
+  *(⤳ 16-10-26 — the Prefecture / claims slice: spycraft is **no longer the only** exception. The **Prefecture** joins
+  the BUILD catalog only (nine buildable kinds) and is **build-only** — the deliberate throttle on rapid expansion by
+  wealthy guilds, a guild must build its flag (`docs/asset-recipes.md`, the 16-10-26 note). So
+  `SYNDICATE_SELLABLE_KINDS` = `BUILDABLE_KINDS` minus `spycraft` **and `prefecture`**, still seven kinds; a Prefecture
+  buy is refused loudly, naming its kind, and it has no `INSTALLATION_KIT_BUY_BASELINE` row.)*
 
 `SYNDICATE_SELLABLE_KINDS` is the one authoritative set for "what the Syndicate sells": the buy
 gate **refuses** any kind outside it (a spycraft buy is refused loudly, not merely hidden from
@@ -58,6 +63,7 @@ something the guild acquired itself.
 - **Why sellable (not build-only like spycraft).** The array is legitimate exploration
   infrastructure, and the outpost is a depot (design.md §4). Spycraft stays the ONLY build-only
   kind: stealth is made in the dark, but surveying and depots are things the Syndicate will sell.
+  *(⤳ 16-10-26: and the Prefecture is the second — the claim anchor is built, never bought.)*
   The array's later monitoring function (L3, espionage-adjacent) does not change this ruling.
 - **What a finished build or delivery produces: a KIT, not an asset of the bill kind.** When a
   dockyard build of one of these kinds completes, or a Syndicate commission for one lands, the
@@ -98,7 +104,8 @@ the only values are the two human-given baselines and the 27-09-26 bills and bui
 
 - **The vocabularies** (`sim/asset-recipes.js`). A new `BUILDABLE_INSTALLATION_KINDS = [deep_scan_array, outpost]`
   feeds `ALL_BILLS` and `BUILDABLE_KINDS`, and both kinds are spelled into the explicit
-  `SYNDICATE_SELLABLE_KINDS` list (seven kinds; spycraft is still the only buildable kind that is not sold).
+  `SYNDICATE_SELLABLE_KINDS` list (seven kinds; spycraft is still the only buildable kind that is not sold —
+  *⤳ 16-10-26: with the Prefecture, the second*).
   `toll_gate` stays in `INSTALLATION_BILLS` only: `assetBill` returns null for it, so both paths refuse it.
 - **The bridge.** `KIT_KIND_FOR_BILL = { deep_scan_array: 'deepScan', outpost: 'outpost' }` (frozen, exported, read
   through `kitKindForBill`) is the only place the two spellings meet. A load-time tripwire, `assertKitBridge`,

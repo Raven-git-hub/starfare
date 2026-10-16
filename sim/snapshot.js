@@ -796,7 +796,7 @@ function computeAttention(state) {
 //                   contractWindow: { endTick, endCycle, cyclesRemaining, expired } | null, // VM popup
 //                   equityPerCycle: int,                       // equity payout projection, VM popup
 //                   site: { kind, planetId, systemId, resourceType } | null } ],
-//     occupancy: { <siteId>: <ventureId> },
+//     occupancy: { <siteId>: <ventureId | prefectureId> },  // a Prefecture is a non-venture occupant
 //     claims: [ { claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick,
 //                 contested,
 //                 landmark: { kind, name?, coords?, ... } | null } ],
@@ -806,6 +806,10 @@ function computeAttention(state) {
 //       // 2.5 (b1), docs/exploration-model.md §5 — OMITTED while no array exists (byte-identical to
 //       // pre-slice); in a per-guild view, only the viewer's OWN arrays (sim/fog.js). `scan` (2.5 (b2))
 //       // is the array's running job, omitted while it is idle.
+//     prefectures?: [ { id, ownerGuildId, systemId, planetId, slotId, claimId, plantedAtTick } ],
+//       // 2.5, the Prefecture / claims slice (docs/territory-model.md §4) — every planted Prefecture, echoed
+//       // as stored, sorted by id. OMITTED while none exists (byte-identical to pre-slice). A rival's is a
+//       // public structure (sim/fog.js). A planted Prefecture also appears in `occupancy`, by its slot.
 //     shipments: [ { ownerGuildId, cargo: { good: int }, destinationSystemId,
 //                    arrivalTick, ticksRemaining, assetKind?, destinationOutpostId?,
 //                    originOutpostId, originCoords: {q,r}, departureTick } ],
@@ -1890,6 +1894,23 @@ function buildGodsEyeSnapshot(state) {
     .map(snapshotDeepScanArrayRow)
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
+  // Every planted Prefecture (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) — the
+  // territorial claim anchor — echoed as stored in fresh rows, sorted by stable id (invariant 9). OMITTED WHEN
+  // EMPTY, as `deepScanArrays` is and for the same reason: the block is new, so a galaxy with no Prefecture
+  // serves exactly the bytes it did before the slice. The claim each one wrote is already in `claims`; this
+  // says WHICH slot holds the flag (its occupancy, too, is in `occupancy`). Derived telemetry: no serialized byte.
+  const prefectures = (state.prefectures || [])
+    .map((p) => ({
+      id: p.id,
+      ownerGuildId: p.ownerGuildId,
+      systemId: p.systemId,
+      planetId: p.planetId,
+      slotId: p.slotId,
+      claimId: p.claimId,
+      plantedAtTick: p.plantedAtTick,
+    }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
   // The IN-FLIGHT layer (§15.1): every pending Syndicate delivery, echoed as
   // stored. `ticksRemaining` is the ONE counter derived field — `arrivalTick -
   // tick`, floored at 0 so a delivery due this very tick reads 0 rather than a
@@ -2170,6 +2191,9 @@ function buildGodsEyeSnapshot(state) {
     // The Deep Scan Arrays (built above) — omit-when-empty, so a galaxy without one is byte-identical to
     // pre-slice. A rival's arrays are hidden from the per-guild view entirely (sim/fog.js).
     ...(deepScanArrays.length ? { deepScanArrays } : {}),
+    // The Prefectures (built above) — omit-when-empty, so a galaxy without one is byte-identical to pre-slice.
+    // A rival's is a public structure, cut to its allow-list in the per-guild view (sim/fog.js).
+    ...(prefectures.length ? { prefectures } : {}),
     shipments,
     // The node lockouts (docs/venture-teardown.md §3.3) — sites barred from re-establishment
     // until `releaseTick` after an ordinary-licensed teardown. Echoed as stored, with the one

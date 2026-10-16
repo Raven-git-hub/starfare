@@ -620,8 +620,9 @@ test('a price driven down with no support stops at its own floor: 0.2, 2, and 2,
 // that pins the classification. Retune it in docs/phase-1-tuning.md and here together.
 const RULED_SUBTIERS = {
   '3-1': ['fuel_tank', 'power_cells', 'hull_plating', 'cargo_module'],
-  '3-2': ['small_reactor_engine', 'reactor_housing', 'photovoltaic_array', 'comms_array'],
-  '3-3': ['control_module', 'life_support_module', 'chassis', 'sensor_suite', 'cargo_handling_system', 'defence_system'],
+  // ⤳ RULED 16-10-26 (docs/phase-1-tuning.md, the Prefecture bill): claim_beacon → 3-2, habitation_module → 3-3.
+  '3-2': ['small_reactor_engine', 'reactor_housing', 'photovoltaic_array', 'comms_array', 'claim_beacon'],
+  '3-3': ['control_module', 'life_support_module', 'chassis', 'sensor_suite', 'cargo_handling_system', 'defence_system', 'habitation_module'],
 };
 const RULED_SPECIALIST_BASES = {
   extraction_head: 1000000,
@@ -632,7 +633,8 @@ const RULED_SPECIALIST_BASES = {
   deep_scan_mast: 20000000,
   interdiction_projector: 20000000,
 };
-const RULED_UNCLASSIFIED = ['drive_module', 'droid_components', 'claim_beacon', 'habitation_module'];
+// ⤳ 16-10-26: four became two — claim_beacon and habitation_module left when the Prefecture bill placed them.
+const RULED_UNCLASSIFIED = ['drive_module', 'droid_components'];
 
 test('the Tier-3 sub-tier and specialist bands carry the ruled numbers exactly', () => {
   assert.deepEqual(TIER3_SUBTIER_BANDS, {
@@ -686,7 +688,7 @@ test('every Tier-3 module resolves to a band — its sub-tier\'s, its own specia
   }
 });
 
-test('the four unclassified modules keep the old uniform Tier-3 band (100 / 20 / 100,000) — deferred, not guessed', () => {
+test('the two unclassified modules keep the old uniform Tier-3 band (100 / 20 / 100,000) — deferred, not guessed', () => {
   // The ruling says they "default to a sub-tier when first placed in a bill" but not which
   // one, and no bill uses them yet. So they keep their status quo — the band every module
   // had before 27-09-26 — rather than an invented sub-tier (on the decision checklist).

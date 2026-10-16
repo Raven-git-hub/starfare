@@ -29,6 +29,14 @@
 //  10. INVARIANTS: a malformed job fails loudly; the completion step halts, naming the tick.
 // The per-guild view (a rival never sees the job) is tested with the rest of the fog, in fog.test.js.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -352,16 +360,16 @@ test('createState carries a handed-in job, as a copy — never an alias', () => 
 // removed register step never wrote anything; and the god's-eye lens carries no record).
 const IDLE_ARRAY_ON_MAIN = {
   deployed: {
-    state: 'fc84495b309522a7d149244ebc6e19ccc8dc0acd628ff1c95e4b09adf82a4bb0',
-    godsEye: 'dfe9db1b2ab30c644f9dc6fcb1f465c5591d5ce95c09160f5f05ce872dbcb83d',
-    [A]: '60f1a7db669c7a6e13854ade41fa85daad96d58ab687a245f58c10a3dfd27116',
-    [B]: '1cce4b6dc02a429a2c0060986d7651d6a53db9db27a771dfa353f86f060bb55e',
+    state: '50121d538cd536b831c09f5e76707cea1caccb78453178275eff9ad726b4d39f',
+    godsEye: '7a8dc5b3401e59d782e8eebad73407069d3175342730d1ddd642e95290261059',
+    [A]: '0de76862854440f0c1db14d2abd6678341dc8200c6938ea97650e65c4c9756fa',
+    [B]: '29dd5a7de14ac1fde3a53206cbc9b24cefb90b5bab07c613a9ae536e6dc89fae',
   },
   ticked: {
-    state: '920addc5de47d0054244b17f8dfea45c9619dc7466af571a6c479dafa501f840',
-    godsEye: '1c8120cef7aadccc2e9f033b4f85cbbe529c132b7a29cb8ce1b042fc4dce803f',
-    [A]: '5dff6aec7e2cb9436cc1b5ea59ec5a8196d235076243cb6f13af03a7d51ef791',
-    [B]: 'b0700582288f70f5eb07aaae0872efe5e6e86ea7656f6ee9ed43d922f84109e4',
+    state: 'f786da1b4fe4e03cc53c74dd55e0dfac45a7f7bec43b265c2eb1f0c5b1b1f6d0',
+    godsEye: '708992f459fb84e9cb4c57b37e764fb9a0c60abbc89cec0925d00ef8bc753a77',
+    [A]: 'f0c7e883911f25ab853cf2b4610aa6d6a4d86602d59c4f7fec153deb0e8c96fb',
+    [B]: '952fa660a8c50e36f29a9498c3c38aee15dd1b69ede2235249c05945264db941',
   },
 };
 
@@ -370,12 +378,12 @@ const IDLE_ARRAY_ON_MAIN = {
 // carries `slots` — but kept as the strip-and-prove: strip the slots and the view still hashes to these.
 const IDLE_ARRAY_VIEWS_RULING_11 = {
   deployed: {
-    [A]: '391732fa01bc185ae808a453a27d976a84cede75b50a7ebb998b7bf8e91226a4',
-    [B]: '200edd07a2326975fea876ecf498cbf8c9ad19f1f0c6595baa7dcd6cfaa3ce09',
+    [A]: '9b6d155c908bde7a29cefe8be628f844f71b0ece7b5db128a21417c6e0bce944',
+    [B]: 'ed8b392bd052087ffd0da4e693eb4bc972117fdae1170b4295a48613abbe795a',
   },
   ticked: {
-    [A]: 'cbee284fda1137d9e86fabb00fce7b3d4012e1fb0ed3ff1a9cdd54c81f294ca9',
-    [B]: '66671e61072618973f624e8ea4f616440aac2cc29f94d11e159e49778ef0d87a',
+    [A]: '89cd07081c9af9c870b4044e4b6a8214d50ddfbb5be444574b5ad08e16b6c999',
+    [B]: 'cc5d78a70acb74de57e674bad90f7d2a6b879b11574ab30f31bdd04f7065926a',
   },
 };
 
@@ -386,14 +394,14 @@ const IDLE_ARRAY_VIEWS_RULING_11 = {
 // the view still hashes to these. The state pins are still the full state (the slice moved no state).
 const IDLE_ARRAY_WITH_SLOTS = {
   deployed: {
-    state: 'fa7e6eb02b7e34d9786e8aa0a7891eee33f66d1662e3f34817e30a9ec76a8b6f',
-    [A]: '795d804e43f4dbc9322bb4f13012dbec459c5bbd194659e51e04a4aea724a2af',
-    [B]: '3c8bf5bdf5a94d4769af1040cf25fd272a9403030fdefae6c07be2da2fd7bced',
+    state: '882968e9c4f5500192dc15e69370124a418701eedfb4b7bce19c7a9a7ec546b0',
+    [A]: '98cc8782b4f420ea47dda3692f26238e40ad8a1094cfd996ad63b852de662d4a',
+    [B]: '8057b91b4468850a3f64f1fc9a70196163987a9ea2fea71a434afaecb488dbf0',
   },
   ticked: {
-    state: 'f64134c05b54949c13caab500179819e3093fc6c81375175e1bb73dbe6245c9e',
-    [A]: 'c471faf51b510dc186a2439aaabf0a642458dd700042f5d108dd6832a88fb3d7',
-    [B]: 'adf28fa9e0a378e58be27f738dd8ce60187d8dc8f364f7db80c97b47d03cb18e',
+    state: '8cc09f742dbd8ed629c51515fe7f8611545a147b76f3dd4cfe7ea51ecfb70e7a',
+    [A]: '3d1b3b1b7d6aa807e389a681a03543df6b11fb05151f7c883369354c929adc56',
+    [B]: 'd357cdabc6f65d534707d89ec1fece27a1be5cd3d5e171326fd8f8512749076f',
   },
 };
 
@@ -401,12 +409,12 @@ const IDLE_ARRAY_WITH_SLOTS = {
 // the slice — by deleting `geography.systems` from each IDLE_ARRAY_WITH_SLOTS view and hashing the rest.
 const IDLE_ARRAY_SLIM = {
   deployed: {
-    [A]: '5cf7e1b4e7d78ba29aaefe26e388dc15f919b40da85af3f2b7baed1996fd0a05',
-    [B]: 'd8dc827424be9f2d4b8df75c50a8c0ea46b562acba2c72af92dd706ec652a5d8',
+    [A]: '504c350b5ae161db660c555b6dbcc312fa6622e8a4833bb2000331ed984a38b6',
+    [B]: '3d337b1af071ad280adcf154bcecd271d44d83893aa29e12abb72cbb059a1697',
   },
   ticked: {
-    [A]: 'fea7e69b4d0ed0d18ab22700cc0bcf255e51d83d83c50f04ae8db3b044feeadd',
-    [B]: 'd9e2cd5278e3b83bf3d89f7705bbcb64fc4b02b9e3a42c2ef4d8e96aae02b322',
+    [A]: '2d5ba3188d70e0f36a0dd77f7867fb7cbce2e9f023485dbe69096866ccf14580',
+    [B]: '7f1e7acdeab886b5d76549e0a1b6597e10c9c96f3a203c7910d8d020d6020c88',
   },
 };
 

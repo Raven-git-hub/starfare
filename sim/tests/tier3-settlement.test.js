@@ -33,6 +33,14 @@
 // `absolute` send (`met`, `mixed`, `late`, `heavy`) settle exactly as they would on the default
 // send. They keep the setting, which now doubles as proof that it is inert.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -64,7 +72,7 @@ const SYS = 'sysA';
 const WEEK = 10080;   // docs/tier3-timed-production.md: "exactly one 7-day window (10,080 ticks)"
 const DAY = 1440;     // docs/cycle-and-calendar.md: the ruled day, 24 h × 60 ticks
 
-// The timed Tier-3 goods — every Tier-3 good with a ruled timer (the four unclassified modules
+// The timed Tier-3 goods — every Tier-3 good with a ruled timer (the two unclassified modules
 // have none and stay continuous, docs/roadmap.md decision checklist).
 const TIMED = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
 // y — the ruled timed weekly output, typed from the doc's formula, not read off the code under
@@ -121,7 +129,7 @@ const ventureOf = (s, gid, vid) => guildOf(s, gid).ventures.find((v) => v.id ===
 test('the Tier-3 week is 10,080 ticks — exactly 7 ruled days — and only a TIMED good settles on it', () => {
   assert.equal(TIER3_WINDOW_N, WEEK, 'docs/tier3-timed-production.md "Contract & settlement"');
   assert.equal(TIER3_WINDOW_N, 7 * DEFAULT_WINDOW_N, 'seven of the ruled 1,440-tick days');
-  assert.equal(TIMED.length, 21, 'the 21 classified Tier-3 modules');
+  assert.equal(TIMED.length, 23, 'the 23 classified Tier-3 modules (21 until 16-10-26)');
   for (const engineN of [DAY, 60, 24]) {
     for (const good of TIMED) assert.equal(windowNForGood(good, engineN), WEEK, `${good} settles weekly`);
     for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS]) {
@@ -504,10 +512,10 @@ test('invariants hold at every day boundary of the week, for every guild', () =>
 // Syndicate Top-Up on, so the rescue no longer fires and its short days breach again. Both runs are
 // once more the pre-rescue engine's to the byte: the four hashes are the original ones above,
 // unchanged. Slice A's were 2c8c6dca…1b28, eb586384…f429, 3d674731…63e3 and 5785bc09…1ee8.
-const ISO_FINAL_N60 = 'ec96eb5bf7778cd4c16181431afbcffb6d981a63812e4dfaf22b1aeb4fd47b07';
-const ISO_EVERY_TICK_N60 = '0bddb5091a455f8f395ba329482818b523a1fd38de9c1e7814efc706185e55b6';
-const ISO_FINAL_N50 = '3951bbd14ed39bf103bf53a4d4d794f08b6afb6c53c8ba12c89c35c8d57aff7e';
-const ISO_EVERY_TICK_N50 = 'd578f2949931a302068352991af3e29ccbf37eb5d17eb56e2a6a10803b2d9393';
+const ISO_FINAL_N60 = '9bf3aed0bc9f820fcf674802713cc5681f11478b1fda7b41f3d458ff7f54c072';
+const ISO_EVERY_TICK_N60 = '1436b5a5900ffcf43fe4173d178e868dc81f3a67e1dc8226ecaa250dd8d35146';
+const ISO_FINAL_N50 = '16589ff1de179665dca0fa254733b9128e8b11b4293e77cef579a136b6633e9b';
+const ISO_EVERY_TICK_N50 = '7cc5c204f58b11f90b1de944e6fa45ee6f1cb3028c02f36718f60f6ea371d217';
 
 function isolationRun(windowN) {
   const crypto = require('node:crypto');

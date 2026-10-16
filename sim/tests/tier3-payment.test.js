@@ -24,6 +24,14 @@
 //   6. DETERMINISM and ISOLATION: Tier-1/2 committed goods reproduce the pre-slice engine's bytes
 //      (hashes computed on HEAD 4a0a651 and pinned), beside committed Tier-3 guilds.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -428,8 +436,8 @@ test('determinism: a galaxy of committed timed factories (carries, equity, a sta
 // (2.33 → 2). Checked against HEAD c99005b snapshot by snapshot: with those three goods' rows
 // removed, every snapshot is byte-identical, and every other hash here did not move.
 // Before: ba0913ac…eb3a.
-const ISO_ONE_STATE = '1d6bc270323c871eb8cf13b9fd633d87d248cd236490d2de40fe316ea304f150';
-const ISO_ONE_SNAPSHOTS = '66cf1a9f1d91a8e500f6fbb50e5e9d4b3bcd92bcdbb1d632698727a9fbfa3324';
+const ISO_ONE_STATE = '7d67ccda3970ccedd606dac7b367cadaf62669e2b6052b6983184d1c3868557b';
+const ISO_ONE_SNAPSHOTS = '2d5db51d9eb449a69705966dbdedd23b45b0ba36c1004de1677ac26a697392a9';
 // ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime, and for a different reason: ISO_TWO_T12_GUILD
 // too. TWO's t3 guild commits a heavy engine at x = 3, and its y went 3.5 → 4, so the ratio x / y went
 // 6/7 → 3/4 and t3's signing bump fell (its heavy venture's RP 514 → 450). That lowers t3's issuance

@@ -38,6 +38,14 @@
 //      `slots` map beside `nodes` — every slot of a CONTROLLED system (own or rival), exactly the surveyed
 //      slots of a frontier planet, `{}` where none is known — and the god's-eye lens still carries none.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -112,11 +120,11 @@ function ok(state, actions) {
 // bytes GET /snapshot serves). If one of these moves, the operator lens changed: that is never a
 // side effect of fog, so find out why before re-pinning.
 const GODS_EYE_ON_MAIN = {
-  zero: '11cef44ade7dfc79bb49e9134e985ad562e110e7d89481eec3d871fe559ed9c6',
-  founded: 'f0cd62a9a0d395e5861b64d952bdb3ac39577002b9977d1d0109c699ce498ce8',
-  rivalVentures: 'f5a32f09801bb1dea2b87fafc34994d1000f8a5a991ab802408379c5f3022287',
-  withShipments: 'dcc22f6c2daac617a4827a654206b00fa2fdbf7985302437a251a6113273153c',
-  afterClosure: 'ec36a24b48fdb0d903fcc49a69496990ae7a32a22d2b4722f0ddeb92d1dccb9a',
+  zero: '9e61bfaeb8bf9280811c4d19a9830b1b3e8773ea3c955b3cfc9fec7749fdc8ce',
+  founded: '4bdb000f53210a82ee59e3359c8f7feed6fd7411b7129c7d22109c7b47d8443d',
+  rivalVentures: '42bf0d8fe9ba642171dd093a5582cbcc30c007fe37bad03f154e7a61779dae5b',
+  withShipments: '2369e5477b1f1a23daa591de520902d193f38cb9d43ce92f0d3a609becd04c6c',
+  afterClosure: 'c792a9a523a3725a24e834ad13d32acba8769d70d8b771885a7d8d90ed366461',
 };
 
 // The script those hashes came from: a bot rival with a licensed and an unlicensed mine, two buys,

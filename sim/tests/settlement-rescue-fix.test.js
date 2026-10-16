@@ -30,6 +30,14 @@
 // is attributed and paid, so every fixture turns it on, with no limit: the always-on rescue they
 // were written against. The switch and its limit are tested in syndicate-top-up.test.js.
 
+// ⤳ 16-10-26 (roadmap 2.5, the Prefecture / claims slice): digests pinned below were RE-PINNED. The slice
+// re-banded two Tier-3 modules the Prefecture bill uses (claim_beacon → 3-2, habitation_module → 3-3;
+// docs/phase-1-tuning.md), which moves their seeded price rows (prices, price history, the quote ring, and the
+// snapshot's price fields) in every state and view. With those two goods' keys deleted, every digest this file
+// computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
+// keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
+// main" or "the pre-slice engine", read: apart from those two goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -392,18 +400,18 @@ function twoLicencesEqualEquity() {
 // by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
 // other hash here did not move. Before: 77749c72…f231a and 32ed9be5…3e86.
 const ISO_ONE_LICENCE_PER_GOOD = {
-  final: '1f12e438f60eae2993c2465d783257c0a486e4f2241a6d993441523c9a0ce312',
-  everyTick: '9b7941440541e47601892d384ebb008c0db04fc224e0a385277ff3f8de7c9f75',
+  final: '32bd73d3f8f2752527b529a4566d0443295071f997cd61628aa1e82de94342f6',
+  everyTick: 'c3d17278f2875638d16834e428018c247597bbd6a328419f00f28dca68254aaf',
   previews: '0b2e68aa123c0eb231d26c1850ec63ef01f462cfcba98d3926c3870df1be0235',
-  snapshots: 'a52644bc1b7acd877a083a4f8fe13da8cb217b5999ed75e9d19124f957d5b92a',
+  snapshots: '1397eb3964b510aeef40bb66ce57db132a19beae36eae13aff119a1a3eddbea1',
   counts: { rescues: 23, met: 23, breach: 0 },
   switchesOn: 3,
 };
 const ISO_TWO_LICENCES_EQUAL_EQUITY = {
-  final: 'a9ca4dd303facb6a8a4e282df63379605b4587ebead32328f127f12a258838f2',
-  everyTick: '1e18c2d1a37c05a97a3012618b65eef905fac040c5ecc502242a173d6ab63534',
+  final: '5240ce96f41edea07a031f12054961fd441061ff955f834f581da37c8e651994',
+  everyTick: 'b9fbc89d3978a8d3995441c4806ddc1bad723c1ed31c225a753fbe80080626af',
   previews: 'addf5c93be7ff5d1edfc3b292fee1e6af27457e85e954c0961cd2fd64a91a6e2',
-  snapshots: 'f6895554082956c1d8783b97f273baf33ac362bab435dc77f0c0d7f33724b2b1',
+  snapshots: '18c9be7843ee8d823f6b56a8a46d7d1d913e9c1d3307b6551aa1084b7eaba262',
   counts: { rescues: 11, met: 22, breach: 0 },
   switchesOn: 1,
 };
