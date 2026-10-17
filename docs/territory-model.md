@@ -316,6 +316,26 @@ number.
 - **Still not built (the contest-by-force half):** teardown / un-claim / eviction (§19 #67), hostile removal (§19 #69),
   corridors (§3), squatting, and the Prefecture's in-system planet-scan.
 
+**AS-BUILT — client PR C: the claim-pending beacon (16-10-26; roadmap 2.5, the Prefecture / claims slice;
+`client/game.html` only; no engine change).** The galaxy map now marks the "ready to plant" state, so a ferried kit is
+easy to find again: on the centre hex of every system where an idle Prefecture kit of the guild's lies and **no guild
+holds the system**, three hollow rings in the player's accent flow inward from a rim to the centre, tagged `<SYSTEM> /
+CLAIM PENDING` at the label zoom. It is pure presentation (`design.md` §18): no game number, no new snapshot field. The
+ring count, the 1.5 s fall, the rim (0.85 of the hex, never under 14 px) and the tag's words are a look.
+- **The read.** One pure selector, `pendingPrefectures(kits, systemClaims, systems)` (`window.__pendingPrefectures`), over
+  what the page already had: the guild's OWN idle ground kits (`myIdleGroundKits`, the plant offer's own read), the claims,
+  and the board's centre hexes. One row per system. A rival's kit can never reach it, and a kit aboard a heavy is a hold
+  good, not an asset, so it shows nothing until it lands idle.
+- **Nothing kept by hand.** The map re-reads the selector every frame, so the beacon appears with the snapshot that lands
+  the kit, and goes with the one that plants it (the solid claim fill takes its place) or that shows the system taken.
+- **A marker only.** It is not territory (`computeTerritoryMap` never sees it) and adds no click target: a click on the
+  hex picks the system as before, and the plant is still made from the Settlements tab (client PR B2).
+- **Not marked (RULED 16-10-26, v1 marks the plantable state only):** a **stranded** kit — idle in a system a rival
+  claimed first (the residual edge above). It shows only in the fleet list for now; there is no second marker style.
+- **Proved** by `sim/tests/prefecture-beacon-client.test.js` (the selector against the engine's own state on every
+  system a kit or claim names, both guilds' views; the rings over a stub canvas) and headless against a live server
+  (roadmap 2.5).
+
 ## 5. The deployment pipeline — the cross-system asset ferry
 
 Deploying an asset is: **haul a Tier-4 kit on a transport to a target, and place it on

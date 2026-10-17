@@ -1497,3 +1497,19 @@ the first Prefecture / claims slice is complete: a player claims a second system
   slots open the factory Establish inside held territory. If a rival claimed the system first, the Adviser shows the
   engine's refusal and nothing changes. Every other slot behaves as before.
 - **Proved** headless against a live server — 33 checks, zero console errors (`docs/roadmap.md`, 2.5).
+
+## Revision — the claim-pending beacon *(16-10-26, roadmap 2.5, the Prefecture / claims slice, client PR C, client-only)*
+
+The full as-built is `docs/territory-model.md` §4, "AS-BUILT — client PR C"; this is the client's view of it.
+
+- **No new snapshot read.** The beacon reads what the plant offer already reads: the guild's own `assets` (an idle
+  Prefecture kit and the system it sits in) and `claims` (who holds the system), plus the board's system coords. The
+  shell's one pure selector, `pendingPrefectures` (`window.__pendingPrefectures()`), turns them into one row per system;
+  the map pass draws them and decides nothing else. Own kits only, by construction: the selector is handed the
+  guild's own idle ground kits, never a rival's.
+- **What the player sees:** on the galaxy map, at every zoom, three teal rings flowing inward on the centre hex of each
+  system where one of the guild's Prefecture kits waits to be planted and nobody holds the system yet; from the label
+  zoom up, a down-left tag `<SYSTEM> / CLAIM PENDING`. It appears when a kit lands there and is gone on the next poll
+  after the plant (the solid claim fill replaces it) or after a rival takes the system. A click on the hex opens the
+  system as before. A kit in a held system (home, or a rival's) or still aboard a heavy shows nothing.
+- **Proved** headless against a live server — 36 checks, zero console errors (`docs/roadmap.md`, 2.5).
