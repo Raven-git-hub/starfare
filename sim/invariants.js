@@ -20,8 +20,9 @@
 //                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
 //                         recipeId?, productionRate?, reputation?),
-//                         assets? ([{ id, kind, systemId, maintenanceCondition }] —
-//                           the guild's ground-asset inventory, §4; absent when empty),
+//                         assets? ([{ id, kind, systemId, maintenanceCondition, stranded? }] —
+//                           the guild's ground-asset inventory, §4; absent when empty;
+//                           stranded = { tick } only on a machine an eviction left behind),
 //                         homeSystemId?, homePlanetId?,
 //                         exploration? ({ [planetId]: { tick, nodes: { [nodeId]: tick },
 //                           slots: { [slotId]: tick } } } — the learned-geography record,
@@ -107,6 +108,7 @@ const {
 } = require('./deep-scan-arrays.js');
 const { knowsPlanet, knowsSlot } = require('./exploration.js');
 const { prefectureId, prefectureNumberOf, prefectureClaimId } = require('./prefectures.js');
+const { systemHolder } = require('./claims.js');
 const {
   REPEAT_MODES, CADENCES, LANE_END_REASONS, WAIT_REASONS, savedRouteId, savedRouteNumberOf,
 } = require('./routes.js');
@@ -2465,6 +2467,43 @@ function checkPrefectureIntegrity(state) {
   return out;
 }
 
+// Stranded assets (losing ground, engine PR 1 — design.md §19 #67, RULED 17-10-26; sim/eviction.js). An eviction
+// leaves the guild's machines in the lost system flagged `stranded = { tick }`, awaiting salvage; a re-plant of its
+// own Prefecture there recovers them. This asserts every tick that each flag still means what the eviction meant:
+//   - SHAPE: exactly `{ tick }`, a whole tick in [0, now] (§15.2 — the tick it was left behind);
+//   - IDLE: no venture of its guild runs it (the eviction tore them down, and Gate 3 refuses a venture in a system
+//     the guild does not hold);
+//   - ONLY IN AN UNCLAIMED SYSTEM: nobody holds the system it sits in. The salvage window is open only while the
+//     system is uncontrolled; a rival claiming the system while they lie there is refused by the plant's TEMPORARY
+//     gate 6 until the sweep slice transfers them instead, and the owner's own re-plant clears the flag. A stranded
+//     asset in a held system is a broken state — the one the gate exists to prevent.
+// A pure read. An asset with no `stranded` key (every asset in a galaxy that has evicted nothing) is skipped.
+function checkStrandedAssets(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    const deployedTo = new Map(); // assetId -> the venture running it
+    for (const v of g.ventures || []) if (v.assetId != null) deployedTo.set(v.assetId, v.id);
+    for (const a of g.assets || []) {
+      if (a.stranded === undefined) continue;
+      const where = `guild:${g.id}.asset:${a.id}.stranded`;
+      const flag = a.stranded;
+      const shapeOk = flag !== null && typeof flag === 'object' && !Array.isArray(flag)
+        && Object.keys(flag).length === 1 && Number.isInteger(flag.tick) && flag.tick >= 0 && flag.tick <= state.tick;
+      if (!shapeOk) {
+        out.push({ rule: 'stranded-asset-flag-is-a-past-tick (§15.2)', where, detail: { stranded: flag, tick: state.tick } });
+      }
+      if (deployedTo.has(a.id)) {
+        out.push({ rule: 'stranded-asset-is-idle (sim/eviction.js)', where, detail: { assetId: a.id, venture: deployedTo.get(a.id) } });
+      }
+      const holder = systemHolder(state, a.systemId);
+      if (holder !== null) {
+        out.push({ rule: 'stranded-asset-only-in-an-unclaimed-system (design.md §19 #67)', where, detail: { assetId: a.id, systemId: a.systemId, heldBy: holder } });
+      }
+    }
+  }
+  return out;
+}
+
 // checkScanJob(state, array, owner, where) -> violations of ONE array's scan job (docs/exploration-model.md
 // §5; roadmap 2.5 (b2)). `queueScan` builds a job and `stepScanCompletions` clears it (sim/actions.js,
 // sim/deep-scan-arrays.js); this asserts every tick that what sits between them is a job they could have made:
@@ -2764,6 +2803,7 @@ function checkInvariants(state, tick) {
     ...checkOutpostIntegrity(state),
     ...checkDeepScanArrayIntegrity(state),
     ...checkPrefectureIntegrity(state),
+    ...checkStrandedAssets(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkExplorationRecord(state),

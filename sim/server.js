@@ -104,6 +104,7 @@ const {
   createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction, createCancelRouteAction,
   createGrantKitAction, createDeployAssetAction, createLoadKitAction, createUnloadKitAction,
   createPlantPrefectureAction,
+  createAbandonPrefectureAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1388,6 +1389,42 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying plantPrefecture (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/guild/abandon-prefecture { guildId, prefectureId } — LOSING GROUND, the destroyed path (design.md §2 /
+  // §19 #67 / #69; docs/territory-model.md §4): the guild abandons the named Prefecture of its own, which is DESTROYED —
+  // the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting
+  // salvage, and its goods there are forfeit. The operator's trigger for what the storyteller will later do. Gated
+  // and routed exactly like plant-prefecture above, through the SAME validate → journal → apply path POST /action
+  // uses (applyOneAction), so an abandon survives restart and replays.
+  if (method === 'POST' && path === '/admin/guild/abandon-prefecture') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","prefectureId":"prefecture_g1_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and prefectureId' });
+      return;
+    }
+    let action;
+    try {
+      // The constructor enforces the required fields; legality — a Prefecture of this guild's, outside its home,
+      // with no array of its bound for the system's centre — is validateAction's job, below.
+      action = createAbandonPrefectureAction({ guildId: body.guildId, prefectureId: body.prefectureId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed abandon-prefecture request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying abandonPrefecture (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

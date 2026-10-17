@@ -164,7 +164,10 @@ every node in it**. It has **no range** — it can be planted in any system, how
 distant (range requirements are a *space*-asset concern, §5). Planting it writes the one
 claim row; tearing it down removes it and evicts the guild's machines in that system into
 **orbital limbo** for pickup (the §5 lease-recovery path — see the pickup lane, §5). The
-**home system is exempt** (a guild can never be evicted from its homeworld).
+**home system is exempt** (a guild can never be evicted from its homeworld). *(⤳ CORRECTED 17-10-26, `design.md` §2 /
+§19 #67: there is no orbital-limbo state and no lease-recovery path — the machines become **stranded, system-scoped idle
+assets** in the lost system, the goods are forfeit, and recovery is a heavy-haul salvage run. The destroyed path is
+BUILT — "AS-BUILT — losing ground, engine PR 1" at the end of this section.)*
 
 **Settling in an unclaimed system — squatting — is a RULED DIRECTION, deferred.** Today
 Gate 3 refuses establishment in **any** system a guild does not hold, unclaimed included.
@@ -335,6 +338,71 @@ ring count, the 1.5 s fall, the rim (0.85 of the hex, never under 14 px) and the
 - **Proved** by `sim/tests/prefecture-beacon-client.test.js` (the selector against the engine's own state on every
   system a kit or claim names, both guilds' views; the rings over a stub canvas) and headless against a live server
   (roadmap 2.5).
+
+**AS-BUILT — losing ground, engine PR 1: the destroyed path (eviction) (17-10-26; engine + operator CLI, no client).**
+Built to `design.md` §2 ("Losing it evicts the system", corrected 17-10-26) and §19 **#67** / **#69** (RULED 17-10-26) —
+the ruling lives there and is not restated here. This is the computational model of the **destroyed** fate only: the
+owner abandons a Prefecture and the system goes fallow. The salvage run, the rival-claim sweep, capture / takeover and the
+storyteller trigger are later slices. No new number.
+- **The abandon action.** `abandonPrefecture { guildId, prefectureId }` (`sim/actions.js`; operator `POST
+  /admin/guild/abandon-prefecture`, `tools/admin.js abandon-prefecture --guild ID --id PREFECTURE_ID`; a player sends the
+  same action through `POST /action`). Refused, each with its own reason, in order: no such guild; no `prefectureId`; no
+  such Prefecture; a Prefecture of another guild's (named — a Prefecture is public); a Prefecture standing in its owner's
+  **home** (unreachable — founding claims a home without one and a plant refuses a held system — but asserted, not
+  assumed); and one of the guild's craft **flying a Deep Scan Array to deploy on the system's centre** (that deploy
+  re-checks on arrival that the system is held, and a centre nobody holds fails `not-bare-hex`, which halts — so the
+  abandon waits for the craft to land or be re-dispatched). There is **no reclaim-to-kit**: nothing returns to inventory.
+- **The eviction — one shared helper.** The consequence is `evictSystem(state, guild, prefecture, cause, tick)`
+  (`sim/eviction.js`), so the storyteller (§9) can later call the same eviction; today the one cause is `abandoned`
+  (`SYSTEM_LOST_CAUSES`; an unknown cause halts). In order, failing loud: (0) the home exemption, again — the helper
+  halts rather than unclaim a homeworld; (1) **unclaim** — the Prefecture row goes (`state.prefectures` omitted once
+  empty) and so does its claim row, so `guildHolds` is false, the seniority map drops the footprint, and the slot is
+  free (occupancy is derived from the row); `prefectureSerial` never goes back; (2) **uproot** — every venture the guild
+  has in the system is closed through THE shared closure, `applyVentureClosure` (`sim/licence.js`), with a new cause
+  **`evicted`**: its RP leaves the guild sum, its node lockout is written when its licence has term left, its
+  `venture_closed` notice is recorded, and its machine drops to idle; **no settlement fee** is charged (the closure's
+  caller charges it, and forced closure charges none either). Then **every asset the guild has in the system** — the
+  machines just freed, any already idle there, and idle kits — is flagged **`stranded = { tick }`**, keeping its
+  `systemId` and its condition; (3) **forfeit** — the guild's pool in that system is dropped whole (`forfeitSystemPool`,
+  `sim/stock.js`: the positive cells are returned for the notice, the system's key leaves `guild.stockpiles`); goods carry
+  no conservation ledger, so this is a plain delete, and the action refreshes the Galactic Supply cache, which falls by
+  exactly those goods. Goods aboard the guild's craft are not the pool and are untouched; (4) **intel kept** —
+  `guild.exploration` is never touched (the survey record stays byte-for-byte; the live control surface of exploration
+  ruling 11 lapses with control, so planets the guild saw only by holding the system leave its view); (5) **one notice** —
+  a single `system_lost` event (`docs/event-log.md` §14).
+- **The stranded asset.** An additive field on the asset, `stranded: { tick }` — the `{ ..., tick }` shape of a craft's
+  `deployFailed` / `laneEnded`, carrying the tick the per-asset salvage timer will need. **Omitted** on every other asset
+  (so a galaxy that never abandons is byte-identical — pinned against `main`'s hashes), copied by `createAsset` (a
+  `createState` hand-in keeps it) and emitted on the guild's **own** asset rows in the snapshot (a rival's guild row
+  carries no assets). It is the first mutation of an asset after its creation, hence its own tick. A stranded machine is
+  inspectable and persists; nothing lapses it in this slice (the timer's rate is unset, `phase-1-tuning.md`).
+- **The invariant.** `checkStrandedAssets` (`sim/invariants.js`): the flag is exactly `{ tick }` with a whole tick in
+  [0, now]; a stranded asset is idle; and it sits **only in a system nobody holds** — the new allowed state (an asset in a
+  system its owner does not hold) is allowed only as long as nobody holds that system.
+- **The TEMPORARY re-claim guard.** The ruled answer to a rival claiming a fallow system is the **sweep** (the claim takes
+  the un-salvaged machines, §19 #67), which is a later slice. Until it lands, `plantPrefecture` refuses — as its new last
+  gate — to claim a system that still holds **another guild's** stranded assets ("awaiting salvage"; the reason names
+  neither the owner nor the machines). The planter's **own** stranded machines do not block it: re-claiming its own
+  fallow system **recovers** them (`plantKit` clears their flags — the sweep applied to oneself), which keeps the
+  invariant. The sweep slice replaces the refusal with the transfer; the gate and its comment say so.
+- **Seams a lost system now reaches.** (a) A kit flying home to unload into the system its guild then abandons: the
+  arrival re-check fails and the lane ENDS `target-gone`, the kit still aboard — the path the unload always reserved for
+  "a system lost", no halt. (b) An array bound for the centre: refused at the abandon, above. (c) A Syndicate BUY
+  delivery in flight to the lost system is lost on arrival by its existing `guildHolds` vanish check. (d) Standing
+  structures (an Outpost or a Deep Scan Array anchored on or standing in the lost system) are not machines in the
+  system's inventory and are untouched; their placement is not re-checked after the fact, as before. (e) A running lane
+  that loads or unloads at the lost system keeps doing so — a transfer at a system has never required holding it — and
+  §11.6's "a system lost ends the lane" needs a rule for which lanes it ends (decision checklist).
+- **Proved** by `sim/tests/prefecture-abandon.test.js` (the eviction field by field; the refusals; the home, refused and
+  halting the helper; no kit returned; the guard refusing a rival, the invariant red when the plant is forced past it,
+  an empty fallow system open to anyone, the owner's re-claim recovering its machines; every invariant rule; the
+  snapshot; the no-abandon goldens pinned from `main`; persistence and determinism, including an abandon racing a plant
+  in one batch; the seams — the centre one halting without its gate, the kit flying home, the BUY in flight; and the
+  operator CLI against a real server
+  process — exit 0 on an abandon, exit 1 on a refusal).
+- **Not built (later slices):** the salvage run and its timer (next), the sweep (after it), capture / takeover and the
+  salvage waiver (the investment arc), the storyteller trigger (§9), and any client (the stranded display, the salvage
+  UI, the `system_lost` message).
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
@@ -537,7 +605,12 @@ space. Pulling toward the nearest held system is the ruled behaviour; refining t
 **The reverse — pickup from orbit.** An evicted or torn-down asset sits in **orbital limbo**
 around its planet (`design.md` §5). Recovering it is an ordinary transport haul: fly to the
 limbo coordinates, load the asset, haul it home — the deploy pipeline run backwards. *(Built
-with the eviction / limbo slice, not this one.)*
+with the eviction / limbo slice, not this one.)* *(⤳ CORRECTED 17-10-26, `design.md` §19 #67: no limbo coordinates —
+an evicted machine is a **stranded** idle asset still keyed by its `systemId` (§4, "AS-BUILT — losing ground, engine
+PR 1"), and the pickup is the **salvage run**: a route ending in a load-on-arrival of one stranded machine per heavy hold,
+open only while the system is uncontrolled, bounded by a per-asset pooled timer whose rate is unset. The salvage run is
+the NEXT engine slice; this lane's shape (a heavy berthed at the asset's own system loads it) is what it extends. A
+stranded **kit** is already loadable today by the ordinary `loadKit`, which never asked whether its system is held.)*
 
 **Client note.** BUILD ROUTE mode currently loses map panning (click places waypoints, so
 it cannot also recentre). The deploy-map picker needs **arrow-key pan** (or restored
