@@ -173,9 +173,7 @@ The rest of the ruling:
   the ferry.**
 - **Losing it evicts the system.** When a Prefecture is torn down or destroyed, everything the guild
   holds in that system is torn down, removed, and **sent into orbit around the planet it stood on,
-  awaiting pickup**. This is a reuse, not a new mechanic: it is §5's **orbital-limbo** recovery, the
-  same path a terminated lease already uses to return a tenant's machine. The machines survive; the
-  guild's position does not. (Also unbuilt. What happens to the system's *goods* is open - §19 #67.)
+  awaiting pickup**. This path is **design-ahead**, and the earlier orbital-limbo / lease-recovery framing is corrected: there is no orbital-limbo state in the engine and no lease-recovery path to reuse — an asset's only location is its `systemId`. So the machines simply become **stranded, system-scoped idle assets** in the lost system (narrated as *in orbit*, but needing no new coordinate), the **goods are forfeit**, and the machines are recoverable only by a **heavy-haul salvage run** — never by recovering the Prefecture itself, which **cannot be un-deployed**. The machines survive; the guild's position does not. **RULED 17-10-26 — see §19 #67 (goods / salvage / the salvage race) and #69 (how it falls; never un-deployable).**
 - **The home system is exempt.** A guild cannot be evicted from the world it was founded on. Founding
   grants its claim without a Prefecture, and no Prefecture mechanic can take a homeworld. This keeps
   `docs/points-and-reputation.md`'s "the home base is **permanently floor-protected**" true - a
@@ -185,7 +183,7 @@ The rest of the ruling:
 what turns territory into something that can be contested, lost, defended and scouted; it is the
 precondition the `contested` flag on the claim row has been carrying a slot for, and it gives
 §11.6's "a system lost" its first reachable path. Whether anyone but the owner can actually remove
-one is itself open - §19 #69.
+one is itself ruled in part - §19 #69 (no warfare; cause picks fate; the takeover scheme deferred to investment).
 
 > **The full territory & deployment model lives in `docs/territory-model.md` (design-ahead, 29-09-26).** The spatial control layer — the 7-hex control footprint with **first-settled seniority** over overlaps, and the semi-controlled **detection** corridors (trunk & feeder, own-nodes only) — plus the Prefecture-as-flag and squatting-as-deferred-direction, the **cross-system deploy pipeline** (which *is* the ferry the Prefecture waits on), the **starter ≥ 3 spacing** generation rule, and the founding-grant change. This section holds the narrative and the headline rulings; that file is the computational model.
 
@@ -1707,6 +1705,8 @@ never had one. The choice is **visible in the market, not just in fiction**: Gal
 counts every guild pool, so (a) drops the galaxy's supply total and (b) does not. The eviction path
 cannot be built until this is ruled.
 
+*(⤳ **RULED 17-10-26 — goods forfeit; machines stranded and salvageable; the window closes on control.** The GOODS are candidate **(a) destroyed** — an accounted sink (a visible drop in Galactic Supply, so a lost system truly leaves the galaxy's total), the simplest and harshest. The ASSETS do **not** enter a new orbital-limbo state (none exists, none is built): the uprooted machines become **stranded, system-scoped idle assets** — still keyed by `systemId` to the lost system, now one the guild does not hold — needing **no new coordinate** and shown in Operations as idle (narrated as in orbit). Recovery is a **heavy-haul salvage run**: a route ending in a load-on-arrival of a stranded asset (the torn-down-Outpost pickup shape), **one machine per heavy hold** — a scramble by construction. The window is open **only while the system is uncontrolled**, bounded by a **per-asset pooled timer** (the rate is a tuning number → `phase-1-tuning.md`). If a rival **claims the fallow system** before salvage finishes, the claim **sweeps up the un-salvaged machines**: they change hands to the new owner at their current `maintenanceCondition` (any extra abandonment penalty is a later tuning number), so a destroyed Prefecture becomes a contested salvage field. The guild keeps its **intel** (the exploration record is independent of the claim) and loses only control and goods. This is the **destroyed** fate (the system goes fallow, #69); it needs no detection/fine/waiver machinery and is the first buildable losing-ground slice. The **captured** fate's salvage — into a rival's held footprint, needing a detection carve-out — is design-ahead with the takeover scheme (#69). Supersedes the orbital-limbo / lease-recovery phrasing in §2, now corrected.)*
+
 68. **Whether the Prefecture's Tier-4 bill is what finally claims `claim_beacon` and
 `habitation_module`.** Four Tier-3 modules are used by **no** bill - `drive_module`,
 `droid_components`, `claim_beacon`, `habitation_module` - and they sit on the placeholder
@@ -1726,3 +1726,5 @@ owner and by the storyteller (§9) - making a system lost only by its holder's c
 which is legible but not truly contestable - or the Prefecture is the thing that finally requires a
 contest / siege mechanic. This question decides whether the Prefecture delivers the losability it is
 being designed for.
+
+*(⤳ **RULED 17-10-26 — no hostile destruction; cause picks fate; a Prefecture is never recovered.** There is **no warfare, siege or force-destruction** of a Prefecture — no rival flies in and demolishes the anchor. The design keeps §5's pressure (economic, reputational) and §7's enforcement (council votes, fines) and adds no demolition mechanic. Instead **the cause picks the fate**: the **storyteller** (§9) or the owner's **voluntary abandonment** destroys the Prefecture and the system goes **fallow / unclaimed** (re-claimable; stranded assets per #67); a **hostile takeover** **captures** it, changing hands, and the system flips to the taker. Either way the Prefecture is **one-way: it can never be un-deployed** — no reclaim-to-kit as an Outpost has (§4); once planted it is only held, destroyed, or captured, and the losing guild never gets it back. That asymmetry is the jeopardy the losability was designed for. The **hostile-takeover scheme itself** (its several forms) is **design-ahead and belongs to the investment arc**, as does the salvage-into-rival-territory carve-out it needs — a salvage waiver: detected but fine-free, scoped to retrieving one's own stranded property, bounded by #67's timer (footprint-vs-whole-route scope still open). The **destroyed** path is buildable now with none of that.)*
