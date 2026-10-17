@@ -62,7 +62,7 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / load-kit / unload-kit / deploy-asset: which vehicle id; delete-route: which route id
+  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / load-kit / unload-kit / deploy-asset: which vehicle id; delete-route: which route id; abandon-prefecture: which Prefecture id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…], anchor@deploy:KIND or anchor@unload-kit (per-waypoint actions)
   repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
@@ -685,11 +685,13 @@ function structureUnder(snapshot, craft) {
   return array ? { kind: 'deepScanArray', row: array } : null;
 }
 
-// The claim subcommand (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) — a thin HTTP
-// client: plant-prefecture plants an idle Prefecture kit on a settlement slot of the system it sits in (POST
+// The claim subcommands (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) — thin HTTP
+// clients: plant-prefecture plants an idle Prefecture kit on a settlement slot of the system it sits in (POST
 // /admin/guild/plant-prefecture), which writes the guild's claim on that system. The kit gets there by the
 // deploy subcommands above: grant-kit --kind prefecture, load-kit, then a dispatch-route ending sys:<id>@unload-kit.
-const CLAIM_COMMANDS = Object.freeze(['plant-prefecture']);
+// abandon-prefecture (losing ground, engine PR 1; design.md §19 #67 / #69) is its inverse but not its undo: the
+// guild's Prefecture is DESTROYED and the system goes fallow (POST /admin/guild/abandon-prefecture).
+const CLAIM_COMMANDS = Object.freeze(['plant-prefecture', 'abandon-prefecture']);
 
 // plantPrefectureBody(flags) -> the POST /admin/guild/plant-prefecture request body: the idle kit (--asset) and the
 // settlement slot (--slot). No system or planet: the engine reads both off the slot. PURE and exported.
@@ -698,6 +700,15 @@ function plantPrefectureBody(flags) {
     guildId: requireFlag(flags, 'guild', 'plant-prefecture'),
     assetId: requireFlag(flags, 'asset', 'plant-prefecture'),
     slotId: requireFlag(flags, 'slot', 'plant-prefecture'),
+  };
+}
+
+// abandonPrefectureBody(flags) -> the POST /admin/guild/abandon-prefecture request body: the guild and the id of the
+// Prefecture it abandons (--id, the id plant-prefecture printed). PURE and exported.
+function abandonPrefectureBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'abandon-prefecture'),
+    prefectureId: requireFlag(flags, 'id', 'abandon-prefecture'),
   };
 }
 
@@ -788,7 +799,7 @@ module.exports = {
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS, KIT_KINDS, idleKitsIn, structureUnder,
-  plantPrefectureBody, CLAIM_COMMANDS,
+  plantPrefectureBody, abandonPrefectureBody, CLAIM_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   revealActionFor, snapshotPath, knownCounts, FOG_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
@@ -1459,6 +1470,34 @@ async function cmdPlantPrefecture(base, flags) {
   printIdleKits(idleKitsIn(out.snapshot, body.guildId));
 }
 
+// abandon-prefecture (docs/territory-model.md §4, losing ground): build the body and POST it to the gated /admin
+// endpoint. A refused abandon comes back accepted:false -> throw -> exit 1. Prints what the eviction did, read off
+// the guild's own `system_lost` notice (the engine's record of it — this computes nothing): the system lost, the
+// ventures torn down, the machines left stranded, the goods forfeit, and the systems the guild still holds.
+async function cmdAbandonPrefecture(base, flags) {
+  const body = abandonPrefectureBody(flags);
+  const out = await postJson(base, '/admin/guild/abandon-prefecture', body);
+  if (!out.accepted) throw new Error(`abandon-prefecture refused: ${out.reason}`);
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === body.guildId) || {};
+  const notice = (guild.events || []).find((e) => e.type === 'system_lost' && e.payload.prefectureId === body.prefectureId);
+  row('action', 'abandonPrefecture');
+  row('guild', body.guildId);
+  log(`  destroyed ${body.prefectureId}`);
+  if (notice) {
+    const p = notice.payload;
+    // `log`, not `row`: the ids are wider than row's 12-character label column.
+    log(`  lost      ${p.systemId} (${p.systemName}) — now unclaimed; claim ${p.claimId} removed`);
+    log(`  closed    ${p.ventureIds.length ? p.ventureIds.join(', ') : 'no ventures'}`);
+    log(`  stranded  ${p.strandedAssetIds.length ? p.strandedAssetIds.join(', ') : 'no machines'}`);
+    const goods = Object.entries(p.goodsForfeit).map(([good, qty]) => `${good} ${qty}`);
+    log(`  forfeit   ${goods.length ? goods.join(', ') : 'no goods'}`);
+  }
+  const held = (out.snapshot.claims || [])
+    .filter((c) => c.ownerGuildId === body.guildId && c.landmarkKind === 'system')
+    .map((c) => c.landmarkId);
+  row('holds', held.length ? held.join(', ') : 'nothing');
+}
+
 // save-route / delete-route (transport-model.md §11.9, automation slice 2a): build the body (the PURE
 // saveRouteBody / deleteRouteBody) and POST it to the gated /admin/route/* endpoint. A refused action comes
 // back accepted:false -> throw -> exit 1. Prints the guild's saved routes as they now stand, so the operator
@@ -1604,6 +1643,11 @@ Claims (territory-model.md §4 — operator, exit 1 on a refused action)
                   plant that idle Prefecture kit on a settlement slot of the system it sits in: the kit is
                   used up and the guild comes to hold the whole system. The slot must be free, on a planet
                   the guild has surveyed to full L2, and no guild may hold the system already
+  abandon-prefecture --guild ID --id PREFECTURE_ID
+                  the guild abandons that Prefecture of its own, which is DESTROYED (never returned as a kit):
+                  the system goes unclaimed, the guild's ventures there are torn down, its machines there are
+                  left stranded awaiting salvage, and its goods there are forfeit. Its home has no Prefecture,
+                  so a home can never be abandoned
 
 Saved routes (transport-model.md §11.9 — operator, exit 1 on a refused action; read them back with snapshot)
   save-route "NAME" --guild ID --route "w;w;…"
@@ -1641,7 +1685,8 @@ Flags
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
   --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route / load-kit /
                  unload-kit / deploy-asset: which vehicle id;
-                 remove-outpost: which outpost id; delete-route: which saved-route id
+                 remove-outpost: which outpost id; delete-route: which saved-route id;
+                 abandon-prefecture: which Prefecture id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
   --route W      dispatch-route / save-route: "w;w;…" route, each w = anchor[@load:G:N,…][@unload:G:N,…]
                  or (dispatch-route, last waypoint only) q,r@deploy:KIND, sys:<id>@deploy:deepScan
@@ -1679,6 +1724,7 @@ async function main(argv) {
     case 'unload-kit': await cmdUnloadKit(base, flags); return;
     case 'deploy-asset': await cmdDeployAsset(base, flags); return;
     case 'plant-prefecture': await cmdPlantPrefecture(base, flags); return;
+    case 'abandon-prefecture': await cmdAbandonPrefecture(base, flags); return;
     case 'save-route': await cmdSaveRoute(base, flags); return;
     case 'delete-route': await cmdDeleteRoute(base, flags); return;
     case 'reveal': await cmdReveal(base, flags); return;

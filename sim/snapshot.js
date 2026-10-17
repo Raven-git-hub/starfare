@@ -753,7 +753,9 @@ function computeAttention(state) {
 //                 stockpilesBySystem: { systemId: { good: int } }, // per-system
 //                 assets: [ { id, kind, systemId,                 // §4 inventory; kind miner | factory,
 //                             maintenanceCondition,                //   or 'outpost' = an idle kit (never
-//                             deployedToVentureId: id | null } ],  //   deployed); systemId = location; null = IDLE
+//                             deployedToVentureId: id | null,      //   deployed); systemId = location; null = IDLE
+//                             stranded?: { tick } } ],             //   left behind by an eviction, awaiting
+//                                                                   //   salvage (§19 #67); omit-when-absent
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
@@ -1584,12 +1586,18 @@ function buildGodsEyeSnapshot(state) {
       // slice gives it a meaning. Sorted by id — the deployment pick is id-ordered, so
       // the panel reads in the order the engine will take them. Fresh objects, so a
       // consumer mutating the snapshot can never alias into engine state.
+      // `stranded` (losing ground, engine PR 1 — design.md §19 #67) rides along, copied,
+      // ONLY on a machine an eviction left behind, so a later client can mark it
+      // "awaiting salvage"; omitted otherwise, so a galaxy that has evicted nothing is
+      // byte-identical. A rival never sees it: a rival guild's row carries no assets
+      // (sim/fog.js RIVAL_GUILD_FIELDS).
       assets: (g.assets || []).map((a) => ({
         id: a.id,
         kind: a.kind,
         systemId: a.systemId,
         maintenanceCondition: a.maintenanceCondition,
         deployedToVentureId: deployedTo.get(a.id) || null,
+        ...(a.stranded === undefined ? {} : { stranded: { ...a.stranded } }),
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // vehicles: the guild's guild-transport inventory (design.md §15.4), one row per owned
       // craft — the vehicle mirror of the `assets` rows above. An IDLE craft carries its `location`

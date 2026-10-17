@@ -56,6 +56,7 @@ const {
   reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsSlot,
 } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
+const { evictSystem, strandedAssetsIn, recoverStrandedAssets } = require('./eviction.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
   systemHex, nearestWaystationToHex,
@@ -433,13 +434,13 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
       return;
     }
     if (!check.ok) {
-      // The dispatch proved this unload would succeed, and — the Prefecture's rival claim above aside — nothing
-      // can undo that in flight today: no path takes a system from a guild, and nothing touches a routed craft's
-      // hold. If that ever changes, the run ENDS the way a route action whose target is gone ends (§11.6, the dock
-      // branch below): the craft idle at this berth, the kit STILL ABOARD (never dropped), the route cleared,
-      // flagged laneEnded 'target-gone'. It does not halt, unlike the deploy's corrupt-state branch: the kit is
-      // safe aboard, and the flag says the trip did not finish (roadmap decision checklist, "Asset-initiated
-      // slice 3a").
+      // The dispatch proved this unload would succeed. Two things can undo that in flight: the Prefecture's rival
+      // claim above, and — since losing ground, engine PR 1 — the guild ABANDONING the held system the craft was
+      // flying a non-Prefecture kit home to (sim/eviction.js; nothing touches a routed craft's hold). Then the run
+      // ENDS the way a route action whose target is gone ends (§11.6, the dock branch below): the craft idle at
+      // this berth, the kit STILL ABOARD (never dropped), the route cleared, flagged laneEnded 'target-gone'. It
+      // does not halt, unlike the deploy's corrupt-state branch: the kit is safe aboard, and the flag says the trip
+      // did not finish (roadmap decision checklist, "Asset-initiated slice 3a").
       endLane(craft, 'target-gone', thisTick);
       return;
     }
@@ -505,8 +506,10 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
   if (!DEPLOY_FAILED_REASONS.includes(check.failure)) {
     // Only the hex ('occupied') or the placement ('out-of-range' for an Outpost, 'not-attached' or
     // 'rival-territory' for a Deep Scan Array) can change while a craft flies. The dispatch proved the target
-    // is a bare hex (an anchor never moves) — or, for an array, the centre of a system some guild holds, and no
-    // path takes a system from a guild, so that centre is still held — and the hold exactly one kit of this kind
+    // is a bare hex (an anchor never moves) — or, for an array, the centre of a system some guild holds, and that
+    // centre is still held: the one path that unclaims a system, abandonPrefecture, refuses while one of its
+    // guild's craft is bound for the centre (its gate 3; a future storyteller eviction owes the same care) — and
+    // the hold exactly one kit of this kind
     // (a kit is never manifested); and a guild never loses its home system, so it always holds one
     // ('no-held-system'). Any of those failing here means the state is corrupt — HALT with the tick and the
     // values rather than guess where to put the craft (§15.5: a silent violation is worse than a crash).
@@ -1413,6 +1416,19 @@ function createPlantPrefectureAction({ guildId, assetId: aId, slotId }) {
   if (aId === undefined) throw new Error('createPlantPrefectureAction: assetId is required');
   if (slotId === undefined) throw new Error('createPlantPrefectureAction: slotId is required');
   return { type: 'plantPrefecture', guildId, assetId: aId, slotId };
+}
+
+// abandonPrefecture: LOSING GROUND, the destroyed path (design.md §2 "Losing it evicts the system"; §19 #67 / #69,
+// RULED 17-10-26; docs/territory-model.md §4, "AS-BUILT — losing ground, engine PR 1"). The owner voluntarily
+// DESTROYS one of its Prefectures: the system goes fallow (unclaimed, re-claimable), the guild's ventures there are
+// torn down, its machines there are left STRANDED awaiting salvage, and its goods there are forfeit — the shared
+// consequence in sim/eviction.js, which the storyteller (§9, not built) will call too. It is the inverse of
+// plantPrefecture, but not its undo: there is NO reclaim-to-kit (a Prefecture is never un-deployed, §19 #69), so
+// nothing comes back to inventory. The constructor only enforces the required fields; validateAction judges legality.
+function createAbandonPrefectureAction({ guildId, prefectureId: pId }) {
+  if (guildId === undefined) throw new Error('createAbandonPrefectureAction: guildId is required');
+  if (pId === undefined) throw new Error('createAbandonPrefectureAction: prefectureId is required');
+  return { type: 'abandonPrefecture', guildId, prefectureId: pId };
 }
 
 // dispatchRouteWithActions: send an IDLE craft along a route whose waypoints can carry a load/unload
@@ -2334,6 +2350,10 @@ function kitIntoInventory(guild, craft, check, tick) {
 //      `guildHolds` is true for the system and Gate 3 opens for ventures in it;
 //   4. the PREFECTURE row in `state.prefectures` (created on first use — it is omit-when-empty), on the slot,
 //      linked to its claim, planted at this tick (§15.2). The slot is now occupied (sim/occupancy.js).
+//   5. (losing ground, engine PR 1) the guild's OWN stranded machines in the system, if it is re-claiming a
+//      system it was evicted from, are recovered — their `stranded` flag goes (sim/eviction.js), because a
+//      stranded asset may sit only in a system nobody holds. Another guild's never get here (the plant's
+//      TEMPORARY gate 6 refuses), and a galaxy with none touches nothing.
 // Nothing priced moves: a kit is never a good on the market or in Galactic Supply, and neither is a flag, so no
 // credits, fuel, goods or supply change and the supply cache needs no refresh. The tick is passed in, as
 // deployKit takes it.
@@ -2362,7 +2382,22 @@ function plantKit(state, guild, assetId, site, tick) {
     plantedAtTick: tick,
   });
   state.prefectures.push(prefecture);
+  recoverStrandedAssets(guild, site.systemId);
   return prefecture;
+}
+
+// centreDeployBound(guild, systemId) -> the id of a craft of the guild's whose route ends in a DEPLOY on the centre of
+// `systemId` (a Deep Scan Array's held-centre leg, slice 16 — the one deploy whose last waypoint is a system), or
+// null. The abandon's gate 3 asks it: that deploy re-checks on arrival that the system is still held, so the
+// system must not be given up under it. A deploy waypoint is always a route's last, so only the last is read.
+function centreDeployBound(guild, systemId) {
+  const craft = (guild.vehicles || []).find((v) => {
+    const waypoints = v.route && v.route.waypoints;
+    const last = waypoints && waypoints[waypoints.length - 1];
+    return !!(last && last.action && last.action.type === 'deploy' && last.anchor
+      && last.anchor.landmarkKind === 'system' && last.anchor.landmarkId === systemId);
+  });
+  return craft ? craft.id : null;
 }
 
 // routeStoreAt(state, guildId, anchor) -> the STORE a route action at `anchor` works against, or null
@@ -2373,8 +2408,11 @@ function plantKit(state, guild, assetId, site, tick) {
 // there now) and the §11.10 lap-start re-check (the craft will be there this lap), so the re-check can
 // never pass a target the arrival would then refuse, or the reverse. It mirrors transferCargo's split
 // (a system, else an own Outpost, else nothing). NOTE: a system counts whoever holds it, exactly as the
-// arrival always has — no path yet takes a system away from a guild (claims are a later territory item),
-// so "a system lost" (§11.6) cannot happen today; when it can, this one predicate is where it goes.
+// arrival always has — a transfer at a system has never asked whether the guild holds it. Since losing
+// ground, engine PR 1, a system CAN be lost (abandonPrefecture, sim/eviction.js), but this is left as it
+// stands: §11.6's "a system lost → the lane ends" needs a rule for WHICH lanes a lost system ends when a
+// lane may legally act at any system, held or not — on the decision checklist, not decided here. When it
+// is ruled, this one predicate is still where it goes.
 function routeStoreAt(state, guildId, anchor) {
   if (anchor && anchor.landmarkKind === 'system') return { kind: 'system', systemId: anchor.landmarkId };
   const outpost = ownedOutpostAt(state, guildId, anchor);
@@ -4545,6 +4583,56 @@ function validateAction(state, action) {
     if (holder !== null) {
       return { valid: false, reason: `system ${JSON.stringify(site.systemId)} is already held by guild ${JSON.stringify(holder)} — a Prefecture plants only in an unclaimed system` };
     }
+    // 6. NO OTHER GUILD'S STRANDED MACHINES LIE THERE — **TEMPORARY** (losing ground, engine PR 1;
+    //    territory-model.md §4). A stranded asset may sit only in a system nobody holds (design.md §19 #67 — the
+    //    salvage window is open only while the system is uncontrolled; `checkStrandedAssets` guards it). The ruled
+    //    answer to a rival claiming a fallow system is the SWEEP — the claim takes the un-salvaged machines — but
+    //    the sweep is a later slice, so until it lands the claim is refused instead. The planter's OWN stranded
+    //    machines do not block: re-claiming its own fallow system recovers them (plantKit). REPLACE this gate with
+    //    the sweep's transfer when that slice is built. The reason names neither the owner nor the machines.
+    const awaitingSalvage = strandedAssetsIn(state, site.systemId).filter((x) => x.guildId !== action.guildId);
+    if (awaitingSalvage.length > 0) {
+      return { valid: false, reason: `system ${JSON.stringify(site.systemId)} still holds another guild's stranded machines awaiting salvage — a Prefecture cannot be planted there while they lie there` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'abandonPrefecture') {
+    // design.md §2 / §19 #67 / #69 (RULED 17-10-26): the owner's voluntary DESTROY of one of its Prefectures — the
+    // eviction (sim/eviction.js). Refused whole, gates in the order a failure is felt: who, which Prefecture, then
+    // the two states in which the eviction must not run.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // 1. THE PREFECTURE — a real one, and this guild's. A Prefecture is public (fog.js RIVAL_PREFECTURE_FIELDS), so
+    //    a rival's is refused by its owner's name: nothing hidden is revealed.
+    if (typeof action.prefectureId !== 'string' || action.prefectureId.length === 0) {
+      return { valid: false, reason: 'prefectureId must be a non-empty string' };
+    }
+    const prefecture = (state.prefectures || []).find((p) => p.id === action.prefectureId);
+    if (!prefecture) {
+      return { valid: false, reason: `there is no Prefecture ${JSON.stringify(action.prefectureId)}` };
+    }
+    if (prefecture.ownerGuildId !== action.guildId) {
+      return { valid: false, reason: `Prefecture ${JSON.stringify(action.prefectureId)} belongs to guild ${JSON.stringify(prefecture.ownerGuildId)} — a guild abandons only its own` };
+    }
+    // 2. THE HOME EXEMPTION (design.md §2) — asserted, not assumed. Founding claims a home without a Prefecture and a
+    //    plant refuses a system its guild holds, so no Prefecture can stand in its owner's home; if one ever did, the
+    //    state is corrupt, and the homeworld is still not given up.
+    if (prefecture.systemId === guild.homeSystemId) {
+      return { valid: false, reason: `Prefecture ${JSON.stringify(action.prefectureId)} stands in guild ${JSON.stringify(action.guildId)}'s home system ${JSON.stringify(prefecture.systemId)} — a guild is never evicted from its home (design.md §2)` };
+    }
+    // 3. NO ARRAY ON ITS WAY TO THE CENTRE. A Deep Scan Array may deploy on the centre of a system its guild holds
+    //    (slice 16), and the arrival re-check needs the system still held — a centre NOBODY holds fails
+    //    `not-bare-hex`, which is not retreatable, so the arrival would HALT (resolveDeployArrival). Abandoning the
+    //    system under such a craft would make that halt reachable from play, so the abandon waits until the craft
+    //    has landed or been re-dispatched. (Only the guild's own craft can be bound there: a rival's centre is
+    //    refused at its dispatch.)
+    const bound = centreDeployBound(guild, prefecture.systemId);
+    if (bound !== null) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(bound)} is flying a Deep Scan Array to deploy on the centre of system ${JSON.stringify(prefecture.systemId)}, which needs the system held when it lands — let it land, or re-dispatch it, before abandoning the Prefecture` };
+    }
     return { valid: true };
   }
 
@@ -6181,6 +6269,19 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'abandonPrefecture') {
+    // design.md §2 / §19 #67 / #69: the DESTROYED fate. THE ONE eviction (sim/eviction.js) unclaims the system,
+    // tears the guild's ventures there down, strands its machines there and forfeits its pool there, writing the
+    // `system_lost` notice — all at this tick. Instant, and nothing comes back: a Prefecture is never un-deployed.
+    const guild = findGuild(next, action.guildId);
+    const prefecture = next.prefectures.find((p) => p.id === action.prefectureId);
+    evictSystem(next, guild, prefecture, 'abandoned', next.tick);
+    // The forfeited goods leave Galactic Supply: refresh the cache, as every other stockpile write here does (the
+    // between-action seam asserts cache == live sum with no tick between).
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'deployAsset') {
     // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5): the deploy is INSTANT — the kit
     // was built earlier, so there is no build time. The ONE deploy rule is asked again (validate proved it
@@ -6423,6 +6524,7 @@ module.exports = {
   createLoadKitAction,
   createUnloadKitAction,
   createPlantPrefectureAction,
+  createAbandonPrefectureAction,
   createDeployAssetAction,
   createDispatchRouteWithActionsAction,
   createSaveRouteAction,

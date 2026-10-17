@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine half BUILT, client not yet):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -67,7 +67,10 @@ mutation itself already runs under:
   - the auto-lapse tick step (the acceptance window timed out) → cause **`timeout`**.
 - **`applyVentureClosure`** writes `venture_closed`, from its callers:
   - the `decommissionVenture` action (a player teardown) → cause **`teardown`**;
-  - the −500 forced-closure tick path (`docs/forced-closure.md`) → cause **`forced`**.
+  - the −500 forced-closure tick path (`docs/forced-closure.md`) → cause **`forced`**;
+  - *(⤳ 17-10-26, losing ground engine PR 1)* the eviction (`sim/eviction.js`, §14) — a venture torn down because its
+    guild lost the system → cause **`evicted`**. (The operator's `removeVenture` / `removeAsset` lever also calls it,
+    cause **`operator`**, `docs/operator-adjust.md`.)
 
 **Renegotiation ACCEPT (`renegotiateLicence`) writes nothing** — an accept is a re-lock, not a
 discrete loss. All notices are **born unread** (no `readTick`).
@@ -696,3 +699,36 @@ change; **no new number** (no constant, no retention change).
   delta), `sim/tests/scan-notice-client.test.js` (the page's own notice code in a `node:vm` sandbox against real
   engine output: rows, popups, the re-dress across opens, read-on-open; red against the pre-slice client), and
   `sim/tests/events.test.js`'s vocabulary test (now eight types).
+
+## 14. The `system_lost` notice — losing ground, the destroyed path (engine half, 17-10-26)
+
+**What it records.** A guild's Prefecture was **destroyed** and the system it claimed went fallow (`design.md` §2
+"Losing it evicts the system"; §19 #67 / #69; `docs/territory-model.md` §4 "AS-BUILT — losing ground, engine PR 1").
+Discrete and unrecoverable — the Prefecture, its claim and the forfeited goods are gone — so it is an EVENT, not a
+standing condition (§0). ONE writer: `evictSystem` (`sim/eviction.js`), the shared eviction, at the tick it happens; it
+writes exactly one `system_lost` per eviction, after the uprooted ventures' own `venture_closed` notices (cause
+`evicted`, §2), so the newest-first list shows the loss above them. Born unread.
+
+**The payload, self-contained** (the Prefecture and the claim no longer exist when the player reads it):
+- `cause` — what destroyed it: `abandoned` (the owner's voluntary abandon — the only cause built; the storyteller's
+  joins `SYSTEM_LOST_CAUSES` with §9);
+- `prefectureId`, `claimId` — the destroyed Prefecture and the claim row it wrote;
+- `systemId`, `systemName` — the lost system, its seed name (falling back to its id, as the other notices resolve
+  names);
+- `planetId`, `slotId` — where the flag stood;
+- `ventureIds` — the ventures torn down there (sorted; each also has its own `venture_closed`);
+- `strandedAssetIds` — the machines left behind, stranded, awaiting salvage (sorted);
+- `goodsForfeit` — `{ good: qty }`, the pool lost with the system (positive cells only, keys sorted; `{}` when the
+  pool was empty).
+
+**The surface — today.** No snapshot change: `guilds[].events` carries the row with its `whenDay`, `attention.notices`
+counts it while unread, and the per-guild view shows a guild only its own. **Not built: the client** — the inbox row,
+the card and its voice (the steward's / pilot's — the wording is the design room's, not chosen here). Until it lands the
+live client's notice renderer treats any type it does not know as a licence lapse, so a `system_lost` row would read
+"Licence lapsed — …" — the same gap `deploy_failed`'s and the delivery notices' engine halves had. Nothing the live
+client can send writes one: it has no abandon affordance (the operator CLI and `POST /action` do).
+
+**A NO-OP elsewhere.** A galaxy that never abandons writes no `system_lost` and no `evicted` closure, so every log,
+snapshot and golden without one is unchanged (`sim/tests/prefecture-abandon.test.js` pins the no-abandon hashes from
+`main`). The vocabulary test (`sim/tests/events.test.js`) now counts nine types.
+

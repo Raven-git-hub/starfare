@@ -36,6 +36,22 @@ function addStock(guild, systemId, good, delta) {
   return pool[good];
 }
 
+// forfeitSystemPool(guild, systemId) -> { good: int } — what the guild held in
+// that system's pool (the positive cells only, keys sorted), having MUTATED the
+// guild to drop the pool's key entirely. The goods SINK an eviction uses
+// (design.md §19 #67 — a lost system's goods are destroyed; sim/eviction.js).
+// Goods carry no conservation ledger, so nothing else moves here; the caller
+// refreshes the galactic-supply cache, which then falls by exactly these goods.
+function forfeitSystemPool(guild, systemId) {
+  const pool = (guild.stockpiles || {})[systemId] || {};
+  const lost = {};
+  for (const good of Object.keys(pool).sort()) {
+    if (pool[good] > 0) lost[good] = pool[good];
+  }
+  if (guild.stockpiles) delete guild.stockpiles[systemId];
+  return lost;
+}
+
 // guildTotals(guild) -> flat { good: int } summed across ALL of the guild's
 // system pools: the guild-wide PRICING AGGREGATE (ruling B1). This is what
 // galactic supply sums and what the snapshot reports as a guild's holdings —
@@ -60,4 +76,4 @@ function cloneStockpiles(bySystem) {
   return out;
 }
 
-module.exports = { getStock, addStock, guildTotals, cloneStockpiles };
+module.exports = { getStock, addStock, forfeitSystemPool, guildTotals, cloneStockpiles };

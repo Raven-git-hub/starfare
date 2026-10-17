@@ -541,7 +541,23 @@ test('plantPrefectureBody: the exact POST /admin/guild/plant-prefecture body —
   assert.throws(() => A.plantPrefectureBody({ asset: 'a', slot: 's' }), /plant-prefecture: --guild is required/);
   assert.throws(() => A.plantPrefectureBody({ guild: 'g1', slot: 's' }), /plant-prefecture: --asset is required/);
   assert.throws(() => A.plantPrefectureBody({ guild: 'g1', asset: 'a' }), /plant-prefecture: --slot is required/);
-  assert.deepEqual([...A.CLAIM_COMMANDS], ['plant-prefecture']);
+  assert.deepEqual([...A.CLAIM_COMMANDS], ['plant-prefecture', 'abandon-prefecture']);
+});
+
+// --- losing ground, the destroyed path (docs/territory-model.md §4; design.md §19 #67 / #69) -------------------
+
+test('abandonPrefectureBody: the exact POST /admin/guild/abandon-prefecture body — the guild and the Prefecture id, nothing else', () => {
+  assert.deepEqual(
+    A.abandonPrefectureBody(A.parseArgs(['abandon-prefecture', '--guild', 'g1', '--id', 'prefecture_g1_01']).flags),
+    { guildId: 'g1', prefectureId: 'prefecture_g1_01' },
+    'no system: the engine reads it off the Prefecture',
+  );
+  assert.throws(() => A.abandonPrefectureBody({ id: 'prefecture_g1_01' }), /abandon-prefecture: --guild is required/);
+  assert.throws(() => A.abandonPrefectureBody({ guild: 'g1' }), /abandon-prefecture: --id is required/);
+  // The subcommand is wired into main and documented in the usage text — not a body builder nobody calls.
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'admin.js'), 'utf8');
+  assert.match(src, /case 'abandon-prefecture': await cmdAbandonPrefecture\(base, flags\); return;/);
+  assert.match(src, /abandon-prefecture --guild ID --id PREFECTURE_ID/);
 });
 
 test('DEPLOY_COMMANDS lists the deploy subcommands (grant-kit / load-kit / unload-kit / deploy-asset)', () => {

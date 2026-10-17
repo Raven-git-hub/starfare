@@ -24,11 +24,12 @@
 // Outpost reclaim (sim/actions.js, the `reclaimOutpost` apply, docs/event-log.md §12) writes
 // `outpost_packed` when an Outpost is packed back into a kit. A Deep Scan Array finishing its job
 // (sim/deep-scan-arrays.js `stepScanCompletions`, docs/event-log.md §13) writes `scan_complete`
-// when it reveals, or `scan_voided` when a rival took the target first. The
-// storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes
+// when it reveals, or `scan_voided` when a rival took the target first. The eviction (sim/eviction.js
+// `evictSystem`, docs/event-log.md §14) writes `system_lost` when a guild's Prefecture is destroyed and
+// its system goes fallow. The storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes
 // nothing — an accept is a re-lock, not a discrete loss.
 
-// --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13) --------------
+// --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13, §14) ---------
 //
 // The notice types the engine can write, ONE source of truth for "what a notice type is",
 // used by the writers and by the checkEventLog invariant (sim/invariants.js). Kept as named
@@ -46,10 +47,12 @@ const OUTPOST_PACKED = 'outpost_packed';
 const SCAN_COMPLETE = 'scan_complete';
 // a Deep Scan Array finished its job to nothing: a rival came to hold the target first
 const SCAN_VOIDED = 'scan_voided';
+// a guild's Prefecture was destroyed: the system went fallow, its machines stranded, its goods forfeit
+const SYSTEM_LOST = 'system_lost';
 
 const EVENT_TYPES = Object.freeze([
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
-  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED,
+  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST,
 ]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
@@ -136,7 +139,7 @@ function cloneEventPayload(payload) {
 
 module.exports = {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
-  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, EVENT_TYPES, isEventType,
+  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
 };

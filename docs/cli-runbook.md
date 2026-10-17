@@ -279,3 +279,28 @@ front; if a rival claims it while the heavy flies, the heavy RETREATS with the k
 { reason: 'system-claimed' }`, with a `deploy_failed` notice — the outpost's retreat. A kit can also be **built**: the
 dockyard's commission dropdown now lists the Prefecture (14 days), and the Syndicate refuses to sell one. *(Run live
 16-10-26 against a fresh `seat-demo --seed 42`, and the plant survived a server restart with persistence on.)*
+
+## Losing ground — a Prefecture abandoned (the destroyed path, engine PR 1)
+
+The operator path for `docs/territory-model.md` §4's "AS-BUILT — losing ground, engine PR 1" (`design.md` §19 #67 /
+#69): the guild abandons a Prefecture, which is **destroyed** — no kit comes back — and the system goes **fallow**.
+Continuing from the plant above (the guild holds `sys_0936`), give it something to lose — a factory on the planet's
+second slot and some goods in the system's pool — then abandon:
+
+    node tools/admin.js grant-asset --guild seat_demo --kind factory --system sys_0936 $B                  # asset_seat_demo_factory_11
+    curl -s -X POST $U/action -d '{"type":"establishVenture","guildId":"seat_demo","ventureId":"f936","ventureType":"refining","siteId":"pl_03280_s02","assetId":"asset_seat_demo_factory_11","recipeId":"titanium_alloy"}'
+    node tools/admin.js adjust-goods --guild seat_demo --system sys_0936 --good titanium --delta 30 $B
+    node tools/admin.js abandon-prefecture --guild seat_demo --id prefecture_seat_demo_01 $B
+
+`abandon-prefecture` prints what the eviction did, read off the guild's own `system_lost` notice: the system lost
+(`sys_0936 (BAR-7159) — now unclaimed`, its claim removed), the ventures torn down (`f936` — each also gets a
+`venture_closed` notice, cause `evicted`, and no settlement fee), the machines left **stranded** awaiting salvage
+(`asset_seat_demo_factory_11` — still idle in `sys_0936`, its asset row now carrying `stranded: { tick }`), the goods
+forfeit (`titanium 30` — the pool's key is gone, and Galactic Supply is lower by exactly that), and the systems the guild
+still holds (`sys_0006`). Its exploration record is untouched. Refusals exit 1 with the engine's reason: no such
+Prefecture (the same one twice included — destroyed is destroyed), a rival's, and — while one of the guild's heavies is
+flying a Deep Scan Array to deploy on that system's centre — "let it land, or re-dispatch it". The home can never be
+abandoned: founding gives it no Prefecture to name. Until the sweep slice lands, another guild's `plant-prefecture` in
+`sys_0936` is refused while the stranded factory lies there ("awaiting salvage"); the guild's own re-plant there
+recovers it. *(Run live 17-10-26 against a fresh `seat-demo --seed 42` continuing from the plant above, and the
+abandon survived a server restart with persistence on.)*

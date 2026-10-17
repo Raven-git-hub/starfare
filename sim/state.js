@@ -785,7 +785,14 @@ function createVenture({
 // in this slice, since the only thing that would move it — cross-system redeploy — is
 // deferred to 2.2 (§4). idle/deployed stay DERIVED (invariant 5); the asset stores no
 // status of its own, only this location.
-function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITION_NEW }) {
+//
+// `stranded` (17-10-26, losing ground engine PR 1 — design.md §19 #67; sim/eviction.js)
+// is `{ tick }` on a machine an eviction left behind in a system its guild no longer
+// holds, awaiting salvage: the first mutation of an asset after its creation, so it
+// carries its own tick. OMITTED on every other asset (a galaxy that has evicted
+// nothing stays byte-identical), and copied here — never aliased — so a scenario or
+// save handed to createState keeps it.
+function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITION_NEW, stranded }) {
   if (id === undefined) throw new Error('createAsset: id is required');
   if (kind === undefined) throw new Error('createAsset: kind is required');
   if (systemId === undefined) throw new Error('createAsset: systemId is required');
@@ -799,6 +806,7 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
     // slice reads it, nothing changes it, and it never reaches production. It is
     // carried and serialized now so the maintenance slice needs no migration.
     maintenanceCondition,
+    ...(stranded === undefined ? {} : { stranded: { ...stranded } }),
   };
 }
 
