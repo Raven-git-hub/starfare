@@ -18,7 +18,8 @@ claim action — the Prefecture kit, its ferry into unheld ground with the arriv
 claim — is BUILT, engine + operator CLI (§4's "AS-BUILT — engine PR 1"). §2's seniority map is next, engine PR 2.)* *(⤳ 16-10-26:
 §2's seniority control map is BUILT in the engine and carried by the snapshot (§2's "AS-BUILT — engine PR 2"); the client
 render is the next PR.)* *(⤳ 16-10-26: the client render is BUILT too: the galaxy map paints the engine's `controlMap` and
-resolves nothing (§2's "AS-BUILT — client PR A").)*
+resolves nothing (§2's "AS-BUILT — client PR A").)* *(⤳ 27-10-26: the cross-system ferry now carries
+an existing GROUND machine too — the salvage run, losing ground's engine PR 2 (§5's "AS-BUILT — losing ground, engine PR 2").)*
 
 ---
 
@@ -404,7 +405,8 @@ storyteller trigger are later slices. No new number.
   process — exit 0 on an abandon, exit 1 on a refusal).
 - **Not built (later slices):** the salvage run and its timer (next), the sweep (after it), capture / takeover and the
   salvage waiver (the investment arc), the storyteller trigger (§9), and any client (the stranded display, the salvage
-  UI, the `system_lost` message).
+  UI, the `system_lost` message). *(⤳ 27-10-26: the salvage run is BUILT, without its timer (the rate is still
+  unset) — §5's "AS-BUILT — losing ground, engine PR 2".)*
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
@@ -413,7 +415,9 @@ arrival.** This is the deferred cross-system ferry (`design.md` §4), and buildi
 what unblocks the Prefecture. Kits are already cargo-modelled
 (`ASSET_CARGO_VOLUME = HEAVY_HOLD`, `design.md` §4), so a kit rides as cargo and deploy
 consumes it — no bespoke payload path, and no mutation of an existing asset's immutable
-`systemId` (a fresh structure is placed).
+`systemId` (a fresh structure is placed). *(⤳ 27-10-26: a GROUND machine now rides the ferry too — the salvage run carries an
+existing miner or factory BY NAME, and its unload is the one sanctioned move of `systemId` (`design.md` §4). "AS-BUILT —
+losing ground, engine PR 2" at the end of this section.)*
 
 **The player flow.** An idle deployable asset in the Operations panel carries a **Manage**
 button → a Manage popup (like the dispatch popup) with a **Deploy** action → a galaxy-map
@@ -612,7 +616,8 @@ an evicted machine is a **stranded** idle asset still keyed by its `systemId` (�
 PR 1"), and the pickup is the **salvage run**: a route ending in a load-on-arrival of one stranded machine per heavy hold,
 open only while the system is uncontrolled, bounded by a per-asset pooled timer whose rate is unset. The salvage run is
 the NEXT engine slice; this lane's shape (a heavy berthed at the asset's own system loads it) is what it extends. A
-stranded **kit** is already loadable today by the ordinary `loadKit`, which never asked whether its system is held.)*
+stranded **kit** is already loadable today by the ordinary `loadKit`, which never asked whether its system is held.)* *(⤳ **BUILT 27-10-26** — the salvage run, as the manual load / dispatch / unload
+pair: "AS-BUILT — losing ground, engine PR 2" at the end of this section.)*
 
 **Client note.** BUILD ROUTE mode currently loses map panning (click places waypoints, so
 it cannot also recentre). The deploy-map picker needs **arrow-key pan** (or restored
@@ -978,6 +983,37 @@ there. What this section's pipeline gained:
   array rule lets an array share its hex with the one seed landmark it is anchored to.
 
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
+
+**AS-BUILT — losing ground, engine PR 2: the salvage run — the cross-system asset ferry (27-10-26; engine + operator
+CLI, no client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, the salvage run) and §4 ("Cross-system use requires a
+redeploy … a future redeploy ferries one on a heavy Vehicle whose manifest carries the asset and locks out its hold") — the
+rulings live there, and the field-by-field as-built is §4's "BUILT — the cross-system asset ferry". This is this section's
+pipeline run backwards for a GROUND machine: a kit is turned into a good for the hold and minted afresh on unload, but a
+machine is carried BY NAME and keeps its id, so its existing `systemId` is what moves. No new number.
+- **The run.** An abandoned Prefecture (§4's eviction) leaves its machines stranded in the fallow system. (1) `loadAsset
+  { guildId, vehicleId, assetId }` puts one aboard an empty, idle heavy berthed in that system — one machine per heavy
+  hold — and clears its `stranded` flag. (2) The heavy flies to a held system on an ordinary dispatch (`dispatchVehicle`,
+  or a one-shot route with no action), burning its own `fuelCostToRun` per hex as any heavy does. (3) `unloadAsset
+  { guildId, vehicleId }`, berthed at a system the guild holds, drops it there as an ordinary idle machine, its `systemId`
+  moved. Operator: `tools/admin.js salvage-load --guild ID --id VEHICLE_ID --asset ASSET_ID` and `salvage-unload --guild ID
+  --id VEHICLE_ID` (`POST /admin/vehicle/load-asset|unload-asset`; a player sends the same actions through `POST /action`).
+- **Salvage-only.** The load refuses a machine that is not stranded, which keeps general redeploy (a healthy machine
+  moved between held systems) for its own slice. A stranded machine sits only in a system nobody holds
+  (`checkStrandedAssets`), so the same gate keeps the pickup to fallow ground — §19 #67's "only while the system is fallow".
+- **No window yet.** Its rate is unset (`phase-1-tuning.md`), so nothing lapses: a stranded machine persists until it is
+  salvaged (or, once that slice exists, swept). The flag's `tick` stays the clock's start for the window slice.
+- **Manual, not on arrival.** §19 #67's "a route ending in a load-on-arrival" is the eventual automation (a waypoint action,
+  as the kit's `{ type: 'unload' }` became); this slice ships the standalone pair beneath it, as `loadKit` / `unloadKit`
+  shipped before theirs. A laden heavy's route carries no action at all — its hold is locked.
+- **Seams.** In transit, a machine keeps the `systemId` it was loaded from. So a guild that re-claims that system while the
+  machine is aboard still cannot establish on it (it is not idle), an abandon there again does not strand it (it is in the
+  hold, not the system), and unloading it into that system once re-held is legal (a no-move unload). The TEMPORARY plant
+  guard reads only stranded machines, so a machine already in hand never blocks a rival's claim of the fallow system — the
+  scramble §19 #67 rules is between the salvager's heavy and the rival's Prefecture.
+- **Proved** by `sim/tests/asset-ferry.test.js` (22 tests), and live through the operator CLI (`docs/cli-runbook.md`,
+  "Salvage").
+- **Not built (later slices):** the window, the sweep (it takes only machines still stranded), general redeploy, the
+  route-action form, and any client (a "carrying — salvaging" craft row, the stranded display, a salvage affordance).
 
 ## 6. Generation — starter spacing
 

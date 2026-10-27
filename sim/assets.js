@@ -9,9 +9,10 @@ const { DEPLOYABLE_KITS, kitGoodFor } = require('./resources.js');
 // resource node, a FACTORY on a settlement slot.
 //
 // WHY THIS FILE EXISTS, AND WHAT IT DELIBERATELY DOES NOT HOLD: an asset is in
-// exactly one of two states — DEPLOYED (a live venture's `assetId` points at it)
-// or IDLE (in the guild's inventory, referenced by nothing) — and "idle" is
-// DERIVED, never stored. There is no `isIdle` flag anywhere, exactly as
+// exactly one of three states — DEPLOYED (a live venture's `assetId` points at it),
+// IN TRANSIT (a vehicle's `carryingAssetId` names it — the cross-system ferry,
+// sim/ferry.js, built by losing ground engine PR 2) or IDLE (in the guild's
+// inventory, referenced by nothing) — and each is DERIVED, never stored. There is no `isIdle` flag anywhere, exactly as
 // occupancy.js keeps "what venture is on this site?" a lookup over ventures
 // rather than a field on the site (invariant 5: the same fact must not live in
 // two places, or it can drift). So this file answers the question by scanning
@@ -175,11 +176,25 @@ function deployedAssetIds(guild) {
   return byAsset;
 }
 
+// carriedAssetIds(guild) -> Map<assetId, vehicleId>. The THIRD state's derivation (design.md §4,
+// "State is DERIVED from what references the asset, now three states"; built by losing ground, engine
+// PR 2 — the cross-system asset ferry, sim/ferry.js): an asset is IN TRANSIT iff one of the guild's
+// vehicles names it in `carryingAssetId`. Like deployedAssetIds it reports and does not police — an
+// asset named by two vehicles is a corruption `checkCarriedAssets` (invariants.js) catches and halts on.
+function carriedAssetIds(guild) {
+  const byAsset = new Map();
+  for (const v of guild.vehicles || []) {
+    if (v.carryingAssetId !== undefined) byAsset.set(v.carryingAssetId, v.id);
+  }
+  return byAsset;
+}
+
 // Every idle asset the guild owns, in stored order. Idle = owned and referenced by
-// none of its owner's ventures.
+// nothing: none of its owner's ventures runs it, and none of its vehicles carries it.
 function idleAssets(guild, kind) {
   const deployed = deployedAssetIds(guild);
-  return (guild.assets || []).filter((a) => !deployed.has(a.id) && (kind === undefined || a.kind === kind));
+  const carried = carriedAssetIds(guild);
+  return (guild.assets || []).filter((a) => !deployed.has(a.id) && !carried.has(a.id) && (kind === undefined || a.kind === kind));
 }
 
 module.exports = {
@@ -200,5 +215,6 @@ module.exports = {
   nextAssetNumber,
   nextKitAssetSerial,
   deployedAssetIds,
+  carriedAssetIds,
   idleAssets,
 };

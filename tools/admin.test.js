@@ -560,6 +560,27 @@ test('abandonPrefectureBody: the exact POST /admin/guild/abandon-prefecture body
   assert.match(src, /abandon-prefecture --guild ID --id PREFECTURE_ID/);
 });
 
+test('salvageLoadBody / salvageUnloadBody: the exact POST /admin/vehicle/load-asset and unload-asset bodies (the asset ferry)', () => {
+  assert.deepEqual([...A.SALVAGE_COMMANDS], ['salvage-load', 'salvage-unload']);
+  assert.deepEqual(
+    A.salvageLoadBody(A.parseArgs(['salvage-load', '--guild', 'g1', '--id', 'vehicle_g1_heavyTransport_01', '--asset', 'asset_g1_miner_16']).flags),
+    { guildId: 'g1', vehicleId: 'vehicle_g1_heavyTransport_01', assetId: 'asset_g1_miner_16' },
+  );
+  assert.deepEqual(
+    A.salvageUnloadBody(A.parseArgs(['salvage-unload', '--guild', 'g1', '--id', 'vehicle_g1_heavyTransport_01']).flags),
+    { guildId: 'g1', vehicleId: 'vehicle_g1_heavyTransport_01' },
+    'no asset and no system: the engine reads the machine off the craft and the system from its berth',
+  );
+  assert.throws(() => A.salvageLoadBody({ guild: 'g1', id: 'vehicle_g1_heavyTransport_01' }), /salvage-load: --asset is required/);
+  assert.throws(() => A.salvageUnloadBody({ guild: 'g1' }), /salvage-unload: --id is required/);
+  // Both are wired into main and documented in the usage text.
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'admin.js'), 'utf8');
+  assert.match(src, /case 'salvage-load': await cmdSalvageLoad\(base, flags\); return;/);
+  assert.match(src, /case 'salvage-unload': await cmdSalvageUnload\(base, flags\); return;/);
+  assert.match(src, /salvage-load {4}--guild ID --id VEHICLE_ID --asset ASSET_ID/);
+  assert.match(src, /salvage-unload {2}--guild ID --id VEHICLE_ID/);
+});
+
 test('DEPLOY_COMMANDS lists the deploy subcommands (grant-kit / load-kit / unload-kit / deploy-asset)', () => {
   assert.deepEqual([...A.DEPLOY_COMMANDS].sort(), ['deploy-asset', 'grant-kit', 'load-kit', 'unload-kit']);
 });

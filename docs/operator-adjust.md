@@ -107,6 +107,11 @@ consistent rather than by refusing:
 
 **Reject** only if `assetId` names no asset the guild owns.
 
+*(⤳ 27-10-26, losing ground engine PR 2 — the cross-system asset ferry, `design.md` §4: a machine may now be **aboard a
+heavy** (in transit, named by the craft's `carryingAssetId`). Removing it still always succeeds: the craft's manifest is
+cleared first, so no vehicle ever names a deleted asset, and the hold is free again. Conversely `removeVehicle` on a laden
+heavy destroys the machine with the craft — through the same `deleteAsset`, so its number is recorded and never reissued.)*
+
 > **AS-BUILT 16-09-26 -- the detach-production proof, and one deferred decision.** No tick path was
 > touched: production (`sim/production.js` `resolveProduction`) and the snapshot NEVER dereference a
 > venture's `assetId` -- every read of it in the engine is already null-guarded (`sim/assets.js`,

@@ -34,7 +34,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const {
   REFERENCE_FUEL_PRICE, routeFuelBurnByTierFromHex, fuelValue,
-  volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD,
+  volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
 } = require('./fuel.js');
 const {
   nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor, hexDistance, hexesWithin, legFuelBurn,
@@ -44,7 +44,7 @@ const { heldSystemIds, resolveControl } = require('./claims.js');
 const { guildPoints } = require('./points.js');
 const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
-const { deployedAssetIds } = require('./assets.js');
+const { deployedAssetIds, carriedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
@@ -754,11 +754,14 @@ function computeAttention(state) {
 //                 assets: [ { id, kind, systemId,                 // §4 inventory; kind miner | factory,
 //                             maintenanceCondition,                //   or 'outpost' = an idle kit (never
 //                             deployedToVentureId: id | null,      //   deployed); systemId = location; null = IDLE
-//                             stranded?: { tick } } ],             //   left behind by an eviction, awaiting
+//                             stranded?: { tick },                 //   left behind by an eviction, awaiting
 //                                                                   //   salvage (§19 #67); omit-when-absent
+//                             inTransitOnVehicleId? } ],           //   aboard that craft (the asset ferry —
+//                                                                   //   the third state); omit-when-absent
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
+//                               carryingAssetId?,                   //   the machine aboard (the asset ferry)
 //                               dockStatus?, location?, trip?,      //   trip: { legs[{from,to,isToll,
 //                                                                   //   departureTick,arrivalTick}], arrivalTick, fuelCost }
 //                               route?, laneEnded?,                 //   route: { waypoints, cursor, mode?,
@@ -1068,7 +1071,9 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // `Σ qty × volumeOf` the transfer resolver enforces). Published so the Outpost Manager's craft hero
     // draws `hold used / capacity` without the client summing volumes — the client computes no game number.
     capacity: v.capacity,
-    used: usedSpace(v.cargo),
+    // A machine aboard (the asset ferry, sim/ferry.js) fills the hold whole — ASSET_CARGO_VOLUME, the same space a
+    // kit aboard reports — so a laden heavy reads `capacity / capacity`, its hold locked. No machine, no change.
+    used: usedSpace(v.cargo) + (v.carryingAssetId === undefined ? 0 : ASSET_CARGO_VOLUME),
     // dockStatus (2.2 cargo, engine slice 2 — design.md §4 the dock model). The craft's relationship to
     // an Outpost dock, DERIVED once in buildSnapshot from the Outpost's queue/slots (a craft does not
     // store this — it is a plain `idle`/`loading` craft, and the dock state lives on the Outpost).
@@ -1076,6 +1081,10 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // outpostId, eta? }` — `eta` (ticks to completion) only for `loading`. A craft with no dock relation
     // (flying, or idle at a system) carries no key, so the field is the exception not the rule.
     ...(dockStatus ? { dockStatus } : {}),
+    // carryingAssetId (losing ground, engine PR 2 — the asset ferry, sim/ferry.js). PRESENT only while the heavy is
+    // hauling a machine — the machine's id, so a later client can show "carrying — salvaging" and find the asset row
+    // (which reads `inTransitOnVehicleId` back). Omit-when-absent, like the state field it copies.
+    ...(v.carryingAssetId === undefined ? {} : { carryingAssetId: v.carryingAssetId }),
     // The ROUTE (2.2 automation slice 1a — transport-model.md §11.1). PRESENT only while the craft is
     // executing a chained route: its `{ anchor, action? }` waypoints (FRESH-copied, manifest lines
     // copied — no aliasing) and the `cursor` marking the waypoint it is at/heading to, so the later
@@ -1274,9 +1283,11 @@ function buildGodsEyeSnapshot(state) {
   // into a fresh object so a consumer mutating the snapshot can never reach back
   // into live state.
   const guilds = (state.guilds || []).map((g) => {
-    // The derivation the asset block below reads: assetId -> the venture running
-    // it. Computed ONCE per guild (sim/assets.js), not per asset row.
+    // The derivations the asset block below reads: assetId -> the venture running
+    // it, and assetId -> the craft carrying it. Computed ONCE per guild (sim/assets.js),
+    // not per asset row.
     const deployedTo = deployedAssetIds(g);
+    const carriedBy = carriedAssetIds(g);
     // The calendar cadence + anchor, read the same defensive way `renegotiationFieldsFor`
     // and the top-level `calendar` block do (sim/calendar.js) — so each surfaced notice's
     // derived `whenDay` / `unlockDay` lands on the SAME calendar day as every other derived
@@ -1591,6 +1602,11 @@ function buildGodsEyeSnapshot(state) {
       // "awaiting salvage"; omitted otherwise, so a galaxy that has evicted nothing is
       // byte-identical. A rival never sees it: a rival guild's row carries no assets
       // (sim/fog.js RIVAL_GUILD_FIELDS).
+      // `inTransitOnVehicleId` (losing ground, engine PR 2 — the asset ferry, sim/ferry.js)
+      // is the THIRD derived state beside idle and deployed: the craft whose
+      // `carryingAssetId` names this machine. Present ONLY while it is aboard (its
+      // `deployedToVentureId` is then null, but it is NOT idle — it cannot be deployed until
+      // unloaded); omitted otherwise, so a galaxy that salvages nothing is byte-identical.
       assets: (g.assets || []).map((a) => ({
         id: a.id,
         kind: a.kind,
@@ -1598,6 +1614,7 @@ function buildGodsEyeSnapshot(state) {
         maintenanceCondition: a.maintenanceCondition,
         deployedToVentureId: deployedTo.get(a.id) || null,
         ...(a.stranded === undefined ? {} : { stranded: { ...a.stranded } }),
+        ...(carriedBy.has(a.id) ? { inTransitOnVehicleId: carriedBy.get(a.id) } : {}),
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // vehicles: the guild's guild-transport inventory (design.md §15.4), one row per owned
       // craft — the vehicle mirror of the `assets` rows above. An IDLE craft carries its `location`

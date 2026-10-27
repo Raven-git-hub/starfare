@@ -24,6 +24,7 @@ const { applyVentureClosure } = require('./licence.js');
 const { recordEvent, SYSTEM_LOST } = require('./events.js');
 const { forfeitSystemPool } = require('./stock.js');
 const { getSystem } = require('./seed.js');
+const { carriedAssetIds } = require('./assets.js');
 
 // The causes that DESTROY a Prefecture (§19 #69). Only the owner's abandonment is built; the storyteller's cause
 // joins this list when §9 is built. An unknown cause is a caller bug, so evictSystem HALTS on one rather than write
@@ -87,7 +88,8 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 //      `venture_closed` notice; its machine drops to idle. No settlement fee is charged: the fee is the closure's
 //      CALLER's to charge, and forced closure charges none either. Then every asset the guild has in the system —
 //      the machines just freed and any already idle there, kits included ("everything the guild holds in that
-//      system", design.md §2) — is flagged `stranded = { tick }`. Each keeps its `systemId` and its condition.
+//      system", design.md §2) — is flagged `stranded = { tick }`. Each keeps its `systemId` and its condition. A
+//      machine aboard a heavy (in transit, the asset ferry) is not in the system and is not stranded.
 //   3. FORFEIT THE GOODS (§19 #67, candidate (a)). The guild's pool in that system is dropped whole — the system's
 //      key leaves `guild.stockpiles` (sim/stock.js `forfeitSystemPool`). Goods carry no conservation ledger, so this
 //      is a plain delete; Galactic Supply falls by exactly those goods once the caller refreshes its cache — the
@@ -117,9 +119,12 @@ function evictSystem(state, guild, prefecture, cause, tick) {
   //    iterating; they close in stored order, so the notices and lockouts are written deterministically.
   const ventures = (guild.ventures || []).filter((v) => v.systemId === systemId);
   for (const v of ventures) applyVentureClosure(state, guild, v, EVICTED, tick);
+  //    A machine ABOARD one of the guild's heavies (the asset ferry, sim/ferry.js) keeps the systemId it was loaded
+  //    from, which may be this one — but it is in the hold, not in the system, so it is not left behind.
+  const aboard = carriedAssetIds(guild);
   const strandedAssetIds = [];
   for (const a of guild.assets || []) {
-    if (a.systemId !== systemId) continue;
+    if (a.systemId !== systemId || aboard.has(a.id)) continue;
     a.stranded = { tick };
     strandedAssetIds.push(a.id);
   }
