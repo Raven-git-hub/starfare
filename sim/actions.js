@@ -56,7 +56,8 @@ const {
   reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsSlot,
 } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
-const { evictSystem, strandedAssetsIn, recoverStrandedAssets } = require('./eviction.js');
+const { evictSystem, strandedAssetsIn, recoverStrandedAssets, isStranded } = require('./eviction.js');
+const { holdLockedReason, assetAboard, assetIntoSystem } = require('./ferry.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
   systemHex, nearestWaystationToHex,
@@ -68,7 +69,7 @@ const {
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW, ASSET_CONDITION_MIN,
-  isKitAssetKind, nextKitAssetSerial, assetNumberOf,
+  isKitAssetKind, nextKitAssetSerial, assetNumberOf, carriedAssetIds,
 } = require('./assets.js');
 const { STARTER_HUMAN_FLEET, STARTER_HUMAN_KITS, foundingCreditsFor } = require('./starter-package.js');
 
@@ -1401,6 +1402,29 @@ function createUnloadKitAction({ guildId, vehicleId: vId }) {
   if (guildId === undefined) throw new Error('createUnloadKitAction: guildId is required');
   if (vId === undefined) throw new Error('createUnloadKitAction: vehicleId is required');
   return { type: 'unloadKit', guildId, vehicleId: vId };
+}
+
+// loadAsset: THE SALVAGE PICKUP — the load half of the cross-system asset ferry (design.md §4; §19 #67, SETTLED
+// 19-10-26; losing ground, engine PR 2; sim/ferry.js). A STRANDED machine (a miner or factory an eviction left in a
+// fallow system) is taken aboard an empty, idle heavy berthed in that same system. Modelled on loadKit — same-system,
+// instant — but the machine is NOT turned into a good: the heavy names it (`carryingAssetId`) and it keeps its id.
+// Salvage-only this slice: a machine that is not stranded is refused. The constructor only enforces the required
+// fields are present; validateAction judges legality.
+function createLoadAssetAction({ guildId, vehicleId: vId, assetId: aId }) {
+  if (guildId === undefined) throw new Error('createLoadAssetAction: guildId is required');
+  if (vId === undefined) throw new Error('createLoadAssetAction: vehicleId is required');
+  if (aId === undefined) throw new Error('createLoadAssetAction: assetId is required');
+  return { type: 'loadAsset', guildId, vehicleId: vId, assetId: aId };
+}
+
+// unloadAsset: THE SALVAGE DELIVERY — the inverse of loadAsset (sim/ferry.js). The machine aboard a heavy berthed at
+// a system its guild HOLDS becomes an ordinary idle asset there: its `systemId` moves to that system (the one
+// sanctioned move of an asset's location). The machine is read off the craft, so the action names only the craft,
+// as unloadKit does. The constructor only enforces the required fields.
+function createUnloadAssetAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createUnloadAssetAction: guildId is required');
+  if (vId === undefined) throw new Error('createUnloadAssetAction: vehicleId is required');
+  return { type: 'unloadAsset', guildId, vehicleId: vId };
 }
 
 // plantPrefecture: THE CLAIM ACT (docs/territory-model.md §4, RULED 16-10-26; roadmap 2.5, the Prefecture /
@@ -2878,6 +2902,12 @@ function validateAction(state, action) {
     if (heldBy !== undefined) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already deployed to venture ${JSON.stringify(heldBy)}` };
     }
+    // A machine aboard a heavy (the asset ferry, sim/ferry.js) is IN TRANSIT, not idle — unload it first. It keeps the
+    // systemId it was loaded from, so without this a re-held origin system would let it deploy straight off the craft.
+    const aboard = carriedAssetIds(guild).get(action.assetId);
+    if (aboard !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is aboard vehicle ${JSON.stringify(aboard)}, in transit — unload it into a held system before deploying it` };
+    }
     if (asset.kind !== kind) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a ${ventureType} venture needs a ${kind} (§4)` };
     }
@@ -3325,6 +3355,12 @@ function validateAction(state, action) {
     if (heldBy !== undefined) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already deployed to venture ${JSON.stringify(heldBy)}` };
     }
+    // A machine aboard a heavy (the asset ferry, sim/ferry.js) is IN TRANSIT, not idle — unload it first. It keeps the
+    // systemId it was loaded from, so without this a re-held origin system would let it deploy straight off the craft.
+    const aboard = carriedAssetIds(guild).get(action.assetId);
+    if (aboard !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is aboard vehicle ${JSON.stringify(aboard)}, in transit — unload it into a held system before deploying it` };
+    }
     if (asset.kind !== kind) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a deuterium refinery needs a ${kind} (§4)` };
     }
@@ -3390,6 +3426,12 @@ function validateAction(state, action) {
     const heldBy = deployedAssetIds(guild).get(action.assetId);
     if (heldBy !== undefined) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already deployed to venture ${JSON.stringify(heldBy)}` };
+    }
+    // A machine aboard a heavy (the asset ferry, sim/ferry.js) is IN TRANSIT, not idle — unload it first. It keeps the
+    // systemId it was loaded from, so without this a re-held origin system would let it deploy straight off the craft.
+    const aboard = carriedAssetIds(guild).get(action.assetId);
+    if (aboard !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is aboard vehicle ${JSON.stringify(aboard)}, in transit — unload it into a held system before deploying it` };
     }
     if (asset.kind !== kind) {
       return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a ${asset.kind}; a dockyard needs a ${kind} (§4)` };
@@ -4292,6 +4334,9 @@ function validateAction(state, action) {
     if (heavy.cargo !== undefined && Object.keys(heavy.cargo).length > 0) {
       return { valid: false, reason: `vehicle ${vid} has cargo aboard (${JSON.stringify(heavy.cargo)}) — unload it first; a packed Outpost needs an EMPTY heavy hold` };
     }
+    // A machine aboard (the asset ferry, sim/ferry.js) fills the hold, so there is no room for the packed kit.
+    const locked = holdLockedReason(heavy);
+    if (locked) return { valid: false, reason: locked };
     // RULE 3 — INSTANTANEOUS: nothing to check here; the apply resolves it on this tick.
     return { valid: true };
   }
@@ -4386,6 +4431,10 @@ function validateAction(state, action) {
     if (craft.route) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — a manual transfer would cut across its stops; stop the lane or re-dispatch the craft first (transport-model.md §11.10)` };
     }
+    // A HOLD LOCKED by a machine aboard (the asset ferry, sim/ferry.js) takes no manifest: the machine fills it whole,
+    // so no line could load, and the hold carries no goods to unload.
+    const locked = holdLockedReason(craft);
+    if (locked) return { valid: false, reason: locked };
     // The manifest is a NON-EMPTY ordered array of well-formed lines (a transfer with no lines is a
     // refused no-op, the adjustGoods zero-delta / dispatch empty-waypoints discipline). Refuse-whole
     // on the first bad line via the shared `manifestError` — a malformed manifest never partially applies.
@@ -4482,6 +4531,9 @@ function validateAction(state, action) {
     if (craft.cargo !== undefined && Object.keys(craft.cargo).length > 0) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} has cargo aboard (${JSON.stringify(craft.cargo)}) — a kit loads into an EMPTY heavy hold` };
     }
+    // A machine aboard (the asset ferry, sim/ferry.js) fills the hold too, so the kit cannot go in beside it.
+    const locked = holdLockedReason(craft);
+    if (locked) return { valid: false, reason: locked };
     // SAME SYSTEM (the ruled constraint, design.md §4's per-system inventory): the heavy must be berthed
     // at the very system the kit sits in. "At a system" means the system landmark, the test transferCargo
     // uses — a bare hex or an Outpost is not in any system's inventory.
@@ -4512,6 +4564,90 @@ function validateAction(state, action) {
     // unload rule (unloadKitCheck), which the route-arrival unload (asset-initiated slice 3a) asks too.
     const check = unloadKitCheck(state, action.guildId, action.vehicleId, craft.location, craft.cargo);
     if (!check.ok) return { valid: false, reason: check.reason };
+    return { valid: true };
+  }
+
+  if (action.type === 'loadAsset') {
+    // THE SALVAGE PICKUP (design.md §19 #67; sim/ferry.js): a STRANDED machine → an empty heavy berthed in its
+    // system. loadKit's gates, in the order a failure is felt — who, which machine, which craft, then where.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    // THE MACHINE: in THIS guild's inventory (a rival's fails here — ownership is the array that holds it), a miner
+    // or factory (a kit rides as a good in the hold, through loadKit), not already aboard a craft, and STRANDED.
+    const asset = (guild.assets || []).find((a) => a.id === action.assetId);
+    if (!asset) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no asset ${JSON.stringify(action.assetId)}` };
+    }
+    if (!isAssetKind(asset.kind)) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is a kit (${asset.kind}), not a machine — a kit rides in the hold as a good, loaded by loadKit` };
+    }
+    const aboard = carriedAssetIds(guild).get(action.assetId);
+    if (aboard !== undefined) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is already aboard vehicle ${JSON.stringify(aboard)}` };
+    }
+    // SALVAGE-ONLY (this slice): only a machine an eviction left behind. A stranded machine is idle and sits in a
+    // system nobody holds (checkStrandedAssets), so this one gate also keeps the pickup to fallow ground. Dropping
+    // it is what the later general-redeploy slice does — keeping it here bottles redeploy until that is ruled.
+    if (!isStranded(asset)) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} is not stranded — only a machine an eviction left behind can be salvaged; redeploying a machine between held systems is not built yet` };
+    }
+    // THE CARRIER: a heavy (a machine fills a whole heavy hold — ASSET_CARGO_VOLUME), idle, not on a lane, with an
+    // EMPTY hold and no machine already aboard.
+    if (craft.class !== HEAVY_TRANSPORT) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is a ${craft.class} — a machine fills a whole heavy hold, so only a heavy transport carries one` };
+    }
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a machine loads onto an idle heavy only` };
+    }
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — stop the lane or re-dispatch the craft before loading a machine (transport-model.md §11.10)` };
+    }
+    if (craft.cargo !== undefined && Object.keys(craft.cargo).length > 0) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} has cargo aboard (${JSON.stringify(craft.cargo)}) — a machine loads into an EMPTY heavy hold` };
+    }
+    const locked = holdLockedReason(craft);
+    if (locked) return { valid: false, reason: locked };
+    // SAME SYSTEM (loadKit's rule): the heavy is berthed at the system landmark the machine sits in.
+    const atAssetSystem = !!(craft.location && craft.location.landmarkKind === 'system' && craft.location.landmarkId === asset.systemId);
+    if (!atAssetSystem) {
+      return { valid: false, reason: `asset ${JSON.stringify(action.assetId)} sits in system ${JSON.stringify(asset.systemId)} but vehicle ${JSON.stringify(action.vehicleId)} is at ${JSON.stringify(craft.location)} — a machine loads only onto a heavy berthed in its own system (§4)` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'unloadAsset') {
+    // THE SALVAGE DELIVERY (sim/ferry.js): the machine aboard → an idle asset of the HELD system the heavy is at.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const craft = (guild.vehicles || []).find((v) => v.id === action.vehicleId);
+    if (!craft) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no vehicle ${JSON.stringify(action.vehicleId)}` };
+    }
+    if (craft.carryingAssetId === undefined) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is carrying no asset — there is nothing to unload` };
+    }
+    if (craft.status !== 'idle') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not idle (status ${JSON.stringify(craft.status)}) — a machine unloads from a craft that has arrived` };
+    }
+    if (craft.route) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is running a lane — stop the lane or re-dispatch the craft before unloading` };
+    }
+    // WHERE: berthed AT a system (an inventory lives in a system — not a bare hex, not an Outpost), and one the guild
+    // HOLDS: a machine is recovered onto its own ground (§19 #67), the rule unloadKit keeps for an Outpost kit.
+    if (!craft.location || craft.location.landmarkKind !== 'system') {
+      return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is not berthed at a system (it is at ${JSON.stringify(craft.location)}) — a machine unloads into a held system's inventory, not on a bare hex or at an Outpost` };
+    }
+    if (!guildHolds(state, action.guildId, craft.location.landmarkId)) {
+      return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} does not hold system ${JSON.stringify(craft.location.landmarkId)} — a machine unloads only into a system its guild holds` };
+    }
     return { valid: true };
   }
 
@@ -4691,6 +4827,19 @@ function validateAction(state, action) {
     const kitAboard = Object.keys(craft.cargo || {}).find(isDeployableGood);
     if (repeating && kitAboard) {
       return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} carries an ${kitAboard} — a deployable kit never rides a repeating lane (dispatch it once, to where it deploys)` };
+    }
+    // A MACHINE ABOARD (the asset ferry, sim/ferry.js) is the kit's case again, and stricter. A lane would carry it
+    // round for ever (no route action unloads a machine — the manual unloadAsset does), so a laden heavy flies a
+    // one-shot route only. And every route action works the hold — a dock moves goods, a deploy or kit unload needs
+    // a kit in it — while the machine has locked it whole, so a laden heavy's route carries no action at all.
+    if (craft.carryingAssetId !== undefined) {
+      if (repeating) {
+        return { valid: false, reason: `vehicle ${JSON.stringify(action.vehicleId)} is carrying asset ${JSON.stringify(craft.carryingAssetId)} — a machine never rides a repeating lane (dispatch it once, to the held system where it is unloaded)` };
+      }
+      const actedAt = action.waypoints.findIndex((wp) => wp.action !== undefined);
+      if (actedAt !== -1) {
+        return { valid: false, reason: `waypoint ${actedAt} carries an action, but ${holdLockedReason(craft)} — a laden heavy's route is turning points only` };
+      }
     }
     // A DEPLOY ACTION (roadmap 2.2 deploy pipeline slice 2; territory-model.md §5) — "send this heavy and
     // its kit to hex X, and plant the structure the moment it lands". Refused whole, up front, when:
@@ -5911,6 +6060,13 @@ function applyAction(state, action) {
       // set null) to keep the omit-when-null serialization discipline createVenture uses.
       delete holder.assetId;
     }
+    // A machine ABOARD a heavy (the asset ferry, sim/ferry.js) leaves the craft with it: the craft's manifest is
+    // cleared, so no vehicle ever names a deleted asset (the same no-dangling-reference rule), and its hold is free.
+    const carrier = (guild.vehicles || []).find((v) => v.carryingAssetId === action.assetId);
+    if (carrier) {
+      delete carrier.carryingAssetId;
+      carrier.updatedAtTick = next.tick; // §15.2
+    }
     deleteAsset(guild, action.assetId); // records its number first, so it is never reissued (§15.4)
     return next;
   }
@@ -5980,6 +6136,11 @@ function applyAction(state, action) {
     // == live sum with no tick between); an EMPTY craft folds in as nothing, so this is the pre-slice
     // no-op there. The loss is tick-stamped by the journal (the action's tick), never silent.
     const guild = findGuild(next, action.guildId);
+    // A MACHINE aboard (the asset ferry, sim/ferry.js) is destroyed with the craft too — the same contract: removal
+    // destroys whatever the craft carries. It goes through deleteAsset, so its number is never reissued (§15.4). A
+    // machine is not a good, so it moves no supply.
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    if (craft.carryingAssetId !== undefined) deleteAsset(guild, craft.carryingAssetId);
     guild.vehicles = (guild.vehicles || []).filter((v) => v.id !== action.vehicleId);
     next.galacticSupply = computeGalacticSupply(next);
     return next;
@@ -6261,6 +6422,26 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'loadAsset') {
+    // sim/ferry.js: instant — heavy and machine sit in the same system. THE ONE load apply: the heavy names the
+    // machine and its stranded flag clears. No credits, fuel or goods move, so no cache needs a refresh.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const asset = guild.assets.find((a) => a.id === action.assetId);
+    assetAboard(craft, asset, next.tick);
+    return next;
+  }
+
+  if (action.type === 'unloadAsset') {
+    // sim/ferry.js: THE ONE unload apply — the machine's systemId moves to the held system the heavy is berthed at,
+    // and the heavy's hold is free again. Nothing priced moves.
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    const asset = guild.assets.find((a) => a.id === craft.carryingAssetId);
+    assetIntoSystem(craft, asset, craft.location.landmarkId, next.tick);
+    return next;
+  }
+
   if (action.type === 'plantPrefecture') {
     // docs/territory-model.md §4: THE CLAIM ACT. Instant — the kit was built earlier and ferried here. The slot
     // is resolved once more (validate proved it is a real settlement slot) for the system and planet, and THE ONE
@@ -6523,6 +6704,8 @@ module.exports = {
   createGrantKitAction,
   createLoadKitAction,
   createUnloadKitAction,
+  createLoadAssetAction,
+  createUnloadAssetAction,
   createPlantPrefectureAction,
   createAbandonPrefectureAction,
   createDeployAssetAction,

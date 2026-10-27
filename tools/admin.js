@@ -49,7 +49,7 @@ const FLAG_SPEC = Object.freeze({
   system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint; reveal: which system
   good: 'string',     // adjust-goods: which stockpile good
   kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost | deepScan | prefecture (the kit's kind)
-  asset: 'string',    // remove-asset / load-kit / plant-prefecture: which asset id
+  asset: 'string',    // remove-asset / load-kit / plant-prefecture / salvage-load: which asset id
   slot: 'string',     // plant-prefecture: which settlement slot the Prefecture plants on
   venture: 'string',  // remove-venture: which venture id
   close: 'bool',      // remove-asset: tear the venture down (else detach)
@@ -62,7 +62,7 @@ const FLAG_SPEC = Object.freeze({
   outpost: 'string',  // spawn-vehicle: berth at an outpost landmark
   hex: 'string',      // spawn-vehicle: berth at a bare hex, "q,r"
   condition: 'number', // spawn-vehicle: starting maintenanceCondition fraction (default 1)
-  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / load-kit / unload-kit / deploy-asset: which vehicle id; delete-route: which route id; abandon-prefecture: which Prefecture id
+  id: 'string',       // remove-vehicle / dispatch-vehicle / transfer-cargo / load-kit / unload-kit / deploy-asset / salvage-load / salvage-unload: which vehicle id; delete-route: which route id; abandon-prefecture: which Prefecture id
   waypoints: 'string', // dispatch-vehicle: "w;w;…", each sys:<id> | out:<id> | q,r
   route: 'string',    // dispatch-route / save-route: "w;w;…", each anchor[@load:…][@unload:…], anchor@deploy:KIND or anchor@unload-kit (per-waypoint actions)
   repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
@@ -712,6 +712,31 @@ function abandonPrefectureBody(flags) {
   };
 }
 
+// The salvage subcommands (losing ground, engine PR 2 — the cross-system asset ferry, sim/ferry.js; design.md §19 #67)
+// — thin HTTP clients: salvage-load puts a STRANDED machine aboard an empty heavy berthed in its fallow system (POST
+// /admin/vehicle/load-asset), and salvage-unload drops it, as an ordinary idle machine, into the held system the heavy
+// is berthed at (POST /admin/vehicle/unload-asset). The flight between is an ordinary dispatch-vehicle / dispatch-route.
+const SALVAGE_COMMANDS = Object.freeze(['salvage-load', 'salvage-unload']);
+
+// salvageLoadBody(flags) -> the POST /admin/vehicle/load-asset request body: the heavy (--id) and the stranded machine
+// (--asset). PURE and exported.
+function salvageLoadBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'salvage-load'),
+    vehicleId: requireFlag(flags, 'id', 'salvage-load'),
+    assetId: requireFlag(flags, 'asset', 'salvage-load'),
+  };
+}
+
+// salvageUnloadBody(flags) -> the POST /admin/vehicle/unload-asset request body. No asset and no system: the engine
+// reads the machine off the craft and the system from where the craft is berthed. PURE and exported.
+function salvageUnloadBody(flags) {
+  return {
+    guildId: requireFlag(flags, 'guild', 'salvage-unload'),
+    vehicleId: requireFlag(flags, 'id', 'salvage-unload'),
+  };
+}
+
 // The two saved-route subcommands (transport-model.md §11.9, automation slice 2a) — thin HTTP clients
 // over POST /admin/route/save|delete. A guild's saved routes are read back with `snapshot`.
 const ROUTE_COMMANDS = Object.freeze(['save-route', 'delete-route']);
@@ -800,6 +825,7 @@ module.exports = {
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS, KIT_KINDS, idleKitsIn, structureUnder,
   plantPrefectureBody, abandonPrefectureBody, CLAIM_COMMANDS,
+  salvageLoadBody, salvageUnloadBody, SALVAGE_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
   revealActionFor, snapshotPath, knownCounts, FOG_COMMANDS,
   EXPECTED_COMMITMENT, EXPECTED_WINDOW_N,
@@ -1498,6 +1524,48 @@ async function cmdAbandonPrefecture(base, flags) {
   row('holds', held.length ? held.join(', ') : 'nothing');
 }
 
+// assetIn(snapshot, guildId, assetId) -> the guild's own asset row with that id, or null.
+function assetIn(snapshot, guildId, assetId) {
+  const guild = (snapshot.guilds || []).find((g) => g.id === guildId) || null;
+  return ((guild && guild.assets) || []).find((a) => a.id === assetId) || null;
+}
+
+// salvage-load (design.md §19 #67, the asset ferry): build the body and POST it to the gated /admin endpoint. A refused
+// load comes back accepted:false -> throw -> exit 1. Prints the machine now aboard (the engine's own asset row, now in
+// transit) and the heavy's hold, which the machine fills whole.
+async function cmdSalvageLoad(base, flags) {
+  const body = salvageLoadBody(flags);
+  const out = await postJson(base, '/admin/vehicle/load-asset', body);
+  if (!out.accepted) throw new Error(`salvage-load refused: ${out.reason}`);
+  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  const machine = assetIn(out.snapshot, body.guildId, body.assetId);
+  row('action', 'loadAsset');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  // `log`, not `row`: an asset id is wider than row's 12-character label column.
+  if (machine) log(`  aboard    ${machine.id} (${machine.kind}), loaded in ${machine.systemId} — in transit on ${machine.inTransitOnVehicleId}`);
+  if (craft) row('hold', `locked by ${craft.carryingAssetId} (${craft.used} / ${craft.capacity} space)`);
+}
+
+// salvage-unload: the machine is read off the craft by the engine, so the CLI reads the snapshot first only to name it
+// in the printout (a GET, which changes nothing). A refused unload -> exit 1. Prints where the machine now sits.
+async function cmdSalvageUnload(base, flags) {
+  const body = salvageUnloadBody(flags);
+  const before = craftIn(await getJson(base, '/snapshot'), body.guildId, body.vehicleId);
+  const out = await postJson(base, '/admin/vehicle/unload-asset', body);
+  if (!out.accepted) throw new Error(`salvage-unload refused: ${out.reason}`);
+  const craft = craftIn(out.snapshot, body.guildId, body.vehicleId);
+  const machine = before && assetIn(out.snapshot, body.guildId, before.carryingAssetId);
+  row('action', 'unloadAsset');
+  row('guild', body.guildId);
+  row('vehicle', body.vehicleId);
+  if (machine) {
+    const state = machine.deployedToVentureId === null && machine.inTransitOnVehicleId === undefined ? 'idle' : 'NOT idle';
+    log(`  unloaded  ${machine.id} (${machine.kind}) — ${state} in ${machine.systemId}`);
+  }
+  if (craft) row('hold', holdLine(craft));
+}
+
 // save-route / delete-route (transport-model.md §11.9, automation slice 2a): build the body (the PURE
 // saveRouteBody / deleteRouteBody) and POST it to the gated /admin/route/* endpoint. A refused action comes
 // back accepted:false -> throw -> exit 1. Prints the guild's saved routes as they now stand, so the operator
@@ -1649,6 +1717,16 @@ Claims (territory-model.md §4 — operator, exit 1 on a refused action)
                   left stranded awaiting salvage, and its goods there are forfeit. Its home has no Prefecture,
                   so a home can never be abandoned
 
+Salvage (design.md §19 #67 — the asset ferry; operator, exit 1 on a refused action)
+  salvage-load    --guild ID --id VEHICLE_ID --asset ASSET_ID
+                  put that STRANDED machine (a miner or factory an abandon left behind) aboard a heavy
+                  transport — the heavy must be idle, empty and berthed at the machine's own fallow system.
+                  The machine fills the whole hold, so the hold is locked until it is unloaded. Then fly the
+                  heavy to a system the guild holds with dispatch-vehicle or dispatch-route (no action)
+  salvage-unload  --guild ID --id VEHICLE_ID
+                  the machine aboard becomes an ordinary idle machine of the system the heavy is berthed at,
+                  which the guild must hold (refused on a bare hex, at an Outpost, or in a system it does not hold)
+
 Saved routes (transport-model.md §11.9 — operator, exit 1 on a refused action; read them back with snapshot)
   save-route "NAME" --guild ID --route "w;w;…"
                   save a named, origin-free route (same --route grammar as dispatch-route); a NAME the
@@ -1673,7 +1751,7 @@ Flags
   --l1           reveal --system: its planets' archetypes only (default: every surface too)
   --good G       adjust-goods: which stockpile good
   --kind K       grant-asset: miner | factory; grant-kit: outpost | deepScan | prefecture
-  --asset ID     remove-asset / load-kit / plant-prefecture: which asset id
+  --asset ID     remove-asset / load-kit / plant-prefecture / salvage-load: which asset id
   --slot ID      plant-prefecture: which settlement slot
   --venture ID   remove-venture: which venture id
   --close        remove-asset: tear the occupying venture down (default: detach it)
@@ -1684,7 +1762,7 @@ Flags
                  spawn-outpost: the single hex the outpost occupies
   --condition F  spawn-vehicle: starting maintenanceCondition fraction in [0, 1] (default 1)
   --id ID        remove-vehicle / dispatch-vehicle / stop-route-after-run / cancel-route / load-kit /
-                 unload-kit / deploy-asset: which vehicle id;
+                 unload-kit / deploy-asset / salvage-load / salvage-unload: which vehicle id;
                  remove-outpost: which outpost id; delete-route: which saved-route id;
                  abandon-prefecture: which Prefecture id
   --waypoints W  dispatch-vehicle: "w;w;…" route, each w = sys:<id> | out:<id> | q,r
@@ -1725,6 +1803,8 @@ async function main(argv) {
     case 'deploy-asset': await cmdDeployAsset(base, flags); return;
     case 'plant-prefecture': await cmdPlantPrefecture(base, flags); return;
     case 'abandon-prefecture': await cmdAbandonPrefecture(base, flags); return;
+    case 'salvage-load': await cmdSalvageLoad(base, flags); return;
+    case 'salvage-unload': await cmdSalvageUnload(base, flags); return;
     case 'save-route': await cmdSaveRoute(base, flags); return;
     case 'delete-route': await cmdDeleteRoute(base, flags); return;
     case 'reveal': await cmdReveal(base, flags); return;

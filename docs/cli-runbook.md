@@ -304,3 +304,29 @@ abandoned: founding gives it no Prefecture to name. Until the sweep slice lands,
 `sys_0936` is refused while the stranded factory lies there ("awaiting salvage"); the guild's own re-plant there
 recovers it. *(Run live 17-10-26 against a fresh `seat-demo --seed 42` continuing from the plant above, and the
 abandon survived a server restart with persistence on.)*
+
+## Salvage — a stranded machine hauled home (losing ground, engine PR 2)
+
+The operator path for `docs/territory-model.md` §5's "AS-BUILT — losing ground, engine PR 2" (`design.md` §19 #67): the
+**salvage run**, the cross-system asset ferry exposed salvage-only. Continuing from the abandon above, the heavy that
+ferried the Prefecture kit is still berthed in the now-fallow `sys_0936`, beside the stranded factory. Load the factory,
+fly it home on an ordinary dispatch, and unload it there:
+
+    node tools/admin.js salvage-load --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --asset asset_seat_demo_factory_11 $B
+    node tools/admin.js dispatch-vehicle --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 --waypoints "sys:sys_0006" $B
+    node tools/admin.js tick 1800 $B                              # home again (8 hexes), the factory still aboard
+    node tools/admin.js salvage-unload --guild seat_demo --id vehicle_seat_demo_heavyTransport_01 $B
+
+`salvage-load` prints the machine now aboard — `asset_seat_demo_factory_11 (factory), loaded in sys_0936 — in transit on
+vehicle_seat_demo_heavyTransport_01` — and the hold, `locked by asset_seat_demo_factory_11 (6000000 / 6000000 space)`: a
+machine fills a whole heavy hold. Its `stranded` flag is gone (in hand, it is no longer awaiting salvage), and its asset
+row reads `inTransitOnVehicleId` instead. The dispatch is the ordinary one — the heavy burns its own fuel per hex, as it
+would empty. `salvage-unload` prints `asset_seat_demo_factory_11 (factory) — idle in sys_0006` and `hold empty`: the
+factory's `systemId` is now the home system, where `establishVenture` can seat it like any idle factory. Refusals exit 1
+with the engine's reason: a machine that is not stranded (`asset_seat_demo_miner_01`, a healthy home miner — "is not
+stranded"; moving a machine between held systems is not built); an unload while the heavy carries nothing; an unload still
+berthed at the fallow `sys_0936` ("does not hold system"); a second machine onto a laden heavy ("the hold is locked"). While
+laden, the heavy also refuses `transfer-cargo`, `load-kit`, any route action and a repeating lane. There is no salvage
+window yet — its rate is unset — so a stranded machine waits until it is salvaged. *(Run live 27-10-26 against a fresh
+`seat-demo --seed 42` continuing from the abandon above, and the salvaged factory survived a server restart with
+persistence on.)*

@@ -105,6 +105,7 @@ const {
   createGrantKitAction, createDeployAssetAction, createLoadKitAction, createUnloadKitAction,
   createPlantPrefectureAction,
   createAbandonPrefectureAction,
+  createLoadAssetAction, createUnloadAssetAction,
 } = require('./actions.js');
 const { assertInvariants } = require('./invariants.js');
 const { saveState, appendJournal, clearJournal, loadOrInit, saveSeed, loadSeed, deleteGalaxy } = require('./persist.js');
@@ -1320,6 +1321,69 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying unloadKit (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/load-asset { guildId, vehicleId, assetId } — THE SALVAGE PICKUP (losing ground, engine PR 2; the
+  // cross-system asset ferry, sim/ferry.js; design.md §19 #67): load the named STRANDED machine onto an empty, idle heavy
+  // berthed in its fallow system. Routed like load-kit, through the SAME validate → journal → apply path POST /action
+  // uses (applyOneAction), so a salvage survives restart and replays. Named for the action, not the salvage: the same
+  // endpoint will carry general redeploy when that slice drops the stranded-only gate.
+  if (method === 'POST' && path === '/admin/vehicle/load-asset') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01","assetId":"asset_g1_miner_16"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId, vehicleId and assetId' });
+      return;
+    }
+    let action;
+    try {
+      action = createLoadAssetAction({ guildId: body.guildId, vehicleId: body.vehicleId, assetId: body.assetId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed load-asset request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying loadAsset (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/vehicle/unload-asset { guildId, vehicleId } — THE SALVAGE DELIVERY: the machine aboard the heavy becomes
+  // an ordinary idle asset of the held system the heavy is berthed at (its systemId moves there). Routed like unload-kit.
+  if (method === 'POST' && path === '/admin/vehicle/unload-asset') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"guildId":"g1","vehicleId":"vehicle_g1_heavyTransport_01"}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with guildId and vehicleId' });
+      return;
+    }
+    let action;
+    try {
+      action = createUnloadAssetAction({ guildId: body.guildId, vehicleId: body.vehicleId });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed unload-asset request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying unloadAsset (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

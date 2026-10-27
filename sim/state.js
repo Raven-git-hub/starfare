@@ -781,10 +781,12 @@ function createVenture({
 // It is REQUIRED — no default, throw if missing, exactly as `kind` does — because an
 // asset with no location is the guild-wide-inventory model this slice retires, and a
 // silent default would put a machine somewhere nobody chose. Set at creation (founding
-// → the guild's `homeSystemId`; a Dockyard build → the building system) and IMMUTABLE
-// in this slice, since the only thing that would move it — cross-system redeploy — is
-// deferred to 2.2 (§4). idle/deployed stay DERIVED (invariant 5); the asset stores no
-// status of its own, only this location.
+// → the guild's `homeSystemId`; a Dockyard build → the building system) and moved by
+// ONE thing only: the cross-system ferry's delivery, `unloadAsset` (sim/ferry.js
+// `assetIntoSystem`; losing ground, engine PR 2), which sets it to the held system the
+// heavy unloads at. While the machine rides a heavy it keeps the system it was loaded
+// from. idle/deployed/inTransit stay DERIVED (invariant 5, sim/assets.js); the asset
+// stores no status of its own, only this location.
 //
 // `stranded` (17-10-26, losing ground engine PR 1 — design.md §19 #67; sim/eviction.js)
 // is `{ tick }` on a machine an eviction left behind in a system its guild no longer
@@ -792,7 +794,12 @@ function createVenture({
 // carries its own tick. OMITTED on every other asset (a galaxy that has evicted
 // nothing stays byte-identical), and copied here — never aliased — so a scenario or
 // save handed to createState keeps it.
-function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITION_NEW, stranded }) {
+//
+// `updatedAtTick` (losing ground, engine PR 2 — the ferry, sim/ferry.js) is the tick of
+// the asset's last load onto a heavy or unload into a system (§15.2: every mutation
+// records its tick). OMITTED until the ferry first moves the asset, so an asset that was
+// never ferried — every asset in a galaxy that salvages nothing — stays byte-identical.
+function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITION_NEW, stranded, updatedAtTick }) {
   if (id === undefined) throw new Error('createAsset: id is required');
   if (kind === undefined) throw new Error('createAsset: kind is required');
   if (systemId === undefined) throw new Error('createAsset: systemId is required');
@@ -807,6 +814,7 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
     // carried and serialized now so the maintenance slice needs no migration.
     maintenanceCondition,
     ...(stranded === undefined ? {} : { stranded: { ...stranded } }),
+    ...(updatedAtTick === undefined ? {} : { updatedAtTick }),
   };
 }
 
@@ -872,6 +880,13 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // flag: set by the arrival step when a craft's on-arrival deploy fails and it retreats — `{ reason:
 // 'occupied' | 'out-of-range', tick }` — never assembled here, and cleared by the next dispatch or by
 // unloading the kit (kitIntoInventory, sim/actions.js).
+//
+// `carryingAssetId` (losing ground, engine PR 2 — the cross-system asset ferry, design.md §4; sim/ferry.js)
+// is the manifest §4 names: the id of the ONE machine (a miner or factory of the same guild) a heavy is
+// hauling. A machine fills a whole heavy hold (ASSET_CARGO_VOLUME = HEAVY_HOLD), so while it is set the hold
+// is LOCKED — no goods, no kit, no second machine. One id, never a list: "a vehicle carries at most one asset"
+// is the field's shape. OMITTED when the craft carries nothing (every craft in a galaxy that salvages
+// nothing), and copied here so a scenario or save handed to createState keeps it.
 function createVehicle({
   id,
   ownerGuildId,
@@ -882,6 +897,7 @@ function createVehicle({
   fuelCostToRun,
   location,
   cargo = {},
+  carryingAssetId,
   maintenanceCondition = ASSET_CONDITION_NEW,
   status = 'idle',
 }) {
@@ -908,6 +924,8 @@ function createVehicle({
     // cargo — the craft's hold, OMITTED when empty (see the note above). A fresh copy so a caller's
     // map can't alias into engine state, the same discipline `location` / `guild.assets` keep.
     ...(cargo && Object.keys(cargo).length ? { cargo: { ...cargo } } : {}),
+    // carryingAssetId — the machine aboard, OMITTED when there is none (see the note above).
+    ...(carryingAssetId === undefined ? {} : { carryingAssetId }),
     // maintenanceCondition — INERT this slice (sim/vehicles.js / assets.js own the scale).
     maintenanceCondition,
     status,

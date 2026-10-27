@@ -82,7 +82,7 @@ const {
   ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, isKitAssetKind, assetKindForVentureType, assetNumberOf,
 } = require('./assets.js');
 const {
-  isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf,
+  isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
 const { volumeOf } = require('./fuel.js');
 const { manifestAmountError } = require('./manifest.js');
@@ -1329,8 +1329,9 @@ function checkSiteOccupancy(state) {
 //     refining<->factory (the analogue of "a mining venture's resourceType must
 //     match its node");
 //   - a DEPLOYED asset's `systemId` equals its venture's system (§4, 12-09-26):
-//     Gate 2 deploys same-system and nothing moves a deployed asset, so a mismatch
-//     is corruption.
+//     Gate 2 deploys same-system, and the one thing that moves a `systemId` — the
+//     asset ferry's unload (sim/ferry.js) — moves only a machine no venture runs, so
+//     a mismatch is corruption.
 // KIT assets (design.md §4, RULED 02-10-26 — an undeployed kit idle in a system,
 // kind 'outpost') share the inventory and every rule above that reads only the asset
 // (known kind, condition, systemId). Two more rules are theirs alone:
@@ -1391,8 +1392,8 @@ function checkAssetOccupancy(state) {
           out.push({ rule: 'venture-asset-kind-matches', where: `venture:${v.id}.assetId`, detail: { ventureType: v.type, expected: wanted, assetKind: asset.kind, assetId: v.assetId } });
         }
         // A DEPLOYED asset's system must EQUAL its venture's (design.md §4, 12-09-26).
-        // Gate 2 deploys same-system and nothing in this slice moves a deployed asset,
-        // so the two coincide by construction — a mismatch is corruption, caught here
+        // Gate 2 deploys same-system and the ferry (sim/ferry.js) never moves a deployed
+        // asset, so the two coincide by construction — a mismatch is corruption, caught here
         // with both ids. Guarded on the venture having a system (a synthetic unseated
         // test venture has none), exactly as `venture-system-matches-site` above.
         if (v.systemId != null && asset.systemId !== v.systemId) {
@@ -2504,6 +2505,75 @@ function checkStrandedAssets(state) {
   return out;
 }
 
+// Carried assets — the cross-system asset ferry (losing ground, engine PR 2; design.md §4, §19 #67; sim/ferry.js).
+// A heavy that has loaded a machine names it in `carryingAssetId`, and the machine's state is the derived third one,
+// IN TRANSIT. `loadAsset` / `unloadAsset` keep the rules below by construction; this asserts them every tick:
+//   - ONE ID: the field is a non-empty string — one machine per heavy is the field's shape, so a list (two machines
+//     aboard) or a blank is corruption, and nothing else about that craft's carry is judged;
+//   - A HEAVY: a machine fills a whole heavy hold (ASSET_CARGO_VOLUME = HEAVY_HOLD), so only a heavy can carry one;
+//   - THE HOLD LOCKED: no goods and no kit in `cargo` beside it;
+//   - THE GUILD'S OWN MACHINE: the id names a miner or factory in the same guild's inventory (a kit rides as a good,
+//     never by name — and an asset that is gone must not be named);
+//   - IN TRANSIT, NOTHING ELSE: no venture runs it (a deployed machine cannot also be aboard), and it is not stranded
+//     (the load clears the flag — a machine in hand is no longer awaiting salvage, so a sweep must not find it);
+//   - ONE CARRIER: no machine is named by two craft.
+// And for every asset the ferry has stamped, `updatedAtTick` is a whole tick in [0, now] (§15.2).
+// What it does NOT assert: where the carried machine's `systemId` points. It keeps the system it was loaded from
+// until the unload moves it — legal whether or not that system is held now — and the unload being the only thing
+// that moves it is pinned by a source scan in sim/tests/asset-ferry.test.js, which an invariant cannot see.
+// A pure read; a galaxy that salvages nothing has no field to check.
+function checkCarriedAssets(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    const owned = new Map((g.assets || []).map((a) => [a.id, a]));
+    const deployedTo = new Map();
+    for (const v of g.ventures || []) if (v.assetId != null) deployedTo.set(v.assetId, v.id);
+    const carrierOf = new Map(); // assetId -> the first craft found naming it
+    for (const v of g.vehicles || []) {
+      if (v.carryingAssetId === undefined) continue;
+      const where = `guild:${g.id}.vehicle:${v.id}.carryingAssetId`;
+      const id = v.carryingAssetId;
+      if (typeof id !== 'string' || id.length === 0) {
+        out.push({ rule: 'carried-asset-is-one-id (sim/ferry.js)', where, detail: { carryingAssetId: id } });
+        continue;
+      }
+      if (v.class !== HEAVY_TRANSPORT) {
+        out.push({ rule: 'carried-asset-on-a-heavy (sim/ferry.js)', where, detail: { assetId: id, class: v.class } });
+      }
+      // The same "non-empty hold" test loadAsset's gate asks, so the gate and the rule can never disagree.
+      if (v.cargo !== undefined && Object.keys(v.cargo).length > 0) {
+        out.push({ rule: 'carried-asset-locks-the-hold (sim/ferry.js)', where, detail: { assetId: id, cargo: v.cargo } });
+      }
+      const asset = owned.get(id);
+      if (!asset) {
+        out.push({ rule: 'carried-asset-owned-by-same-guild (sim/ferry.js)', where, detail: { assetId: id, guild: g.id } });
+      } else {
+        if (!isAssetKind(asset.kind)) {
+          out.push({ rule: 'carried-asset-is-a-machine (sim/ferry.js)', where, detail: { assetId: id, kind: asset.kind } });
+        }
+        if (deployedTo.has(id)) {
+          out.push({ rule: 'carried-asset-not-deployed (sim/ferry.js)', where, detail: { assetId: id, venture: deployedTo.get(id) } });
+        }
+        if (asset.stranded !== undefined) {
+          out.push({ rule: 'carried-asset-not-stranded (sim/ferry.js)', where, detail: { assetId: id, stranded: asset.stranded } });
+        }
+      }
+      if (carrierOf.has(id)) {
+        out.push({ rule: 'carried-asset-named-by-one-vehicle (sim/ferry.js)', where, detail: { assetId: id, vehicles: [carrierOf.get(id), v.id] } });
+      } else {
+        carrierOf.set(id, v.id);
+      }
+    }
+    for (const a of g.assets || []) {
+      if (a.updatedAtTick === undefined) continue;
+      if (!Number.isInteger(a.updatedAtTick) || a.updatedAtTick < 0 || a.updatedAtTick > state.tick) {
+        out.push({ rule: 'asset-updated-tick-is-a-past-tick (§15.2)', where: `guild:${g.id}.asset:${a.id}.updatedAtTick`, detail: { updatedAtTick: a.updatedAtTick, tick: state.tick } });
+      }
+    }
+  }
+  return out;
+}
+
 // checkScanJob(state, array, owner, where) -> violations of ONE array's scan job (docs/exploration-model.md
 // §5; roadmap 2.5 (b2)). `queueScan` builds a job and `stepScanCompletions` clears it (sim/actions.js,
 // sim/deep-scan-arrays.js); this asserts every tick that what sits between them is a job they could have made:
@@ -2804,6 +2874,7 @@ function checkInvariants(state, tick) {
     ...checkDeepScanArrayIntegrity(state),
     ...checkPrefectureIntegrity(state),
     ...checkStrandedAssets(state),
+    ...checkCarriedAssets(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),
     ...checkExplorationRecord(state),
