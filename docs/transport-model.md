@@ -753,6 +753,19 @@ Two DISTINCT failure classes, separated by whether the target still EXISTS:
   (§11.5, re-validated at launch). The mechanism never strands the craft against its will; a *narrative*
   stranding remains a later edition, and the bare-hex stop is where that hook would attach. Resolves §10
   open-question 4 for the automation layer.
+  *(⤳ **AS-BUILT 27-10-26 — "a system lost": which lanes, and the reason** (losing ground, engine PR 3; `design.md`
+  §19 #67, SETTLED 19-10-26). A system is lost when its Prefecture is destroyed and it goes fallow (`sim/eviction.js`).
+  The EVICTION itself ends the lanes, on the tick it happens — not each lane's next arrival, since a stop at a system
+  never asked who holds it (`routeStoreAt`). It ends **every guild's** lane, not only the evicted guild's: each craft of
+  any guild whose route has a waypoint anchored AT the lost system (a system landmark), with an action or without — a
+  waypoint is a place the craft goes. A leg that only passes through the system's footprint is not a stop, and nor is a
+  bare hex inside its disk (neither names the system). Each is ended through the one `endLane` (`sim/routes.js`):
+  route dropped, `laneEnded = { reason: 'system-lost', tick }` — a second reason beside `target-gone`, because the
+  system still exists; it is the ground that was lost — and `updatedAtTick` stamped. Where it stopped, per the rule
+  above: an idle craft stays at its berth; one in flight finishes its current leg and lands idle at its end (the
+  `trip` it is flying is not touched); one in an Outpost dock finishes its turnaround and stays parked. The hold is
+  never touched — goods, a kit, a machine aboard ride on. A lane launched AFTER the loss, to the fallow system, is an
+  ordinary lane: it is not refused, and a dock there acts as a transfer at any system always has.)*
 - **Fuel short — the lane WAITS** *(RULED 23-09-26)*. A lap is fuelled UP FRONT (§11.3); if the hoard
   cannot cover the next lap the lane does NOT drop — it WAITS at the safe berth, burns nothing, and
   RE-ATTEMPTS at each fuel-cycle boundary (where the hoard grows, §1.4) until it can afford the lap, then

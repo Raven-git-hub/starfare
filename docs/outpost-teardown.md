@@ -42,6 +42,11 @@ running a lane; the heavy's hold is not empty.
   into a system inventory. The craft's `updatedAtTick` is stamped (§15.2).
 - The player then dispatches and deploys through the existing flow. *(⤳ 05-10-26: true of the engine; the client
   has no button for it yet. See §10, "A finding", and the decision checklist.)*
+- *(⤳ **27-10-26, losing ground engine PR 3** — a reading beyond its brief, on the roadmap's decision checklist.)* The
+  packed Outpost no longer controls its hex, so a Deep Scan Array of the guild's that touched ONLY it goes **dark**: its
+  running scan, if any, is voided on this tick (`scan_voided`, reason `anchor-lost`, written before `outpost_packed`),
+  through the same `voidDetachedScans` the eviction uses (`exploration-model.md` §5, "AS-BUILT — the array goes dark").
+  The operator's `removeOutpost` does the same. An array that also touches other control of the guild's keeps its job.
 
 **Ruling on ids (a gap the seed left open).** In a hold the kit is a *good* (`outpost_kit`) with no
 id of its own; only a kit *asset* in an inventory has an id, and `loadKit` already destroys that id

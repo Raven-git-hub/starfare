@@ -818,6 +818,36 @@ queue depth**:
 > BUILT, engine and client together — `scan_complete` / `scan_voided`, `docs/event-log.md` §13 — and so is the
 > duplicate-target refusal ("One array per target" above).)*
 
+> **⤳ AS-BUILT 27-10-26 — the array goes dark (losing ground, engine PR 3; `design.md` §19 #67, SETTLED 19-10-26 —
+> "the evicting guild's Deep Scan Arrays that lose their §5 attachment go dark").** The attachment "Deploy placement"
+> describes is no longer only a deploy rule; an array keeps it to work. **No new number.**
+> - **The predicate, once.** `attachmentFootprints(state, guildId, coords)` (`sim/deep-scan-arrays.js`) — the guild's
+>   OWN control footprints the hex is in or beside (`controlNear` at `within` 1, kept to that guild). `attachedPlacement`
+>   (the deploy) now calls it for its own-control half, and `isArrayAttached(state, array)` asks it of an array standing.
+>   Rival control is NOT part of it: "never inside a rival's control" stays a placement check, so an array whose hex
+>   later falls in a rival's control still scans ("Not retroactive" above, unchanged).
+> - **Dark.** An array for which `isArrayAttached` is false is DARK: it carries no `scan`, and `queueScan` refuses it
+>   (a gate right after the ownership check: "… is dark — its hex { q, r } is no longer in or beside any territory guild
+>   … holds; it takes no scan until the guild's control reaches it again"). Nothing stores it: it is read off the live
+>   control every time, so an array wakes by itself the moment friendly control abuts it again (a re-plant of the system,
+>   an Outpost placed beside it), with no notice.
+> - **The void.** Whatever takes control away calls `voidDetachedScans(state, guild, tick)` right after: each of that
+>   guild's arrays running a job and no longer attached has the job cleared (nothing revealed — no partial reveal, as
+>   for the rival void), the row stamped **`updatedAtTick`** (new; omitted until an array's first void, §15.2), and ONE
+>   `scan_voided` notice written, `reason: 'anchor-lost'` (`docs/event-log.md` §13). Arrays in id order. The callers:
+>   the eviction (`sim/eviction.js` step 5 — "the evicting guild's arrays", the ruling's one trigger) and, because an
+>   Outpost is control too and an array may hang off one alone, the two ways an Outpost leaves the map —
+>   `reclaimOutpost` and the operator's `removeOutpost` (a reading beyond the ruling, on the decision checklist; without
+>   it the invariant below would halt on a legal reclaim). The structure itself is never removed.
+> - **The tripwire.** `checkDeepScanArrayIntegrity`: a running scan means an attached array
+>   (`deepScanArray-scan-only-while-attached`) — so a void that did not happen, or a `queueScan` that slipped its gate,
+>   halts the tick naming the array; and `updatedAtTick`, when present, a whole tick in [createdAtTick, now]. The
+>   completion step needs no change: every job it finishes is on an attached array.
+> - **Proved** by `sim/tests/eviction-reach.test.js` (the dark and the lit array, the idle dark one, a rival's untouched,
+>   the gate, the wake, the Outpost path, the tripwire). **Not built:** the client (a dark array's marker or label, the
+>   `anchor-lost` card's words — until then the live client reads the void as "… claimed it before it finished", naming
+>   "another guild").
+
 **Monitoring — the watch (DEFERRED; design-ahead, NOT built).** A continuous watch that surfaces
 dynamic activity (rival transports, anomalies) — the counter-play to "operations are private",
 the feeder for the semi-controlled corridors (which need claims), and the home of the catch/fine

@@ -395,7 +395,7 @@ storyteller trigger are later slices. No new number.
   that loads or unloads at the lost system keeps doing so — a transfer at a system has never required holding it — and
   §11.6's "a system lost ends the lane" needs a rule for which lanes it ends (decision checklist).
 
-*(⤳ **SETTLED 19-10-26 — (d) and (e) are now ruled** (design.md §19 #67; an eviction-v2 build, not yet in the code): **every** guild's lane with a stop at the lost system ENDS (§11.6, all guilds, a mere transit excepted); the evicting guild's **Deep Scan Arrays** go **dark** when the eviction pulls the §5 attachment they needed to deploy (the running scan voids, no new scans until re-attached, the structure surviving); **Outposts** stay untouched and reclaimable. The computational detail lands with that build.)*
+*(⤳ **SETTLED 19-10-26 — (d) and (e) are now ruled** (design.md §19 #67; an eviction-v2 build, not yet in the code): **every** guild's lane with a stop at the lost system ENDS (§11.6, all guilds, a mere transit excepted); the evicting guild's **Deep Scan Arrays** go **dark** when the eviction pulls the §5 attachment they needed to deploy (the running scan voids, no new scans until re-attached, the structure surviving); **Outposts** stay untouched and reclaimable. The computational detail lands with that build.)* *(⤳ **AS-BUILT 27-10-26** — losing ground, engine PR 3: both are in the code; the detail is "AS-BUILT — losing ground, engine PR 3" at the end of this section. (a)'s kit flying home now has its lane ended by the eviction itself, `system-lost`, rather than on arrival; (b)'s gate is kept, though the eviction now ends that lane too.)*
 - **Proved** by `sim/tests/prefecture-abandon.test.js` (the eviction field by field; the refusals; the home, refused and
   halting the helper; no kit returned; the guard refusing a rival, the invariant red when the plant is forced past it,
   an empty fallow system open to anyone, the owner's re-claim recovering its machines; every invariant rule; the
@@ -407,6 +407,57 @@ storyteller trigger are later slices. No new number.
   salvage waiver (the investment arc), the storyteller trigger (§9), and any client (the stranded display, the salvage
   UI, the `system_lost` message). *(⤳ 27-10-26: the salvage run is BUILT, without its timer (the rate is still
   unset) — §5's "AS-BUILT — losing ground, engine PR 2".)*
+
+**AS-BUILT — losing ground, engine PR 3: the eviction's reach — lanes end, arrays go dark (27-10-26; engine only, no
+client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, "the eviction's reach") — the ruling lives there and is
+not restated here. It extends the shared eviction above; nothing of PR 1 was rebuilt. No new number: it reuses
+`controlNear`, `endLane` and the scan's own notice.
+- **Two new steps in `evictSystem`**, after the forfeit and before the notice (so the intel and the notice are now
+  steps 6 and 7; the `system_lost` notice is still written last, the newest in the log):
+  - **(4) End the lanes — every guild's.** Each craft, of ANY guild, whose route has a waypoint anchored AT the lost
+    system (`{ landmarkKind: 'system', landmarkId }`) has its lane ended through the one `endLane` (moved to
+    `sim/routes.js`, beside the reasons, so the eviction reaches it without a require cycle): the route is dropped, the
+    craft flagged `laneEnded = { reason: 'system-lost', tick }` — a new `LANE_END_REASONS` entry, distinct from
+    `target-gone` because the system still exists — and stamped `updatedAtTick`. Nothing else about the craft changes,
+    so it is left where it stopped: idle at its berth; in flight, it finishes its current leg and lands idle at its end;
+    in an Outpost dock, it finishes its turnaround and stays parked. Its hold — goods, a kit, a machine aboard — is
+    untouched. A waypoint counts whether or not it carries an action (a slice-local reading; checklist). A leg that
+    only crosses the footprint is not a stop, nor is a bare hex inside the disk: neither names the system.
+  - **(5) Darken the arrays — the evicting guild's.** Each of its Deep Scan Arrays that is running a scan and no longer
+    satisfies the §5 attachment — its hex in or beside the guild's OWN control, `attachmentFootprints`
+    (`sim/deep-scan-arrays.js`, the same predicate `attachedPlacement` places one by) — has its scan voided by
+    `voidDetachedScans`: the job is cleared, nothing is revealed, a `scan_voided` notice is written with
+    `reason: 'anchor-lost'` (`docs/event-log.md` §13), and the row is stamped `updatedAtTick`. The array stands. One still
+    touching other ground the guild holds keeps its scan; a rival's arrays touch the rival's control, which an
+    eviction does not change, and are not asked.
+- **Outposts are untouched** — no code: an Outpost stands on its own hex, independent of the system claim, and stays
+  reclaimable (tested).
+- **Dark is derived, not stored.** `queueScan` gains a gate after its ownership check: an array that does not satisfy
+  the attachment is refused ("is dark … takes no scan until the guild's control reaches it again"). So a dark array
+  takes no job, and takes one again the moment friendly control abuts it (a re-plant of the system, a new Outpost
+  beside it) — nothing to clear.
+- **The Outpost path (a reading beyond the brief — checklist).** An Outpost is control too (its own hex,
+  `controlNear`), and an array may hang off one alone, so packing an Outpost up (`reclaimOutpost`) or the operator
+  removing it (`removeOutpost`) can detach an array exactly as an eviction can. Both now call the same
+  `voidDetachedScans` after the row goes (the reclaim before its `outpost_packed` notice). Without it the new invariant
+  would halt on a legal reclaim.
+- **The tripwire.** `checkDeepScanArrayIntegrity` now asserts that **a running scan means an attached array**, so an
+  eviction (or an Outpost removal) that failed to void a job, or a `queueScan` that slipped its gate, fails loud; and
+  that an array's `updatedAtTick`, when present, is a whole tick in [createdAtTick, now]. Placement is still not
+  re-asserted of an idle array (it may stand dark), nor of rival control over its hex. `endLane` halts on a reason it
+  does not know.
+- **Seams.** (a) PR 1's kit flying home to the lost system no longer reaches its arrival's `target-gone` branch: the
+  eviction ends its lane first (the branch stays as the defensive end). (b) PR 1's centre-deploy gate is kept, but is
+  now belt-and-braces: forced past it, the eviction ends the array's lane and the craft lands with its kit — the halt
+  it guarded is unreachable (checklist: retire it?). (c) `routeStoreAt` is unchanged: a lane launched AFTER the loss to
+  the fallow system still acts there, as a transfer at any system always has.
+- **Byte-identical where it should be.** A galaxy with lanes, scanning arrays and an Outpost around a held system that
+  never abandons hashes exactly as on `main` at 291df19 — state and the god's-eye, own and rival views, on the launch
+  tick and 760 ticks on (`sim/tests/eviction-reach.test.js`, pinned). No snapshot field was added.
+- **Proved** by `sim/tests/eviction-reach.test.js` (16) over the galaxy in `sim/tests/eviction-reach-script.js`; two
+  PR 1 seam tests in `prefecture-abandon.test.js` were updated to the new behaviour (above, (a) and (b)).
+- **Not built:** the client (the `system-lost` lane notice's words, a dark array's display, the `anchor-lost` card's
+  words), the salvage window, the sweep.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
@@ -981,6 +1032,18 @@ there. What this section's pipeline gained:
   guidance. The client takes a system click as the target only where the lane lists its centre.
 - **The invariants**, widened to exactly this case: the route rule lets a `CENTRE_KIND` deploy stop at a system; the
   array rule lets an array share its hex with the one seed landmark it is anchored to.
+
+**AS-BUILT — the attachment is continuous: a detached array goes dark (27-10-26; losing ground, engine PR 3).** The
+"attached" rule this pipeline places an array by is no longer judged only at the deploy. Its own-control half — the
+array's hex in or beside a footprint its guild holds (`attachmentFootprints`, `sim/deep-scan-arrays.js`, which
+`attachedPlacement` now calls for that half) — is asked of every standing array whenever it would scan: an array that
+no longer satisfies it is **dark**. `queueScan` refuses a dark array, and whatever takes control away voids a dark
+array's running job at once (`voidDetachedScans` — the eviction, `reclaimOutpost`, `removeOutpost`), with a
+`scan_voided` notice, reason `anchor-lost`. Nothing is stored: re-holding the ground (a re-plant, an Outpost beside it)
+wakes the array. The rival half of the rule (never inside a rival's control) stays a placement check only — an array
+whose hex later falls in a rival's control still scans. The structure is never removed by any of this. Detail:
+`exploration-model.md` §5, "AS-BUILT — the array goes dark"; the eviction's side, §4 "AS-BUILT — losing ground, engine
+PR 3".
 
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 

@@ -18,8 +18,10 @@
 //   5. THE SNAPSHOT: `stranded` on the guild's own asset rows only; a rival sees no assets.
 //   6. BYTE-IDENTITY: a galaxy that never abandons hashes exactly as it did before this slice (pinned goldens).
 //   7. PERSISTENCE + DETERMINISM: a journalled abandon replays to the same bytes; a createState hand-in keeps the flag.
-//   8. THE SEAMS a lost system now reaches: an array bound for the centre (gated — without the gate its arrival halts);
-//      a kit flying home to the lost system ends its lane (no halt); a BUY in flight there is lost on arrival.
+//   8. THE SEAMS a lost system now reaches: an array bound for the centre (gated — and, since engine PR 3, forced past
+//      the gate its lane is ended by the eviction, so it lands with its kit); a kit flying home to the lost system
+//      ends its lane at the eviction, `system-lost` (engine PR 3; no halt); a BUY in flight there is lost on arrival.
+//      The rest of the eviction's reach (every guild's lanes, the dark arrays, the Outposts) is eviction-reach.test.js.
 //   9. THE OPERATOR CLI against a real server process: exit 0 on an abandon, exit 1 on a refusal.
 
 const { test } = require('node:test');
@@ -457,7 +459,7 @@ function secondHeavyAtHome(s) {
   return { s, heavy: 'vehicle_g1_heavyTransport_02' };
 }
 
-test('SEAM — a Deep Scan Array bound for the system\'s centre: the abandon waits for it (its arrival would otherwise halt), then goes ahead once it has landed', () => {
+test('SEAM — a Deep Scan Array bound for the system\'s centre: the abandon waits for it, then goes ahead once it has landed (forced past the gate, the eviction now ends its lane — engine PR 3 — so its arrival no longer halts)', () => {
   let s = planted();
   let heavy;
   ({ s, heavy } = secondHeavyAtHome(s));
@@ -469,9 +471,18 @@ test('SEAM — a Deep Scan Array bound for the system\'s centre: the abandon wai
   }));
   assert.equal(refuse(s, abandon('g1', PREFECTURE)),
     `vehicle "${heavy}" is flying a Deep Scan Array to deploy on the centre of system "${TARGET}", which needs the system held when it lands — let it land, or re-dispatch it, before abandoning the Prefecture`);
-  // Without the gate the arrival HALTS: abandon anyway (applyAction does not validate) and fly on.
-  const forced = applyAction(s, abandon('g1', PREFECTURE));
-  assert.throws(() => tickUntil(forced, (x) => !g1Of(x).vehicles.find((v) => v.id === heavy).route), /deploy on arrival, tick \d+: .*"not-bare-hex" check/);
+  // Forced past the gate (applyAction does not validate): before engine PR 3 the arrival HALTED here (`not-bare-hex`
+  // on a centre nobody holds). Now the eviction ends the lane at once — its stop is the lost system — so the craft
+  // flies on as a plain trip and lands at the system with the kit still aboard: no deploy is attempted, nothing halts.
+  let forced = applyAction(s, abandon('g1', PREFECTURE));
+  const flying = g1Of(forced).vehicles.find((v) => v.id === heavy);
+  assert.equal(flying.route, undefined);
+  assert.deepEqual(flying.laneEnded, { reason: 'system-lost', tick: forced.tick });
+  forced = tickUntil(forced, (x) => g1Of(x).vehicles.find((v) => v.id === heavy).status === 'idle');
+  const landed = g1Of(forced).vehicles.find((v) => v.id === heavy);
+  assert.deepEqual(landed.location, AT_TARGET);
+  assert.deepEqual(landed.cargo, { deep_scan_array_kit: 1 }, 'the kit still aboard');
+  assert.equal(forced.deepScanArrays, undefined, 'nothing deployed');
   // With it: let the craft land and plant the array on the held centre, then abandon. The array stands on.
   s = tickUntil(s, (x) => !g1Of(x).vehicles.find((v) => v.id === heavy).route);
   assert.equal(s.deepScanArrays.length, 1);
@@ -480,7 +491,7 @@ test('SEAM — a Deep Scan Array bound for the system\'s centre: the abandon wai
   s = ticks(s, 5);
 });
 
-test('SEAM — a kit flying HOME to the lost system: on arrival the lane ends `target-gone`, the kit still aboard — no halt, nothing minted', () => {
+test('SEAM — a kit flying HOME to the lost system: the eviction ends its lane at once, `system-lost` (engine PR 3); it lands there with the kit still aboard — no halt, nothing minted', () => {
   let s = planted();
   let heavy;
   ({ s, heavy } = secondHeavyAtHome(s));
@@ -490,10 +501,14 @@ test('SEAM — a kit flying HOME to the lost system: on arrival the lane ends `t
   s = accept(s, createDispatchRouteWithActionsAction({ guildId: 'g1', vehicleId: heavy, waypoints: [{ anchor: AT_TARGET, action: { type: 'unload' } }] }));
   s = accept(s, abandon('g1', PREFECTURE)); // an unload is not a centre deploy — no gate
   const craftOf = (x) => g1Of(x).vehicles.find((v) => v.id === heavy);
-  s = tickUntil(s, (x) => !craftOf(x).route);
+  // Before engine PR 3 the lane ran on and ended `target-gone` on arrival; now the eviction ends it the tick it
+  // happens, because its one stop is the lost system.
+  assert.equal(craftOf(s).route, undefined);
+  assert.deepEqual(craftOf(s).laneEnded, { reason: 'system-lost', tick: s.tick });
+  s = tickUntil(s, (x) => craftOf(x).status === 'idle');
   assert.deepEqual(craftOf(s).location, AT_TARGET);
   assert.deepEqual(craftOf(s).cargo, { outpost_kit: 1 }, 'the kit is safe aboard, never dropped into the lost system');
-  assert.equal(craftOf(s).laneEnded.reason, 'target-gone');
+  assert.equal(craftOf(s).laneEnded.reason, 'system-lost', 'the flag stays until the craft is re-dispatched');
   assert.equal((g1Of(s).assets || []).some((a) => a.kind === 'outpost'), false, 'nothing minted there');
 });
 

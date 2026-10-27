@@ -104,7 +104,7 @@ const {
 } = require('./seed.js');
 const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
 const {
-  deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
+  deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND, isArrayAttached,
 } = require('./deep-scan-arrays.js');
 const { knowsPlanet, knowsSlot } = require('./exploration.js');
 const { prefectureId, prefectureNumberOf, prefectureClaimId } = require('./prefectures.js');
@@ -2274,12 +2274,18 @@ function checkOutpostIntegrity(state) {
 //     except the ONE seed landmark an array may share its hex with: the SYSTEM it is anchored to, when it stands
 //     on that system's centre (roadmap 2.5 slice 16; exploration-model.md §5 AMENDED 15-10-26). Widened to exactly
 //     that case: on a waystation, on the Citadel, or on a system it does not hang off is still a violation.
-//   - its `scan` job (2.5 (b2)), when it carries one, is well-formed — see `checkScanJob` below.
+//   - its `scan` job (2.5 (b2)), when it carries one, is well-formed — see `checkScanJob` below;
+//   - A RUNNING SCAN MEANS AN ATTACHED ARRAY (losing ground, engine PR 3; design.md §19 #67): an array carrying a
+//     job still has its hex in or beside its owner's own control (`isArrayAttached`). A DARK array carries no job:
+//     whatever took the control away voids it at once (`voidDetachedScans`), and queueScan refuses a dark array —
+//     so a job on a dark array means one of those two slipped;
+//   - its `updatedAtTick` (engine PR 3 — the tick of its last dark-array void), when present, is a whole tick in
+//     [createdAtTick, now] (§15.2).
 // And per guild: `deepScanArraySerial` ≥ the highest live suffix, so a future mint can never reissue a live id.
-// NOT asserted: that the hex is STILL in or beside held territory, or STILL clear of a rival's control.
-// Placement is the deploy's rule, judged at dispatch and on arrival only (docs/exploration-model.md §5 REVISED
-// 15-10-26: "It is NOT re-applied to arrays already standing"); the Outpost it touched may later be packed up,
-// or a rival may come to control its hex, and the array stays.
+// NOT asserted: that an IDLE array is still in or beside held territory, or that any array is still clear of a
+// rival's control. Placement is the deploy's rule, judged at dispatch and on arrival only (docs/exploration-model.md
+// §5 REVISED 15-10-26: "It is NOT re-applied to arrays already standing"): the system or Outpost it touched may go,
+// or a rival may come to control its hex, and the array stays — dark, in the first case, until control returns.
 function checkDeepScanArrayIntegrity(state) {
   const out = [];
   const arrays = state.deepScanArrays;
@@ -2321,11 +2327,19 @@ function checkDeepScanArrayIntegrity(state) {
       out.push({ rule: 'deepScanArray-createdAtTick-is-a-past-tick (§15.2)', where: `${where}.createdAtTick`, detail: { createdAtTick: a.createdAtTick, tick: state.tick } });
     }
     if ('scan' in a) out.push(...checkScanJob(state, a, guildById(a.ownerGuildId), `${where}.scan`));
+    if ('updatedAtTick' in a && (!Number.isInteger(a.updatedAtTick) || a.updatedAtTick < a.createdAtTick || a.updatedAtTick > state.tick)) {
+      out.push({ rule: 'deepScanArray-updatedAtTick-in-the-array-lifetime (§15.2)', where: `${where}.updatedAtTick`, detail: { updatedAtTick: a.updatedAtTick, createdAtTick: a.createdAtTick, tick: state.tick } });
+    }
     const c = a.coords;
     const coordsOk = c && typeof c === 'object' && !Array.isArray(c) && isHexInBounds(c.q, c.r);
     if (!coordsOk) {
       out.push({ rule: 'deepScanArray-coords-in-bounds (seed.js)', where: `${where}.coords`, detail: { coords: c } });
       continue; // the hex checks below need a real hex
+    }
+    // A running scan on a DARK array: the void or the queueScan gate slipped (design.md §19 #67). The detail names
+    // the job and the hex, so the report says which scan and where.
+    if (a.scan && !isArrayAttached(state, a)) {
+      out.push({ rule: 'deepScanArray-scan-only-while-attached (exploration-model.md §5; design.md §19 #67)', where: `${where}.scan`, detail: { ownerGuildId: a.ownerGuildId, coords: { q: c.q, r: c.r }, scan: a.scan } });
     }
     // One structure per hex (§4 / §2): not on a seed landmark, not on an Outpost, not on another array. The one
     // landmark allowed is the array's OWN anchor system — the deploy puts an array on a held centre anchored to

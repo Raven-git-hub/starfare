@@ -13,6 +13,8 @@
 //   - the REPEAT vocabulary (§11.10) — the three launch modes, shared by the dispatch validate and the
 //     route integrity check so the two can never disagree about which modes exist — the reasons a
 //     lane can END, which the craft's `laneEnded` flag names, and the reasons a lane can WAIT.
+//   - `endLane` — the one place a lane is ended and flagged. Its one mutation (of the craft handed to it)
+//     sits beside the reasons it checks, so sim/eviction.js can end a lane without a require cycle.
 
 const { copyManifestLine } = require('./manifest.js');
 
@@ -34,10 +36,13 @@ const REPEAT_MODES = Object.freeze(['once', 'continuous', 'nRun']);
 const CADENCES = Object.freeze(['immediate', 'perCycle']);
 
 // LANE_END_REASONS — why a lane ENDED on its own (transport-model.md §11.6), recorded on the craft as
-// `laneEnded = { reason, tick }` so the player can see it. One reason today: 'target-gone' — a stop's
-// store no longer exists (an Outpost torn down). A lane that simply finishes, or that the player stops,
-// is not flagged: nothing went wrong.
-const LANE_END_REASONS = Object.freeze(['target-gone']);
+// `laneEnded = { reason, tick }` so the player can see it. Two reasons:
+//   'target-gone' — a stop's store no longer exists (an Outpost torn down);
+//   'system-lost' — a stop is at a system that has just gone FALLOW (its Prefecture destroyed — losing
+//                   ground, engine PR 3, sim/eviction.js). The system still exists, so this is not
+//                   'target-gone': the player is told the ground was lost, not that a store vanished.
+// A lane that simply finishes, or that the player stops, is not flagged: nothing went wrong.
+const LANE_END_REASONS = Object.freeze(['target-gone', 'system-lost']);
 
 // WAIT_REASONS — why a repeating lane is WAITING at its last waypoint instead of starting its next lap,
 // recorded on the route as `waiting = { reason, sinceTick }` (transport-model.md §11.6 / §11.10). Two
@@ -47,6 +52,25 @@ const LANE_END_REASONS = Object.freeze(['target-gone']);
 //   'cadence' — a `perCycle` lane between laps (slice 3a.1): it holds until the next boundary on purpose,
 //               so it runs at most one lap per fuel cycle.
 const WAIT_REASONS = Object.freeze(['fuel', 'cadence']);
+
+// endLane(craft, reason, thisTick) — a lane ENDS on its own (transport-model.md §11.6): the route is
+// DROPPED and the craft is left an ordinary idle craft wherever it stands — at WN if caught at a lap's
+// start, at the bare hex if a target vanished mid-flight. There is no resume-in-place; the player
+// re-dispatches. The craft is FLAGGED `laneEnded = { reason, tick }` (a LANE_END_REASONS entry, and the
+// tick it happened — §15.2) so the player can see WHY it stopped; the next dispatch of the craft clears it.
+// The one place a lane is ended-and-flagged, for every halt site (the arrival resolver, a leg that can no
+// longer be built, the lap-start re-check, an Outpost torn down under a docked craft, and — engine PR 3 —
+// an eviction, sim/eviction.js). It lives HERE, beside the reasons, so the eviction can call it without
+// requiring sim/actions.js (which requires the eviction — that would be a cycle). It touches only the
+// route and the flag: whatever the craft carries stays aboard.
+// An unknown reason is a caller bug, and the invariant would only catch it a tick later, so it HALTS here.
+function endLane(craft, reason, thisTick) {
+  if (!LANE_END_REASONS.includes(reason)) {
+    throw new Error(`endLane, tick ${thisTick}: vehicle ${JSON.stringify(craft.id)} given an unknown reason ${JSON.stringify(reason)} (known: ${LANE_END_REASONS.join(', ')})`);
+  }
+  delete craft.route;
+  craft.laneEnded = { reason, tick: thisTick };
+}
 
 // copyRouteWaypoint(wp) -> a FRESH copy of a { anchor, action? } route waypoint (transport-model.md
 // §11.1) — the anchor object copied, and any action's manifest lines copied in canonical shape
@@ -99,6 +123,7 @@ module.exports = {
   CADENCES,
   LANE_END_REASONS,
   WAIT_REASONS,
+  endLane,
   copyRouteWaypoint,
   savedRouteId,
   savedRouteNumberOf,
