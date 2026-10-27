@@ -393,6 +393,8 @@ storyteller trigger are later slices. No new number.
   system's inventory and are untouched; their placement is not re-checked after the fact, as before. (e) A running lane
   that loads or unloads at the lost system keeps doing so — a transfer at a system has never required holding it — and
   §11.6's "a system lost ends the lane" needs a rule for which lanes it ends (decision checklist).
+
+*(⤳ **SETTLED 19-10-26 — (d) and (e) are now ruled** (design.md §19 #67; an eviction-v2 build, not yet in the code): **every** guild's lane with a stop at the lost system ENDS (§11.6, all guilds, a mere transit excepted); the evicting guild's **Deep Scan Arrays** go **dark** when the eviction pulls the §5 attachment they needed to deploy (the running scan voids, no new scans until re-attached, the structure surviving); **Outposts** stay untouched and reclaimable. The computational detail lands with that build.)*
 - **Proved** by `sim/tests/prefecture-abandon.test.js` (the eviction field by field; the refusals; the home, refused and
   halting the helper; no kit returned; the guard refusing a rival, the invariant red when the plant is forced past it,
   an empty fallow system open to anyone, the owner's re-claim recovering its machines; every invariant rule; the
