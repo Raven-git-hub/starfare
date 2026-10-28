@@ -436,7 +436,7 @@ not restated here. It extends the shared eviction above; nothing of PR 1 was reb
   the attachment is refused ("is dark … takes no scan until the guild's control reaches it again"). So a dark array
   takes no job, and takes one again the moment friendly control abuts it (a re-plant of the system, a new Outpost
   beside it) — nothing to clear.
-- **The Outpost path (a reading beyond the brief — checklist).** An Outpost is control too (its own hex,
+- **The Outpost path (RATIFIED 28-10-26 by the human — one rule, one code path for eviction and teardown).** An Outpost is control too (its own hex,
   `controlNear`), and an array may hang off one alone, so packing an Outpost up (`reclaimOutpost`) or the operator
   removing it (`removeOutpost`) can detach an array exactly as an eviction can. Both now call the same
   `voidDetachedScans` after the row goes (the reclaim before its `outpost_packed` notice). Without it the new invariant
