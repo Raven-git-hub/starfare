@@ -70,7 +70,7 @@ Expanded, the row shows a **manifest**:
 No fuel is shown here — a Syndicate delivery's fuel is spent once at dispatch, and the fuel gauges live
 elsewhere.
 
-**AS-BUILT 24-09-26 (guild craft + lanes now render here, 2.2 b2a → 3c; CLIENT `client/game.html`).** IN TRANSIT is no longer Syndicate-only. Alongside the Syndicate `shipments[]` rows above, the panel now lists the guild's OWN in-flight craft and its active REPEATING lanes. A guild row's identity line is the craft's **class + number** (e.g. `mediumTransport #01`) — the *Craft ID → craft-stats popup* named above stays future. A repeating lane adds a read-out — `Lap k of N · X fuel / lap · per-cycle` (every figure the snapshot's; `perLapUnits` is the engine's per-lap cost, the `+1` on `lapsDone` is presentation); a held lane reads `Holding for fuel` or `Next lap at cycle`; and the expanded region carries **Cancel** (asks first, then `cancelRoute`) and **Stop after this run** (`stopRouteAfterRun`, repeating lanes only). A lane that ENDS on its own — a stop's store gone, `laneEnded { reason: 'target-gone' }` — raises a dismissible notice at the top of IN TRANSIT (the alert's "destination lost in flight" trigger, now real for guild lanes; the reserved per-row alert pill is still unwired). **Still future:** the Craft-ID craft-stats popup, and the full DEPLOYED / IDLE / LEASED board where a waiting or ended-lane craft would also live (Phase 4).
+**AS-BUILT 24-09-26 (guild craft + lanes now render here, 2.2 b2a → 3c; CLIENT `client/game.html`).** IN TRANSIT is no longer Syndicate-only. Alongside the Syndicate `shipments[]` rows above, the panel now lists the guild's OWN in-flight craft and its active REPEATING lanes. A guild row's identity line is the craft's **class + number** (e.g. `mediumTransport #01`) — the *Craft ID → craft-stats popup* named above stays future. A repeating lane adds a read-out — `Lap k of N · X fuel / lap · per-cycle` (every figure the snapshot's; `perLapUnits` is the engine's per-lap cost, the `+1` on `lapsDone` is presentation); a held lane reads `Holding for fuel` or `Next lap at cycle`; and the expanded region carries **Cancel** (asks first, then `cancelRoute`) and **Stop after this run** (`stopRouteAfterRun`, repeating lanes only). A lane that ENDS on its own — a stop's store gone, `laneEnded { reason: 'target-gone' }` — raises a dismissible notice at the top of IN TRANSIT (the alert's "destination lost in flight" trigger, now real for guild lanes; the reserved per-row alert pill is still unwired). *(⤳ 28-10-26, losing ground client slice 2: a second reason reads in words — `laneEnded { reason: 'system-lost' }`, a stop's system lost and gone fallow, as "Light #05's lane stopped at Nyx — a stop's system was lost." (draft copy). It names no system: the flag carries none, and the craft lands at the end of whatever leg it was flying, which need not be the lost system. Such a lane can end while its craft is still FLYING (`transport-model.md` §11.6), with no `location` yet, so the notice now names where it will land — the leg's end, the destination its IN TRANSIT row already shows (`craftDestName`) — where it read "stopped at Unknown"; a landed craft reads its `location` as before. The strip's rebuild signature now carries that place too, so a craft that lands on a bare hex redraws its notice once ("Deep Space (q, r)" → "(q, r)"). `target-gone` reads exactly as before.)* **Still future:** the Craft-ID craft-stats popup, and the full DEPLOYED / IDLE / LEASED board where a waiting or ended-lane craft would also live (Phase 4).
 
 ## 5. DEPLOYED & IDLE — future (2.1 / 2.2 / 2.3)
 
@@ -94,6 +94,23 @@ and caret; the collapse survives a poll). Each entry is its name — an Outpost'
 **Not built:** the Manage popup and an Outpost's stored-manifest expansion (the Outpost Manager, opened from the map,
 remains where an Outpost is inspected); toll gates (no entity yet). IDLE now also labels kits by kind ("Deep Scan Array
 kit", grouped "Deep Scan Array kits") and gives every kit kind a Deploy button.
+
+**AS-BUILT 28-10-26 — a STRANDED machine is marked (losing ground client slice 2; `client/game.html` only).** A
+machine or kit an eviction left behind carries the engine's `stranded = { tick }` (`territory-model.md` §4), and IDLE now
+reads it: the row gains an amber state line under its id, kind and any button, **"Stranded · awaiting salvage"** (draft
+copy) — the second line a DEPLOYED row carries — and takes the ended-lane notice's amber edge and wash. The row wraps
+for it, so the line takes no width from the id: the IDLE card is narrow (it shares the middle column with DEPLOYED).
+A mark on the row, not a group of its own: the row stays in its system's group, which is the system it was lost in.
+The flag is the engine's answer and the only thing read; the row never asks whether the guild still holds the system
+(design.md §18). A stranded kit keeps its Deploy / Ferry
+button, because it loads like any kit. An ordinary row is byte-identical to before. **The signature now carries the
+flag.** The tree rebuilt on `id@systemId`, but an eviction flags a machine IN PLACE (same id, same system), and a
+salvage load clears the flag in place, so the marker would never have appeared, or never gone. `idleSignature` adds a
+stranded term; an unchanged poll still rebuilds nothing. Unchanged: the system header's "N idle" and the kind counts
+include stranded rows; no day is shown (the client may not turn a tick into a day — the asset row carries no
+`whenDay`). Not built: a machine aboard a heavy (the salvage load) still lists here under the fallow system, because
+`myIdle` reads only `deployedToVentureId` and not the snapshot's `inTransitOnVehicleId` — the salvage-run client's
+(roadmap checklist). Proved by `sim/tests/losing-ground-ops-client.test.js`.
 
 ## 6. LEASED — future (Phase 4)
 

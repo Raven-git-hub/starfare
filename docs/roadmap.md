@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,334 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim) — and the galaxy map now marks each system where a Prefecture kit of the guild's waits to be planted with an inward-flowing "claim pending" beacon (client PR C); **losing ground** has begun: an owner (or the operator) can now abandon a Prefecture, which is destroyed — the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting salvage, and its goods there are forfeit (engine PR 1, the destroyed path — engine + operator CLI); and a heavy can now haul a stranded machine out of the fallow system and unload it, an ordinary idle machine again, into a system the guild holds — the salvage run, built as the cross-system asset ferry exposed salvage-only (engine PR 2 — engine + operator CLI); and a lost system now reaches past the guild's own position there — every guild's lanes with a stop at it end, and the guild's Deep Scan Arrays that hung off it go dark, their scans voided until friendly control returns, while Outposts stand (engine PR 3, the eviction's reach — engine only); and a rival's claim of a fallow system now takes the machines still stranded there — they change hands, re-minted as its own idle machines, and both guilds are told (engine PR 4, the sweep — engine only), which completes losing ground's engine work; and its client has begun — MESSAGES now gives the four losing-ground notices their own words, facts and (for the three about a system) Show on map: the system lost, the machines a claim inherited or took, and a survey voided because its array went dark (client slice 1, the notices); the map + Operations read-state, the abandon control, the salvage-run client, the salvage window and capture are still to come, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim) — and the galaxy map now marks each system where a Prefecture kit of the guild's waits to be planted with an inward-flowing "claim pending" beacon (client PR C); **losing ground** has begun: an owner (or the operator) can now abandon a Prefecture, which is destroyed — the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting salvage, and its goods there are forfeit (engine PR 1, the destroyed path — engine + operator CLI); and a heavy can now haul a stranded machine out of the fallow system and unload it, an ordinary idle machine again, into a system the guild holds — the salvage run, built as the cross-system asset ferry exposed salvage-only (engine PR 2 — engine + operator CLI); and a lost system now reaches past the guild's own position there — every guild's lanes with a stop at it end, and the guild's Deep Scan Arrays that hung off it go dark, their scans voided until friendly control returns, while Outposts stand (engine PR 3, the eviction's reach — engine only); and a rival's claim of a fallow system now takes the machines still stranded there — they change hands, re-minted as its own idle machines, and both guilds are told (engine PR 4, the sweep — engine only), which completes losing ground's engine work; and its client has begun — MESSAGES now gives the four losing-ground notices their own words, facts and (for the three about a system) Show on map: the system lost, the machines a claim inherited or took, and a survey voided because its array went dark (client slice 1, the notices); and Operations now marks a machine left stranded "awaiting salvage" in the system it was lost in, the IN TRANSIT strip words a lane a lost system ended, and a venture an eviction closed no longer reads as one the player closed (client slice 2, the read-state); a dark array's display (which needs a snapshot field first — engine + client), the abandon control, the salvage-run client, the salvage window and capture are still to come, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3654,7 +3654,12 @@ boundary so the later hex-map swap doesn't touch it.
   engine work is complete**; left are the salvage window, once its rate is tuned, and the client.)*
   *(⤳ 28-10-26: **the losing-ground client has begun** — client slice 1, the notices, 2.5 below: MESSAGES words the
   four losing-ground notices. Three client slices remain: the map + Operations read-state, the abandon action, and the
-  salvage-run client.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
+  salvage-run client.)*
+  *(⤳ 28-10-26: **client slice 2, the read-state, is BUILT** — 2.5 below: Operations marks a stranded machine "awaiting
+  salvage", the IN TRANSIT strip words a `system-lost` lane, and an evicted venture's closure says its system was lost.
+  The "map + Operations read-state" slice split in two: a dark array has no published state to render, so it is the
+  next slice, engine + client (a snapshot field, then its display); the map gets nothing (a fallow system already
+  renders unclaimed). Remaining: dark arrays, the abandon action, the salvage-run client.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:
@@ -3784,6 +3789,11 @@ boundary so the later hex-map swap doesn't touch it.
   `assets_swept` in the Syndicate adviser's voice with their facts and Show on map to the system, and an `anchor-lost`
   `scan_voided` as the scout's dark-array report, distinct from a rival's void. Client only; no new number. The first of
   four losing-ground client slices.)*
+  *(⤳ 28-10-26 — **losing ground, client slice 2 — the read-state — is BUILT**, the last entry below: what a loss left
+  behind, read off fields the engine already publishes. Operations → IDLE marks a machine or kit left stranded "awaiting
+  salvage" (and its rebuild signature now carries the flag, which an eviction and a salvage load both change in place);
+  the IN TRANSIT strip words a lane ended by a lost system, naming where its still-flying craft will land; and an
+  evicted venture's closure no longer reads "You closed this venture." Client only; no new number. Dark arrays are next.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4923,6 +4933,52 @@ boundary so the later hex-map swap doesn't touch it.
     Operations read-state (a fallow system, a dark array and stranded machines shown on the map and in Operations — with
     the `system-lost` lane-end words), the abandon action (a player control to give a system up), and the salvage-run
     client (load / ferry / unload a stranded machine). Checklist items below.
+  - **Losing ground, client slice 2 — the read-state (client only, `client/game.html`) — ⤳ AS-BUILT 28-10-26.** The
+    second of the losing-ground client slices, and pure rendering of what a loss left behind. The engine already
+    published three consequences on the player's own rows that the client hid or mis-worded; each now reads in the
+    place the player already looks. **No engine, snapshot or fog change** (all three were checked present in
+    `sim/snapshot.js` first: an asset's `stranded`, a craft's `laneEnded`, a closure's `cause`); **no new number**.
+    As-built detail: `operations-hub.md` §4 / §5, `territory-model.md` §4, `transport-model.md` §11.6 and
+    `event-log.md` §2 / §14. **(1) Stranded machines in Operations** — IDLE marks a machine or kit carrying `stranded`
+    with an amber "Stranded · awaiting salvage" state line under its id and kind (the row amber-edged, as a DEPLOYED
+    row carries a state line), in the group of the system it was lost in; it reads the flag alone, never whether the guild holds the system. A stranded kit keeps its
+    Deploy / Ferry. An ordinary row is byte-identical. **The signature bug:** IDLE rebuilt on `id@systemId`, but an
+    eviction flags a machine IN PLACE and a salvage load (`assetAboard`) clears it in place, so the marker would never
+    have appeared on an open hub, or never gone; `idleSignature` adds a stranded term. **(2) The lost-lane label** —
+    `LANE_END_WHY` gains `'system-lost'`: "Light #05's lane stopped at Nyx — a stop's system was lost." — deliberately
+    not the brief's "the system there was lost", since the craft lands at the end of whatever leg it was flying (its
+    home, say) and the flag names no system (checklist item 4). **A reading beyond the brief:** such a lane ends with
+    its craft still in flight, with no `location`, so the strip read "stopped at Unknown" — real output, for g1's lane
+    and g2's alike. It now names the leg's end, the destination the craft's IN TRANSIT row already shows
+    (`craftDestName`), and its signature carries that place, so a landing on a bare hex redraws it once.
+    `target-gone` reads as before. **(3) The evicted venture** — `noticeBody`'s closure branch gains an `evicted`
+    case: "This venture was closed because the system it stood in was lost." (the lockout line still appended);
+    `teardown`, `operator` and `forced` unchanged. (Checked: an eviction writes `venture_closed` with cause `evicted`,
+    one per venture, beside the one `system_lost` — unchanged, as the brief asked.) **Not built, by the brief:** dark
+    arrays (no published state — the next, engine + client, slice), the map (a fallow system already renders
+    unclaimed; nothing marks "you used to hold this"), the abandon action and the salvage-run client. **(4)
+    Tripwires:** `sim/tests/losing-ground-ops-client.test.js` (11) runs the Operations hub's whole script, unwrapped,
+    and the notice code in a `node:vm` sandbox against real per-guild snapshots: an abandon of a system holding only
+    idle things (a machine and a kit stranded in place), then the salvage load; `eviction-reach-script.js`'s galaxy
+    with one more lane whose Outpost stop the operator removes (a real `target-gone`), then abandoned on the same tick
+    (real `system-lost` lanes, g1's and g2's, both still flying); and `sweep-script.js` (real evicted closures, the
+    sweep). It covers the marker and the unmarked row, the flag read and not the ground, the signature through gain
+    and loss in place (and main's signature swapped back: the marker never appears, a stale one never goes), the
+    sweep, both lane reasons distinct, the landing (words held, no redraw), the bare-hex and unknown-reason fallbacks,
+    the evicted words with and without a lockout, and every other closure / lapse cause pinned as main wrote it. **A
+    guard** pins every Operations host, in all ten states, as `main`'s own script rendered it at d353816, hashed, bar
+    the one host the slice changes in a state; it passes on `main`'s `game.html` too. Against `main`'s client, 9 of the
+    11 are red. Checked to fail, one mutation at a time: no stranded term in the signature → 1 red; no `system-lost`
+    words → 3; the "where" read as main read it → 4; the place left out of the strip's signature → 1; no marker → 4;
+    a marker on every row → 5 (the guard among them); the marker re-derived from the claims → 2; no `evicted` branch
+    → 1; its words also for `forced` → 1; for every closure → 1; an unrelated IN TRANSIT or IDLE TRANSPORTS change → 1
+    each (the guard). The neighbouring client suites (`prefecture-ferry-client`, `losing-ground-notice-client`,
+    `scan-notice-client`, `outpost-teardown-client`, `server`) are unchanged and green. Sim 2,472 → **2,483** (the 11
+    new tests; every other file unchanged in count), tools **98** (unchanged). The live panel and strip are the
+    human's Playwright pass, outside the repo. **Next** (the remaining losing-ground client slices): dark arrays
+    (engine + client — a snapshot field for an array's attached / dark state, then its display), the abandon action (a
+    player control to give a system up), and the salvage-run client (load / ferry / unload a stranded machine).
+    Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -6447,6 +6503,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      it (a storyteller eviction presumably should not).
   7. **The new closure cause `evicted`.** The live client's `venture_closed` body reads "You closed this venture." for
      any cause but `forced` — right for an abandon, wrong for a future storyteller eviction. Wording for the client slice.
+     *(⤳ 28-10-26, losing ground client slice 2: worded — "This venture was closed because the system it stood in was
+     lost." — cause-neutral, so it holds for a storyteller eviction too. A draft: client slice 2's item 7 below.)*
   8. **The `system_lost` notice** — its type name, payload (`event-log.md` §14) and its voice and words (steward or
      pilot) are for the design room; until the client slice it renders through the fallback as "Licence lapsed — …"
      (the known gap every engine-first notice had). *(⤳ 28-10-26, losing ground client slice 1: it renders — in the Syndicate
@@ -6541,7 +6599,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      at the system (it does not name it), and neither is a leg crossing the footprint. Confirm both.
   3. **The reason name `system-lost`** (a second `LANE_END_REASONS` entry beside `target-gone`). Confirm. The live
      client's IN TRANSIT ended-lane notice has words only for `target-gone` and shows any other reason raw, so it reads
-     "system-lost" until the client slice gives it words.
+     "system-lost" until the client slice gives it words. *(⤳ 28-10-26, losing ground client slice 2: it reads "… — a
+     stop's system was lost." The reason name is unchanged; the words are a draft, client slice 2's item 4 below.)*
   4. **The dark-array notice is `scan_voided` with `reason: 'anchor-lost'`**, the rival void left without a `reason` (so
      its payload, and every golden over it, is unchanged; a reader tells the two apart by the key). Rule whether the
      rival void should also carry a reason (it would move the scan-notice goldens), or a dark array wants a distinct
@@ -6566,7 +6625,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      rival's control still scans (the 15-10-26 "Not retroactive", kept). Confirm.
   9. **No snapshot field for "dark".** The array row carries no `dark` / `attached` flag (dark is derived, and the brief
      added no client), so the client slice must either derive it (it has the control map and its own Outposts) or ask
-     for an additive snapshot field. Rule which.
+     for an additive snapshot field. Rule which. *(⤳ 28-10-26: the client slice 2 brief scoped dark arrays OUT of the
+     client-only read-state — "do not re-derive attachment in the client" — and as the next slice, engine + client: a
+     snapshot field first. The field's name and shape are that slice's.)*
   10. **A lane launched AFTER the loss to the fallow system** is not refused, and a dock there acts as a transfer at any
      system always has (`routeStoreAt` unchanged). Only lanes running at the moment of the eviction end. Confirm.
   11. **The operator CLI** (`abandon-prefecture`) still prints only the `system_lost` payload — not the lanes ended or the
@@ -6659,7 +6720,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   10. **Still mislabelled, outside this slice (recorded, not fixed):** (a) the evicted ventures' `venture_closed` reads
      "You closed this venture." — right for an abandon, wrong for a future storyteller eviction (engine PR 1's item 7);
      (b) the IN TRANSIT ended-lane notice prints the raw reason "system-lost" (engine PR 3's item 3) — the map +
-     Operations slice's; (c) the card's fit: a `system_lost` carries two lines and five facts. The body scrolls (`event-log.md`
+     Operations slice's; *(⤳ 28-10-26: (a) and (b) are FIXED — losing ground client slice 2, the read-state.)* (c) the card's fit: a `system_lost` carries two lines and five facts. The body scrolls (`event-log.md`
      §10's layout fix), but whether the last fact sits below the fold is for the human's Playwright pass.
   11. **Seams — not decisions, recorded:** (a) `client/game.html` is ~15,660 lines and its notice block ~640 (the block
      grew by ~140). It now renders all eleven types, and its own file or a per-lane split may be worth a slice. (b) The new
@@ -6667,6 +6728,60 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      at e56799c, so a deliberate change to an older notice must update its pin there too. (d) The Show on map source
      pin moved in `server.test.js` and `outpost-teardown-client.test.js`; no count changed. (e) No new shell bridge: Show
      on map reads `__boardSystem`, the site name `__planetDesignation`, both existing.
+- **Losing ground, client slice 2 (the read-state) — items for a confirm or a ruling** — *surfaced 28-10-26 by the
+  build; each was built the way stated, and none is decided by the code beyond that. No number was chosen.*
+  1. **The words — all three are drafts, for the human to tune at merge:** the marker "Stranded · awaiting salvage";
+     the lane "why", "a stop's system was lost"; the evicted body, "This venture was closed because the system it stood
+     in was lost." Each lives once in `client/game.html` and once in `sim/tests/losing-ground-ops-client.test.js`,
+     which pins it verbatim, so a tune is two edits (and the doc's quote: `operations-hub.md` §4 / §5, `event-log.md`
+     §2 / §14).
+  2. **A mark on the row, not a grouping of its own.** A stranded machine stays in its system's IDLE group (the
+     system it was lost in), with an amber state line under its id and kind, the row amber-edged. (An inline tag beside
+     the id was tried first, but by the card's CSS it would leave the id almost no width in the narrow IDLE card; a
+     headless screenshot of the second line at 300px and 340px card widths reads cleanly, with nothing overflowing. The
+     real panel is the human's Playwright pass.) The alternatives: a "Stranded" group or section of its own,
+     or the fallow system's group header marked instead. Confirm, or rule one.
+  3. **The headers count stranded rows as idle.** A fallow system's group reads "N idle" and its kind headers count
+     the stranded rows with any others. Confirm, or rule "N stranded" (or a split count).
+  4. **The lane "why" — a deliberate difference from the brief.** The brief's line was "… — the system there was
+     lost." But a `system-lost` lane's craft lands at the end of whatever leg it was flying, and that can be any stop:
+     g1's `stop` lane, caught on its HOME leg, would read "stopped at {home} — the system there was lost", false and
+     alarming. `laneEnded` names no system either. So the line is "a stop's system was lost", in the shape of
+     `target-gone`'s "a stop's store is gone". Naming the lost system would need a field on `laneEnded` (an engine
+     change). Confirm, or rule the field.
+  5. **The in-flight "where" — a reading beyond the brief.** The brief asked for one map entry. But the eviction ends
+     a lane while its craft is still flying (`transport-model.md` §11.6), with no `location` yet, so the strip read
+     "stopped at Unknown". Built: the notice names the leg's end through `craftDestName`, the same resolver the craft's
+     IN TRANSIT row uses for its destination. The strip's signature now carries that place (the file's own rule: a
+     signature covers what is drawn), so a craft landing on a bare hex redraws its notice once, from "Deep Space (q,
+     r)" to "(q, r)". A landing at a system reads the same before and after, and does not redraw. Confirm.
+  6. **A rival's lane gets the same words.** g2's lane that only turned at g1's lost system ends `system-lost` too,
+     and its strip reads the same line. It says nothing of whose system it was (engine PR 3's item 7 asked whether a
+     rival wants a notice). Confirm.
+  7. **The evicted body blames no one.** It reads the same for an abandon and for a future storyteller eviction,
+     because the closure's payload does not carry the `system_lost` cause. The `system_lost` notice beside it says
+     which. Each evicted venture still writes its own notice. Suppressing those is a design question this slice did
+     not touch, per the brief. Confirm the words.
+  8. **No day on the marker.** The asset row carries `stranded.tick` but no day, and the client may not turn a tick
+     into a day (the day is the engine's `whenDay`). If the marker should say since when, that needs a snapshot field.
+     Rule whether it should.
+  9. **Seen, not built (outside this slice):** (a) **a machine aboard a heavy** after the salvage load still lists in
+     IDLE under the fallow system. The snapshot publishes `inTransitOnVehicleId` ("not idle", engine PR 2), but
+     `myIdle` reads only `deployedToVentureId`. It now reads as an ordinary idle machine there (its flag cleared), not
+     as aboard. This is the salvage-run client's to render. (b) **The establish panels' asset pickers**
+     (`__myIdleAssets`) list idle machines guild-wide, so a stranded machine is offered too. The engine refuses it by
+     system (`asset.systemId !== site.systemId`), as it refuses any machine from another system — pre-existing. (c)
+     **The claim-pending beacon** marks a fallow system where the guild's own stranded Prefecture kit lies (it reads
+     only the claims), which is true: the owner may re-plant it. Recorded. (d) **The map** is unchanged, by the brief:
+     a fallow system renders unclaimed, and nothing marks "you used to hold this". Rule whether it should.
+  10. **Seams — not decisions, recorded:** (a) the planet manifest's ground-kit signature (`LIVE.siteSig`'s
+     `id@systemId` term in `applySnapshot`) has IDLE's shape, but was checked and left unchanged. It guards the Plant
+     offer, which does not read `stranded`, and every transition that changes that offer already moves it (the claim
+     goes or comes; a plant consumes the kit). (b) IDLE's signature is now one function, `idleSignature`, so the test
+     can swap main's line back in. (c) `client/game.html` is ~15,690 lines. (d) The new test is ~470 lines. It is the
+     first to drive `renderIdle` / `renderLaneNotices`, running the Operations script's body unwrapped so its own
+     functions are callable. Its guard pins hashes computed on `main` at d353816, so a deliberate change to another
+     Operations host must re-pin there.
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

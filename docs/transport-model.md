@@ -766,6 +766,9 @@ Two DISTINCT failure classes, separated by whether the target still EXISTS:
   `trip` it is flying is not touched); one in an Outpost dock finishes its turnaround and stays parked. The hold is
   never touched — goods, a kit, a machine aboard ride on. A lane launched AFTER the loss, to the fallow system, is an
   ordinary lane: it is not refused, and a dock there acts as a transfer at any system always has.)*
+  *(⤳ 28-10-26 — **the client words it** (losing ground client slice 2): the IN TRANSIT ended-lane notice reads "… — a
+  stop's system was lost." where it printed the raw `system-lost`, and, because such a lane ends with its craft still
+  flying, names where the craft will land (the leg's end), not "Unknown" (`docs/operations-hub.md` §4).)*
 - **Fuel short — the lane WAITS** *(RULED 23-09-26)*. A lap is fuelled UP FRONT (§11.3); if the hoard
   cannot cover the next lap the lane does NOT drop — it WAITS at the safe berth, burns nothing, and
   RE-ATTEMPTS at each fuel-cycle boundary (where the hoard grows, §1.4) until it can afford the lap, then

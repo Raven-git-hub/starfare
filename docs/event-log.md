@@ -70,7 +70,9 @@ mutation itself already runs under:
   - the −500 forced-closure tick path (`docs/forced-closure.md`) → cause **`forced`**;
   - *(⤳ 17-10-26, losing ground engine PR 1)* the eviction (`sim/eviction.js`, §14) — a venture torn down because its
     guild lost the system → cause **`evicted`**. (The operator's `removeVenture` / `removeAsset` lever also calls it,
-    cause **`operator`**, `docs/operator-adjust.md`.)
+    cause **`operator`**, `docs/operator-adjust.md`.) *(⤳ 28-10-26, losing ground client slice 2: the client's closure card now words
+    `evicted` — "This venture was closed because the system it stood in was lost." — where it read "You closed this
+    venture." Draft copy; every other cause's words are unchanged, §14.)*
 
 **Renegotiation ACCEPT (`renegotiateLicence`) writes nothing** — an accept is a re-lock, not a
 discrete loss. All notices are **born unread** (no `readTick`).
@@ -807,7 +809,12 @@ its own two.
 - **The type audit.** The Messages list, the badge and both pips are type-agnostic. `isDeliveryNotice` and
   `isScanNotice` are false for these. The evicted ventures' own `venture_closed` rows still take the Syndicate's
   closure branch, unchanged ("You closed this venture." — the cause-`evicted` wording is still roadmap checklist item 7
-  of engine PR 1).
+  of engine PR 1). *(⤳ 28-10-26, losing ground client slice 2: the closure branch gains an `evicted` case, so
+  they read "This venture was closed because the system it stood in was lost.", the lockout line still appended when
+  one was written. Its words blame no one: a closure's payload does not say why the system was lost; the `system_lost`
+  notice beside it does. `teardown`, `operator` and `forced` read exactly as before. Each evicted venture still gets its own notice
+  beside the one `system_lost` — that is the engine's behaviour, unchanged. Proved by
+  `sim/tests/losing-ground-ops-client.test.js`.)*
 - **Tripwires.** `sim/tests/losing-ground-notice-client.test.js` (13) runs the page's own notice code in a `node:vm`
   sandbox against real engine output: `sim/tests/sweep-script.js` (an abandon with a position, then a rival's sweeping
   plant) and `sim/tests/eviction-reach-script.js` (an abandon with nothing but a dark array). It checks the rows, the

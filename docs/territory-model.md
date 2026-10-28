@@ -415,7 +415,10 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   UI, the `system_lost` message). *(⤳ 27-10-26: the salvage run is BUILT, without its timer (the rate is still
   unset) — §5's "AS-BUILT — losing ground, engine PR 2".)* *(⤳ 28-10-26: the sweep is BUILT — "AS-BUILT — losing
   ground, engine PR 4" below.)* *(⤳ 28-10-26: the `system_lost` message is BUILT — losing ground client slice 1, the
-  notices; `docs/event-log.md` §14's client AS-BUILT. The stranded display and the salvage UI are still to come.)*
+  notices; `docs/event-log.md` §14's client AS-BUILT. The stranded display and the salvage UI are still to come.)* *(⤳ 28-10-26: the stranded display is BUILT — losing ground client
+  slice 2, the read-state: Operations → IDLE marks a stranded machine or kit "Stranded · awaiting salvage" on its row, in
+  the group of the system it was lost in, read off the `stranded` flag alone (`docs/operations-hub.md` §5's AS-BUILT
+  28-10-26). The salvage UI is still to come; the map is unchanged (a fallow system already renders unclaimed).)*
 
 **AS-BUILT — losing ground, engine PR 3: the eviction's reach — lanes end, arrays go dark (27-10-26; engine only, no
 client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, "the eviction's reach") — the ruling lives there and is
@@ -468,7 +471,10 @@ not restated here. It extends the shared eviction above; nothing of PR 1 was reb
 - **Not built:** the client (the `system-lost` lane notice's words, a dark array's display, the `anchor-lost` card's
   words), the salvage window, the sweep. *(⤳ 28-10-26: the sweep is BUILT — the next note.)* *(⤳ 28-10-26: the
   `anchor-lost` card's words are BUILT — losing ground client slice 1, the notices; `docs/event-log.md` §13. The lane
-  notice's words and a dark array's display are still to come, with the map + Operations slice.)*
+  notice's words and a dark array's display are still to come, with the map + Operations slice.)* *(⤳ 28-10-26: the lane notice's words are
+  BUILT — losing ground client slice 2, the read-state: "… — a stop's system was lost.", naming where an in-flight craft
+  will land (`docs/operations-hub.md` §4, `docs/transport-model.md` §11.6). A dark array's display is the next slice,
+  engine + client: the array row carries no attached / dark state, so it needs a snapshot field first (roadmap checklist, engine PR 3 item 9).)*
 
 **AS-BUILT — losing ground, engine PR 4: the sweep — a rival's claim inherits the stranded machines (28-10-26; engine
 only, no client).** Built to `design.md` §19 **#67** (SETTLED 28-10-26, the sweep) — the ruling lives there and is not

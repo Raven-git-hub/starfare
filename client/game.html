@@ -1346,6 +1346,11 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-idle-machine:first-child{margin-top:0;}
 #tp-ops .ops-idle-machine .mid{font-family:var(--ops-mono); font-size:11px; color:var(--ops-ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 #tp-ops .ops-idle-machine .mkind{font-size:10px; color:var(--ops-ink4); letter-spacing:.03em; text-transform:capitalize; flex:0 0 auto;}
+/* (losing ground) a STRANDED row — a machine or kit an eviction left behind, awaiting salvage: the ended-lane
+   notice's amber edge and wash, and an amber state line under the id, as a DEPLOYED row carries one. The row
+   wraps, so the line takes no width from the id, the kind or the button on the line above. */
+#tp-ops .ops-idle-machine.stranded{flex-wrap:wrap; row-gap:3px; border-color:var(--ops-amber-dim); background:rgba(201,162,39,.06);}
+#tp-ops .ops-idle-machine .mstranded{flex:1 0 100%; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2);}
 
 /* DEPLOYED (2.5 slice 14b) — the guild's own placed structures, read-only, grouped by type under the IDLE tree's
    collapsible kind headers (the same classes): each row its name and hex over one line of state (an array: idle,
@@ -11210,32 +11215,44 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // ---- automation slice 3c: the ENDED-LANE notice (transport-model.md §11.6) ----------------------
-  // A lane that ends ON ITS OWN — a stop's store is gone (an Outpost torn down) — leaves an ordinary idle
-  // craft carrying `laneEnded = { reason, tick }`. The idle-craft board that would show it is Phase 4, so the
-  // lanes' home says it instead: one small notice per flagged craft, at the top of IN TRANSIT. The engine
-  // clears the flag on the craft's next dispatch, so the notice goes by itself once the craft is re-tasked;
-  // ✕ dismisses it sooner. A player's own Cancel / Stop sets no flag, so it never shows a notice.
-  // Why each reason ended the lane, in the player's words. 'target-gone' is the only reason the engine has
-  // (LANE_END_REASONS); an unknown one shows as the engine wrote it rather than being hidden.
-  var LANE_END_WHY = { 'target-gone': 'a stop\'s store is gone' };
+  // A lane that ends ON ITS OWN — a stop's store is gone (an Outpost torn down), or (losing ground) a stop's
+  // system was lost — leaves an ordinary craft carrying `laneEnded = { reason, tick }`. The idle-craft board
+  // that would show it is Phase 4, so the lanes' home says it instead: one small notice per flagged craft, at
+  // the top of IN TRANSIT. The engine clears the flag on the craft's next dispatch, so the notice goes by itself
+  // once the craft is re-tasked; ✕ dismisses it sooner. A player's own Cancel / Stop sets no flag, so it never
+  // shows a notice.
+  // Why each reason ended the lane, in the player's words — one per reason in the engine's LANE_END_REASONS
+  // (sim/routes.js); an unknown one shows as the engine wrote it rather than being hidden. 'system-lost' (losing
+  // ground): a system one of the lane's stops was at went fallow. It names no system — the flag carries none, and
+  // the craft lands at the end of whatever leg it was flying, which need not be the lost system.
+  var LANE_END_WHY = {
+    'target-gone': 'a stop\'s store is gone',
+    'system-lost': 'a stop\'s system was lost'
+  };
 
   // endedKey(v) — one notice per ENDING: the craft id + the tick its lane ended. A craft whose next lane
   // also ends gets a fresh key, so a dismissed old notice never hides the new one.
   function endedKey(v){ return v.id + '@' + v.laneEnded.tick; }
 
+  // endedWhere(v) — where the craft stopped. A lost system ends a lane while its craft may still be flying
+  // (transport-model.md §11.6): it finishes the leg it is on and lands at that leg's end, so name that place,
+  // the destination its IN TRANSIT row shows. A craft that has landed has a `location`, read as before.
+  function endedWhere(v){ return v.trip ? craftDestName(v.trip) : tpCraftWhere(v); }
+
   function renderLaneNotices(guild){
     var host = el('ops-lane-notices'); if(!host) return;
     var ended = ((guild && guild.vehicles) || []).filter(function(v){ return v.laneEnded && !O.endedDismissed[endedKey(v)]; });
-    // rewrite only when the set of notices changed (the IN TRANSIT signature discipline), so a poll never
-    // swaps the strip out from under a click
-    var sig = ended.map(endedKey).join('|');
+    // rewrite only when what the strip says changed (the IN TRANSIT signature discipline), so a poll never
+    // swaps the strip out from under a click. The place is in it because a craft that lands on a bare hex
+    // reads it differently once it is there.
+    var sig = ended.map(function(v){ return endedKey(v) + '>' + endedWhere(v); }).join('|');
     if(sig === O.endedSig) return;
     O.endedSig = sig;
     host.innerHTML = ended.map(function(v){
       var why = LANE_END_WHY[v.laneEnded.reason] || v.laneEnded.reason;
       return '<div class="ops-notice">'
         +   '<span class="msg">' + esc(tpShort(v['class']) + ' #' + craftNumber(v)) + '\'s lane stopped at '
-        +     esc(tpCraftWhere(v)) + ' — ' + esc(why) + '.</span>'
+        +     esc(endedWhere(v)) + ' — ' + esc(why) + '.</span>'
         +   '<button class="ops-notice-x" type="button" data-ended-x="' + esc(endedKey(v)) + '" title="Dismiss">&#10005;</button>'
         + '</div>';
     }).join('');
@@ -11413,15 +11430,19 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // reads as its kit label. Which kinds are kits is the kit-kinds table's answer, not a list kept here. Miners
   // and factories stay plain rows. A GROUND kit (the Prefecture, client PR B1) is never deployed on a hex: its
   // button reads Ferry, and the same popup ferries it to a system instead.
+  // A machine or kit an eviction left behind carries the engine's `stranded` flag (losing ground; territory-model.md
+  // §4), so its row is marked "awaiting salvage". The flag is the engine's answer: the row never asks whether the
+  // guild still holds the system (design.md §18). A stranded kit keeps its button, because it loads like any kit.
   function machineHtml(a){
     var kit = window.__kitKind && window.__kitKind(a.kind);
     var deploy = kit
       ? '<button class="ops-idle-deploy" type="button" data-kit-deploy="' + esc(a.id) + '">' + (kit.ground ? 'Ferry' : 'Deploy') + '</button>'
       : '';
-    return '<div class="ops-idle-machine">'
+    return '<div class="ops-idle-machine' + (a.stranded ? ' stranded' : '') + '">'
       +   '<span class="mid">' + esc(a.id) + '</span>'
       +   '<span class="mkind">' + esc(kit ? kit.label : a.kind) + '</span>'
       +   deploy
+      +   (a.stranded ? '<span class="mstranded">Stranded · awaiting salvage</span>' : '')
       + '</div>';
   }
 
@@ -11458,7 +11479,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       + '</div>';
   }
 
-  // Rebuild the tree only when the idle set (id + where each sits) changes, so a poll never
+  // idleSignature(idle) — everything the IDLE tree draws that can change: each row's id, where it sits, and whether it
+  // is stranded. The stranded term is there because an eviction flags a machine IN PLACE (same id, same system), and
+  // a salvage load clears the flag in place too, so without it the marker would never appear, or never go.
+  function idleSignature(idle){
+    return idle.map(function(a){ return a.id + '@' + a.systemId + (a.stranded ? ':stranded' : ''); }).sort().join('|');
+  }
+
+  // Rebuild the tree only when the idle set (id + where each sits + stranded) changes, so a poll never
   // discards the reader's collapse state — the same signature guard IN TRANSIT uses. A machine
   // deploying (it drops out) or a venture tearing down (it returns) shifts the signature and
   // rebuilds; collapse state for groups that still exist is preserved via O.idleCollapsed.
@@ -11466,7 +11494,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var host = el('ops-idle-list'); if(!host) return;
     var idle = myIdle(guild);
 
-    var sig = idle.map(function(a){ return a.id + '@' + a.systemId; }).sort().join('|');
+    var sig = idleSignature(idle);
     if(sig === O.idleSig) return;   // nothing changed — keep the DOM and its live collapse state
     O.idleSig = sig;
 
@@ -12207,6 +12235,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       base = p.cause === 'timeout'
         ? "The Syndicate's renegotiation window closed without an answer, so the licence lapsed. The venture reverts to unlicensed — it keeps running, but has forfeited its standing (RP). You can sign a fresh licence later."
         : "You let this licence lapse. The venture reverts to unlicensed — you keep the mine, but it has forfeited its standing (RP). You can sign a fresh licence later on your own terms.";
+    } else if(p.cause === 'evicted'){
+      // (losing ground) the guild lost the system the venture stood in, so the eviction closed it. Its words blame
+      // no one: the closure's payload does not say why the system was lost (its `system_lost` notice does, §14).
+      base = "This venture was closed because the system it stood in was lost.";
     } else {
       base = p.cause === 'forced'
         ? "This venture's standing fell to the Syndicate's floor, and they closed it."
