@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine half BUILT, client not yet; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine half BUILT, client not yet):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine and client halves BUILT; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine and client halves BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -197,7 +197,9 @@ detail opens in a **popup** (`docs/mockups/guild-hall-messages.html`). **Client 
   facts block only; the body sentence stays static — no game number is typed twice, honouring the
   mockup's FIELD → SOURCE contract, which maps only `Facts · Node held until` to `unlockDay`.) A `deploy_failed`
   notice is one exception to the uniform adviser: it re-dresses this same card with the pilot (§10, client
-  AS-BUILT). The two delivery notices are the other: they wear the Trader (§11, client AS-BUILT).
+  AS-BUILT). The two delivery notices are the other: they wear the Trader (§11, client AS-BUILT). *(⤳ 28-10-26: the
+  three territory notices — `system_lost`, `assets_inherited`, `assets_swept` — keep the uniform adviser, but add Show on
+  map, to the system they name: §14's client AS-BUILT.)*
 - **Read = opening the message.** Clicking a notice row opens its popup (filled from that row in
   `meGuild().events` by its id) and dispatches the existing `acknowledgeEvent { guildId, eventId }`
   for its id (sent as a Number — the apply matches by `===`), so the row renders read on the next
@@ -713,9 +715,22 @@ over it stand; a reader tells the two apart by the presence of `reason`. For the
 `system_lost` notice, and for a reclaim before the `outpost_packed` notice, so the newest-first inbox shows the cause above
 it. **Not built: the client.** The live card has no branch for it yet, so it reads "… voided; another guild claimed it
 before it finished." with `Claimed by` "—" — wrong words, flagged on the decision checklist with the copy for the design
-room.
+room. *(⤳ BUILT 28-10-26 — the client reads the dark void apart, next.)*
 
-## 14. The `system_lost` notice — losing ground, the destroyed path (engine half, 17-10-26)
+**⤳ AS-BUILT 28-10-26 — the client: a dark void reads as a dark array (`client/game.html` only, NO `sim/` change; roadmap
+2.5, losing ground client slice 1 — the notices).** The scout's card branches on `payload.reason`. `isDarkVoid` (a
+`scan_voided` whose `reason` is `'anchor-lost'`) gives the body two lines, "Deep Scan Array 01 — survey of {targetName}
+voided; the array went dark." and "It lost its footing: it no longer touches any ground you hold. It can take a new
+survey once your control reaches it again.", and the facts `Reason` = "Array went dark" in the place a rival void shows
+`Claimed by`. A void with no `reason` — the rival's — keeps its words, facts and card exactly. The row and title are
+unchanged for both ("Survey voided — {targetName}" / "Survey voided"), as are the scout, Dismiss alone and
+read-on-open. Only the exact `'anchor-lost'` value is read, so a reason a later slice adds needs its own words. The
+copy is a draft for review. One deliberate difference from the brief, which said the survey "will resume once your
+control reaches it again": the void CLEARS the job (above), so nothing resumes; the line says the array can take a NEW
+survey (decision checklist). Tripwire: `sim/tests/losing-ground-notice-client.test.js` (a real eviction's dark void
+beside a real rival void: two distinct cards).
+
+## 14. The `system_lost` notice — losing ground, the destroyed path (engine half 17-10-26, client half 28-10-26)
 
 **What it records.** A guild's Prefecture was **destroyed** and the system it claimed went fallow (`design.md` §2
 "Losing it evicts the system"; §19 #67 / #69; `docs/territory-model.md` §4 "AS-BUILT — losing ground, engine PR 1").
@@ -743,13 +758,65 @@ counts it while unread, and the per-guild view shows a guild only its own. **Not
 the card and its voice (the steward's / pilot's — the wording is the design room's, not chosen here). Until it lands the
 live client's notice renderer treats any type it does not know as a licence lapse, so a `system_lost` row would read
 "Licence lapsed — …" — the same gap `deploy_failed`'s and the delivery notices' engine halves had. Nothing the live
-client can send writes one: it has no abandon affordance (the operator CLI and `POST /action` do).
+client can send writes one: it has no abandon affordance (the operator CLI and `POST /action` do). *(⤳ 28-10-26: the
+client half is BUILT, below — in the Syndicate adviser's voice, by the brief. The abandon affordance is still not built:
+a later losing-ground client slice.)*
 
 **A NO-OP elsewhere.** A galaxy that never abandons writes no `system_lost` and no `evicted` closure, so every log,
 snapshot and golden without one is unchanged (`sim/tests/prefecture-abandon.test.js` pins the no-abandon hashes from
 `main`). The vocabulary test (`sim/tests/events.test.js`) now counts nine types.
 
-## 15. The sweep notices — `assets_inherited` and `assets_swept` (losing ground, engine half, 28-10-26)
+**AS-BUILT — the client half (28-10-26; `client/game.html` only, NO `sim/` change; roadmap 2.5, losing ground client
+slice 1 — the notices).** Built to the slice's brief; no new number; no engine, snapshot or fog change (the row already
+reached the player's own view — that is why it read as a lapse). The three **territory notices** — this one and §15's
+two — share one block in the notice code, beside §13's scan helpers; what they share is recorded here, and §15 records
+its own two.
+- **The voice.** The Syndicate's uniform adviser: eyebrow "Syndicate Notice", `assets/characters/advisor.jpg`, in the
+  plain tone of a closure or a lapse. Not the steward's or the pilot's, which this section left open: the brief ruled the
+  adviser, because a character voice for territory loss is a narrative decision (design.md §5). `openNotice` gains a
+  `territory` flag (`isTerritoryNotice`) for the body, the facts and the button; the eyebrow and portrait are the
+  default's.
+- **The row and title.** "System lost — {systemName}" (`TERRITORY_TITLE`), the name in the row's muted `.who` span, as a
+  closure carries its label. `systemName` falls back to `systemId`, then "Unknown system" (`territorySystemName`).
+- **The body** — static, two lines, branching on `payload.cause` the way a lapse does (`territoryBody`):
+  - `abandoned` — "You abandoned this Prefecture, and it has been destroyed. The system is unclaimed again."
+  - any other cause (the storyteller's, not built) — "Your Prefecture here has been destroyed. The system is unclaimed
+    again.", so a future cause is never blamed on the player;
+  - then, for every cause — "Any ventures you ran there are closed, and any goods you held there are forfeit. Any
+    machines you left behind are stranded in the system, awaiting salvage. Your exploration record of it is kept."
+    ("Any", so the line holds for a system the guild had nothing in.)
+  Draft copy, for the human to tune at review.
+- **The facts** (`territoryFacts`), in order: `Prefecture` = where it stood, named the way the engine names a site
+  ("HAL-3910 I · Slot 1": the shell's `__planetDesignation`, and the slot number read off the `_sNN` id as `sim/seed.js`
+  `siteName` reads it); `Ventures closed` = the count of `ventureIds`; `Machines stranded` = `strandedAssetIds` as kinds
+  ("1 Miner, 2 Factories, 1 Outpost kit", below); `Goods forfeit` = each `goodsForfeit` cell as the engine wrote it
+  ("4,500 Carbon Products"), nothing summed; `Lost` = `whenDay`. An empty list or pool reads "None"; a missing planet
+  and slot read "—".
+- **Kinds, read off the ids** (`assetKindOfId`, `assetKindsLabel`) — shared by all three notices. The kind is the
+  second-last `_` part of the engine's `asset_<guild>_<kind>_NN` (a kind has no underscore, so a guild id with one does
+  not move it). A miner or factory is named ("Miner" / "Factories"), a kit by its kit-kinds `label` ("Outpost kit"),
+  anything else by its key spelled out. The count per kind is the list's own (§15, "the count is the list's length, and
+  the kinds read off the ids"). Miners and factories come first, then the rest by kind, as Operations' IDLE orders them.
+  The ids are never looked up live: the swept ones no longer exist.
+- **Show on map**, beside Dismiss. The shared `#noticeShowMap` now shows for an `outpost_packed` or a territory notice
+  (`!(packed || territory)`). `noticeShowMap` flies to the system's centre hex (`territorySystemHex`): it reads the board
+  row by `payload.systemId` through the shell's existing `__boardSystem`, so no new bridge is needed. It flies at the
+  same zoom 9, and `__flyTo` selects the system there. A system the board does not hold closes the popup and leaves the
+  map where it is. An `outpost_packed` still flies to its heavy (§12).
+- **Passive.** No forks. Read-on-open (§8) is unchanged.
+- **The type audit.** The Messages list, the badge and both pips are type-agnostic. `isDeliveryNotice` and
+  `isScanNotice` are false for these. The evicted ventures' own `venture_closed` rows still take the Syndicate's
+  closure branch, unchanged ("You closed this venture." — the cause-`evicted` wording is still roadmap checklist item 7
+  of engine PR 1).
+- **Tripwires.** `sim/tests/losing-ground-notice-client.test.js` (13) runs the page's own notice code in a `node:vm`
+  sandbox against real engine output: `sim/tests/sweep-script.js` (an abandon with a position, then a rival's sweeping
+  plant) and `sim/tests/eviction-reach-script.js` (an abandon with nothing but a dark array). It checks the rows, the
+  popups, the facts, the degradation, Show on map, the re-dress across opens and read-on-open. It also pins the eight
+  older types as `main`'s block rendered them at e56799c (a guard that passes on `main` too). 9 of its 13 are red against
+  `main`'s client. The Show on map line's pin moved in `sim/tests/server.test.js` and
+  `sim/tests/outpost-teardown-client.test.js` (counts unchanged).
+
+## 15. The sweep notices — `assets_inherited` and `assets_swept` (losing ground, engine half and client half, 28-10-26)
 
 **What they record.** A guild planted a Prefecture in a fallow system where ANOTHER guild's stranded machines still
 lay, and its claim **swept** them: each changed hands to the planter, re-minted as its own idle asset (`design.md` §19
@@ -783,9 +850,30 @@ ids. (Both names, the ids-not-counts choice and who is named are on the decision
 `attention.notices` counts them while unread, and the per-guild view shows a guild only its own (`sim/fog.js` drops a
 rival's `events`). **Not built: the client** — the inbox rows, the cards and their voice. Until it lands the live
 client's notice renderer treats a type it does not know as a licence lapse, so either row would read "Licence lapsed —
-…" — the gap every engine-first notice has had (`system_lost` included).
+…" — the gap every engine-first notice has had (`system_lost` included). *(⤳ 28-10-26: the client half is BUILT,
+below.)*
 
 **A NO-OP elsewhere.** A galaxy that never sweeps writes neither notice, so every log, snapshot and golden without a
 sweep is unchanged (`sim/tests/sweep.test.js` pins two never-sweeps galaxies' hashes from `main`). The vocabulary test
 (`sim/tests/events.test.js`) now counts eleven types.
+
+**AS-BUILT — the client half (28-10-26; `client/game.html` only, NO `sim/` change; roadmap 2.5, losing ground client
+slice 1 — the notices).** Both are territory notices: they share §14's client block. The Syndicate adviser speaks, both
+are passive (Dismiss, and Show on map to the system), and both read their kinds off the ids. Only what is their own is
+recorded here.
+- **`assets_inherited`** (to the planter). Title "Machines inherited — {systemName}", the name in the row's `.who` span.
+  Body, two lines: "Your claim on this system came with machines another guild left stranded here. They are yours now:
+  idle, and ready to put to work." / "The ground may come spoiled, though. Where the old ventures held licences, their
+  nodes stay locked out until the terms clear, so you may not be able to put the machines on them yet." Facts: `System`;
+  `Machines gained` = `inheritedAssetIds` as kinds ("1 Miner, 2 Factories, 1 Outpost kit"); `Claimed` = `whenDay`. It
+  names no former owner, in words or facts (the open fog question above).
+- **`assets_swept`** (to each former owner) — the jeopardy beat. Title "Machines taken — {systemName}". Body, two lines:
+  "{byGuildName} has claimed the system you lost, and its claim took every machine you still had stranded there." /
+  "They are gone from your inventory. There is nothing left there to salvage." The rival falls back to `byGuildId`, then
+  "A rival guild". Facts: `System`; `Claimed by` = `byGuildName` (else `byGuildId`, else "—"); `Machines taken` =
+  `sweptAssetIds` as kinds, read off the OLD ids (they no longer exist, so nothing is looked up); `Taken` = `whenDay`.
+- **Show on map** goes to the system in both: the planter's claim, and the former owner's lost system, now the rival's.
+- The copy is a draft for review. Titles, the kinds-not-a-bare-count facts and the wording are on the roadmap decision
+  checklist. Tripwires: §14's.
+
 

@@ -3372,9 +3372,9 @@ test('GET / serves the delivery notices — the Trader, passive, Dismiss only', 
   assert.match(open, /else if\(trade\) paras = deliveryBody\(n\);/);
   assert.match(open, /\} else if\(trade\)\{\s*facts = deliveryFacts\(n\);/);
   // The card's buttons: deploy_failed's two forks, outpost_packed's Show on map (event-log.md §12, added by the
-  // Outpost teardown client slice) and Dismiss. Each optional one is gated on its own type, so a delivery notice
-  // still shows Dismiss alone.
-  assert.match(open, /el\('noticeShowMap'\)\.hidden = !packed;/, 'Show on map shows for the packed notice alone');
+  // Outpost teardown client slice; the territory notices show it too since losing ground client slice 1, §14 / §15)
+  // and Dismiss. Each optional one is gated on its own types, so a delivery notice still shows Dismiss alone.
+  assert.match(open, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory\);/, 'Show on map shows for the packed and territory notices alone');
   const overlay = html.slice(html.indexOf('<div id="notice-overlay">'), html.indexOf('<!-- The adviser reel'));
   assert.equal((overlay.match(/<button class="btn accept"/g) || []).length, 4, 'Redeploy, Return, Show on map, Dismiss — no other button');
   assert.equal((await fetch(base + '/assets/mission/Trader.jpg')).status, 200, 'the Trader hero is served');

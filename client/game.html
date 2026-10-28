@@ -3849,7 +3849,7 @@ select.field{appearance:none; cursor:pointer;}
       <div class="reel-eyebrow" id="noticeEyebrow">Syndicate Notice</div>
       <div class="reel-title" id="noticeTitle"></div>
       <div class="reel-body">
-        <!-- One <p> per paragraph: a Syndicate notice is one line, the pilot's report two beats, the Trader's one or three lines, the scout's one or two. -->
+        <!-- One <p> per paragraph: a Syndicate notice is one line (a territory notice two), the pilot's report two beats, the Trader's one or three lines, the scout's one or two. -->
         <div id="noticeBody"></div>
         <div class="facts" id="noticeFacts"></div>
       </div>
@@ -12167,8 +12167,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
   // "Deployment Failed — Outpost" / "No room at the outpost" / "Delivery turned back" / "Outpost
-  // packed up" / "Survey complete" / "Survey voided". The two delivery titles, the packed title and the
-  // two survey titles leave the name to the body and facts; their rows carry it (below).
+  // packed up" / "Survey complete" / "Survey voided" / "System lost — Nyx" / "Machines inherited — Nyx" /
+  // "Machines taken — Nyx". The two delivery titles, the packed title and the two survey titles leave
+  // the name to the body and facts; their rows carry it (below).
   function noticeTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment Failed — ' + deployKindLabel(p);
@@ -12177,6 +12178,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(n.type === 'scan_voided') return 'Survey voided';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost';
     if(n.type === 'delivery_turned_back') return 'Delivery turned back';
+    if(isTerritoryNotice(n)) return TERRITORY_TITLE[n.type] + ' — ' + territorySystemName(p);
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
   }
   // The subject-line row title: the same prefix, with the label in the muted `.who` span.
@@ -12184,6 +12186,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment Failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
     if(n.type === 'outpost_packed') return 'Outpost packed up &mdash; <span class="who">' + esc(packedOutpostName(p)) + '</span>';
+    if(isTerritoryNotice(n)) return esc(TERRITORY_TITLE[n.type]) + ' &mdash; <span class="who">' + esc(territorySystemName(p)) + '</span>';
     if(n.type === 'scan_complete') return 'Survey complete &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'scan_voided') return 'Survey voided &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
@@ -12389,11 +12392,19 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The target's name, as the engine wrote it: a system's name, or a planet's designation ("Nyx IV").
   function scanTargetLabel(p){ return p.targetName || p.targetSystemId || p.targetPlanetId || 'the target'; }
 
+  // A void has two causes, told apart by payload.reason (§13). A rival's claim of the target carries none: the
+  // scout names the rival. 'anchor-lost' is the ARRAY going dark: the system it hung off was lost, or the Outpost
+  // it touched was removed, so it no longer touches the guild's control. The job is cleared, not paused, so the
+  // scout says the array can take a new survey once control reaches it, not that this one resumes.
+  function isDarkVoid(n){ return n.type === 'scan_voided' && (n.payload || {}).reason === 'anchor-lost'; }
+  var SCAN_DARK_LINE = "It lost its footing: it no longer touches any ground you hold. It can take a new survey once your control reaches it again.";
+
   // The scout's report, one <p> per line. A completion says what it learned in a second line, from the
   // engine's newFacts: how many readings were new, or that none were (the target was already charted).
   function scanBody(n){
     var p = n.payload || {};
     var lead = scanArrayLabel(p) + ' — survey of ' + scanTargetLabel(p);
+    if(isDarkVoid(n)) return [lead + ' voided; the array went dark.', SCAN_DARK_LINE];
     if(n.type === 'scan_voided'){
       return [lead + ' voided; ' + (p.byGuildName || p.byGuildId || 'another guild') + ' claimed it before it finished.'];
     }
@@ -12407,19 +12418,150 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   var SCAN_LEVEL_WORD = { L1:'System survey', L2:'Planet survey' };
 
   // The facts block, in its order: the array, the target, which survey, then what came of it (the new
-  // readings, or who claimed the target) and the day.
+  // readings, who claimed the target, or that the array went dark) and the day.
   function scanFacts(n){
     var p = n.payload || {};
     var voided = n.type === 'scan_voided';
+    var outcome;
+    if(isDarkVoid(n)) outcome = ['Reason', 'Array went dark', false];
+    else if(voided) outcome = ['Claimed by', p.byGuildName || p.byGuildId || '—', false];
+    else outcome = ['New readings', p.newFacts != null ? fmt(p.newFacts) : '—', false];
     var facts = [
       ['Array', scanArrayLabel(p), false],
       ['Target', scanTargetLabel(p), false],
       ['Survey', SCAN_LEVEL_WORD[p.level] || '—', false],
-      voided ? ['Claimed by', p.byGuildName || p.byGuildId || '—', false]
-             : ['New readings', p.newFacts != null ? fmt(p.newFacts) : '—', false]
+      outcome
     ];
     if(n.whenDay != null){ facts.push([voided ? 'Voided' : 'Completed', 'Day ' + n.whenDay, false]); }
     return facts;
+  }
+
+  // --- The territory notices — losing ground (docs/event-log.md §14 / §15) -------------------------
+  // A system changed hands. system_lost: the player's Prefecture was destroyed and the system went fallow.
+  // assets_inherited: the player's claim of a fallow system came with machines another guild left stranded
+  // there. assets_swept: a rival's claim of the player's fallow system took the machines left stranded there.
+  // The Syndicate's uniform adviser reports all three, in the plain tone of a closure or a lapse: a character
+  // voice for territory is a narrative decision (design.md §5), not this slice's. All three are PASSIVE:
+  // Dismiss, and Show on map to the system. Every value is a payload field or the engine's whenDay; the client
+  // computes no game number (§18).
+
+  function isTerritoryNotice(n){ return n.type === 'system_lost' || n.type === 'assets_inherited' || n.type === 'assets_swept'; }
+
+  // The title's prefix, per type. The system's name follows it, in the title and in the row.
+  var TERRITORY_TITLE = { system_lost:'System lost', assets_inherited:'Machines inherited', assets_swept:'Machines taken' };
+
+  // The system's seed name, as the engine wrote it, falling back to its id (the other notices' discipline).
+  function territorySystemName(p){ return p.systemName || p.systemId || 'Unknown system'; }
+
+  // The kind an asset id names. The engine mints every id as asset_<guild>_<kind>_NN and a kind has no
+  // underscore, so the kind is the second-last part, whatever the guild id holds. The swept ids no longer
+  // exist, so the kind is read off the id and never looked up live; the other two lists are read the same way.
+  function assetKindOfId(id){
+    var parts = String(id).split('_');
+    return (parts[0] === 'asset' && parts.length >= 4) ? parts[parts.length - 2] : null;
+  }
+
+  // The player's word for an asset kind: the two machines by name, a kit by its kit-kinds label ("Outpost
+  // kit"), anything else by its key spelled out. A count of one is singular.
+  var MACHINE_WORD = { miner:['Miner', 'Miners'], factory:['Factory', 'Factories'] };
+  function assetKindWord(kind, count){
+    var w = MACHINE_WORD[kind];
+    if(w) return count === 1 ? w[0] : w[1];
+    var kit = (kind && window.__kitKind) ? window.__kitKind(kind) : null;
+    var word = kit ? kit.label : (kind ? prettyClass(kind) : 'Machine');
+    return count === 1 ? word : word + 's';
+  }
+
+  // A list of asset ids as the player reads it: "1 Miner, 2 Factories, 1 Outpost kit". How many of each kind is
+  // the list's own count of ids, read off the ids (§15: "the count is the list's length, and the kinds read off
+  // the ids"). Miners and factories first, then the rest by kind, as Operations' IDLE orders them. An empty or
+  // missing list reads "None".
+  function assetKindsLabel(ids){
+    var counts = {};
+    (ids || []).forEach(function(id){ var k = assetKindOfId(id) || ''; counts[k] = (counts[k] || 0) + 1; });
+    var machines = ['miner', 'factory'].filter(function(k){ return counts[k]; });
+    var rest = Object.keys(counts).filter(function(k){ return machines.indexOf(k) < 0; }).sort();
+    var parts = machines.concat(rest).map(function(k){ return fmt(counts[k]) + ' ' + assetKindWord(k, counts[k]); });
+    return parts.length ? parts.join(', ') : 'None';
+  }
+
+  // The goods forfeit with the system, each quantity as the engine wrote it ("4,500 Carbon Products"), in the
+  // payload's own key order. Nothing is summed. An empty pool reads "None".
+  function goodsForfeitLabel(goods){
+    var keys = Object.keys(goods || {});
+    return keys.length ? keys.map(function(g){ return fmt(goods[g]) + ' ' + prettyGood(g); }).join(', ') : 'None';
+  }
+
+  // Where the Prefecture stood, named the way the engine names a site ("Nyx IV · Slot 1"): the planet's
+  // designation from the shell (__planetDesignation), and the slot's number read off its id (pl_…_sNN), as
+  // sim/seed.js siteName reads it. Either part the client cannot name reads as its raw id.
+  function prefectureSiteLabel(p){
+    var planet = (p.planetId && window.__planetDesignation) ? window.__planetDesignation(p.planetId) : p.planetId;
+    var m = /_s(\d+)$/.exec(String(p.slotId || ''));
+    var slot = m ? ('Slot ' + parseInt(m[1], 10)) : p.slotId;
+    return [planet, slot].filter(Boolean).join(' · ') || '—';
+  }
+
+  // The Syndicate's words, static copy keyed on type (and, for a loss, payload.cause), one <p> per line. A loss
+  // branches on cause as a lapse does. 'abandoned' (the owner gave the system up) is the only cause written today;
+  // any other (the storyteller's, once it is built) gets words that blame no one. The sentences say "any", so
+  // they hold whatever was there. The numbers ride the facts block.
+  var SYSTEM_LOST_ABANDONED = "You abandoned this Prefecture, and it has been destroyed. The system is unclaimed again.";
+  var SYSTEM_LOST_DESTROYED = "Your Prefecture here has been destroyed. The system is unclaimed again.";
+  var SYSTEM_LOST_AFTERMATH = "Any ventures you ran there are closed, and any goods you held there are forfeit. Any machines you left behind are stranded in the system, awaiting salvage. Your exploration record of it is kept.";
+  var ASSETS_INHERITED_BODY = [
+    "Your claim on this system came with machines another guild left stranded here. They are yours now: idle, and ready to put to work.",
+    "The ground may come spoiled, though. Where the old ventures held licences, their nodes stay locked out until the terms clear, so you may not be able to put the machines on them yet."
+  ];
+  var ASSETS_SWEPT_AFTERMATH = "They are gone from your inventory. There is nothing left there to salvage.";
+  function territoryBody(n){
+    var p = n.payload || {};
+    if(n.type === 'system_lost'){
+      return [p.cause === 'abandoned' ? SYSTEM_LOST_ABANDONED : SYSTEM_LOST_DESTROYED, SYSTEM_LOST_AFTERMATH];
+    }
+    if(n.type === 'assets_inherited') return ASSETS_INHERITED_BODY;
+    // assets_swept names the new holder. Who holds a system is public (L0), so naming it leaks nothing (§15).
+    var who = p.byGuildName || p.byGuildId || 'A rival guild';
+    return [who + ' has claimed the system you lost, and its claim took every machine you still had stranded there.', ASSETS_SWEPT_AFTERMATH];
+  }
+
+  // The facts block, in its order. A loss: where the Prefecture stood, the ventures closed (the count of
+  // ventureIds), what was left stranded, the goods forfeit, and the day. A gain or a taking: the system, the
+  // machines (and, for a taking, who took them), and the day.
+  function territoryFacts(n){
+    var p = n.payload || {};
+    var facts;
+    if(n.type === 'system_lost'){
+      var ventures = (p.ventureIds || []).length;
+      facts = [
+        ['Prefecture', prefectureSiteLabel(p), false],
+        ['Ventures closed', ventures ? fmt(ventures) : 'None', false],
+        ['Machines stranded', assetKindsLabel(p.strandedAssetIds), false],
+        ['Goods forfeit', goodsForfeitLabel(p.goodsForfeit), false]
+      ];
+    } else if(n.type === 'assets_inherited'){
+      facts = [
+        ['System', territorySystemName(p), false],
+        ['Machines gained', assetKindsLabel(p.inheritedAssetIds), false]
+      ];
+    } else {
+      facts = [
+        ['System', territorySystemName(p), false],
+        ['Claimed by', p.byGuildName || p.byGuildId || '—', false],
+        ['Machines taken', assetKindsLabel(p.sweptAssetIds), false]
+      ];
+    }
+    var dayWord = { system_lost:'Lost', assets_inherited:'Claimed', assets_swept:'Taken' }[n.type];
+    if(n.whenDay != null){ facts.push([dayWord, 'Day ' + n.whenDay, false]); }
+    return facts;
+  }
+
+  // Where Show on map goes for a territory notice: the system it names, by payload.systemId, at its centre hex
+  // on the board (the shell's __boardSystem, the seed's own geometry). The map selects the system there. Null
+  // when the board does not hold it, so the popup closes and the map stays put.
+  function territorySystemHex(p){
+    var sys = (p.systemId && window.__boardSystem) ? window.__boardSystem(p.systemId) : null;
+    return (sys && sys.coords) ? { q: sys.coords.q, r: sys.coords.r } : null;
   }
 
   // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
@@ -12525,13 +12667,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // map alone (§12). So `pilot` (the speaker) and the buttons are separate flags. A delivery notice is
     // the trade lane: the Trader's eyebrow, portrait and voice, and no button but Dismiss (§11). A scan
     // notice is the survey lane: the scout's eyebrow and portrait (the survey popup's), Dismiss alone (§13).
-    // Every other notice is the Syndicate's uniform adviser (§9). The card is shared, so all of this is set on
+    // Every other notice is the Syndicate's uniform adviser (§9). Of those, a territory notice (`territory`)
+    // also offers Show on map, to the system it names (§14 / §15). The card is shared, so all of this is set on
     // every open — a notice must not keep the last one's speaker or buttons, and no notice keeps an old note.
     var fleet = n.type === 'deploy_failed';
     var packed = n.type === 'outpost_packed';
     var pilot = fleet || packed;
     var trade = isDeliveryNotice(n);
     var scan = isScanNotice(n);
+    var territory = isTerritoryNotice(n);
     var eyebrow = 'Syndicate Notice', art = 'assets/characters/advisor.jpg';
     if(pilot){ eyebrow = 'Fleet — Dispatch'; art = 'assets/characters/pilot.jpg'; }
     if(trade){ eyebrow = 'Trade — Syndicate'; art = 'assets/mission/Trader.jpg'; }
@@ -12545,16 +12689,17 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // Return plans the unload, which — read off the kit aboard — may end on an unclaimed system, as the ferry may.
     el('noticeRedeploy').hidden = !fleet || isGroundKitKind(p.kind);
     el('noticeReturn').hidden = !fleet;
-    el('noticeShowMap').hidden = !packed;
+    el('noticeShowMap').hidden = !(packed || territory);
     el('noticeNote').textContent = '';
     el('noticeTitle').textContent = noticeTitle(n);
     // The body, one <p> per paragraph: the pilot's two beats or one question, the Trader's lines, the
-    // scout's report, or a Syndicate notice's one line.
+    // scout's report, a territory notice's two lines, or a Syndicate notice's one line.
     var paras;
     if(fleet) paras = DEPLOY_FAILED_BODY;
     else if(packed) paras = OUTPOST_PACKED_BODY;
     else if(trade) paras = deliveryBody(n);
     else if(scan) paras = scanBody(n);
+    else if(territory) paras = territoryBody(n);
     else paras = [noticeBody(n)];
     el('noticeBody').innerHTML = paras.map(function(t){ return '<p>' + esc(t) + '</p>'; }).join('');
     var facts;
@@ -12566,6 +12711,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       facts = deliveryFacts(n);
     } else if(scan){
       facts = scanFacts(n);
+    } else if(territory){
+      facts = territoryFacts(n);
     } else {
       // Facts: Location (payload.ventureName); the event day (Closed / Lapsed = whenDay); and — a
       // closure carrying a lockout only — Node held until (unlockDay). The unlock row is gated on the
@@ -12631,12 +12778,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return !!(kit && kit.ground);
   }
 
-  // The outpost_packed notice's one control (§12): close the popup and fly the map to the packed heavy
-  // (packedCraftHex). Navigation only. Zoom 9 is the Dispatch popup's Show on map zoom, and __flyTo closes
-  // the Guild Hall itself.
+  // Show on map: close the popup and fly the map to what the notice is about. For an outpost_packed (§12),
+  // its one control, that is the packed heavy (packedCraftHex); for a territory notice (§14 / §15), the system
+  // it names (territorySystemHex). Navigation only. Zoom 9 is the Dispatch popup's Show on map zoom, and
+  // __flyTo closes the Guild Hall itself.
   function noticeShowMap(){
-    var p = (shownNotice && shownNotice.payload) || {};
-    var hex = packedCraftHex(p);
+    var n = shownNotice || {};
+    var p = n.payload || {};
+    var hex = isTerritoryNotice(n) ? territorySystemHex(p) : packedCraftHex(p);
     closeNotice();
     if(hex && window.__flyTo) window.__flyTo(hex.q, hex.r, 9);
   }

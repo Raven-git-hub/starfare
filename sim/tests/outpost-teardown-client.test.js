@@ -552,9 +552,10 @@ test('closed or reopened before the answer: the answer changes nothing', async (
 // ---- 3. the wiring the sandboxes cannot reach ------------------------------------------------------------------
 
 test('wiring: the markup, the listeners, the self-close path and the CSS that hides a rival\'s strip', () => {
-  // The Show on map button sits in the notice footer, hidden until an outpost_packed opens, and is wired.
+  // The Show on map button sits in the notice footer, hidden until an outpost_packed (or, since losing ground client
+  // slice 1, a territory notice — losing-ground-notice-client.test.js) opens, and is wired.
   assert.match(html, /<button class="btn accept" id="noticeShowMap" type="button" hidden>Show on map<\/button>\n\s+<button class="btn accept" id="noticeDismiss"/);
-  assert.match(guildScript, /el\('noticeShowMap'\)\.hidden = !packed;/);
+  assert.match(guildScript, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory\);/);
   assert.match(guildScript, /noticeShowMapBtn\.addEventListener\('click', noticeShowMap\)/);
   // The forks stay deploy_failed-only, the speaker is the pilot flag. (Since the Prefecture / claims client PR B1 a
   // GROUND kit's deploy_failed hides Redeploy too — deploy-failed-notice-client.test.js holds that.)
