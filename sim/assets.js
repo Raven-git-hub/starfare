@@ -19,9 +19,10 @@ const { DEPLOYABLE_KITS, kitGoodFor } = require('./resources.js');
 // the guild's own ventures, every time it is asked.
 //
 // It holds RULES (kinds, the starter count, the id scheme) and SELECTORS over a
-// guild. It constructs nothing — `createAsset` lives with the other entity
-// constructors in state.js — which is what keeps this file free of a require
-// cycle with state.js.
+// guild — plus the one DELETION, `deleteAsset`, which sits beside nextAssetNumber
+// because it writes the record that function reads. It constructs nothing —
+// `createAsset` lives with the other entity constructors in state.js — which is
+// what keeps this file free of a require cycle with state.js.
 //
 // TWO SETS OF KINDS, KEPT APART ON PURPOSE (design.md §4, "The undeployed Outpost kit
 // is a system-scoped idle asset", RULED 02-10-26). A guild's inventory also holds
@@ -129,13 +130,14 @@ function assetNumberOf(id) {
 // Dockyard, the Syndicate delivery and grantAsset mint from this (docs/build-yard.md §4), CONTINUING
 // the per-(guild, kind) sequence above the founding grant's `01..STARTER_*` range.
 //
-// WHY (b): design.md §15.4 "Ids never repeat". In play a miner or factory is never deleted (teardown
-// frees an asset to idle, it does not remove it — sim/licence.js), so the live max alone would only ever
-// grow. But the operator levers removeAsset and removeVenture { asset: 'remove' } DO delete one, and
-// deleting the top-numbered miner would let the live max hand its number out again. So those levers
-// record the number they delete in `guild.removedAssetHighWater` (sim/actions.js deleteAsset), and
-// this reads it: a number at or below it is never minted again. Omitted until a lever deletes an
-// asset, so a guild that never had one removed numbers exactly as before.
+// WHY (b): design.md §15.4 "Ids never repeat". Teardown frees an asset to idle, it does not remove it
+// (sim/licence.js). But the operator levers removeAsset and removeVenture { asset: 'remove' } DO delete
+// one — and so, in play, does the SWEEP (losing ground engine PR 4, sim/eviction.js), which retires a
+// stranded machine from its former owner when a rival's claim takes it. Deleting the top-numbered miner
+// would let the live max hand its number out again. So every deletion records the number it deletes in
+// `guild.removedAssetHighWater` (deleteAsset, below), and this reads it: a number at or below it is
+// never minted again. Omitted until an asset is deleted, so a guild that never lost one numbers exactly
+// as before.
 //
 // DETERMINISTIC (invariant 9): two emissions in one tick get distinct ids because the build step
 // pushes each emitted asset into `guild.assets` BEFORE minting the next, so the second read sees the
@@ -150,6 +152,31 @@ function nextAssetNumber(guild, kind) {
     if (n != null && n > max) max = n;
   }
   return max + 1;
+}
+
+// deleteAsset(guild, assetId) — THE ONE way an asset leaves a guild's inventory for good, shared by the
+// operator levers (removeAsset, removeVenture { asset: 'remove' }, removeVehicle of a laden heavy —
+// sim/actions.js) and the sweep (sim/eviction.js), so none of them can forget the record below.
+//
+// Before the row goes, a miner's or factory's NUMBER (the `NN` of `asset_<guild>_<kind>_NN`) is recorded
+// in the guild's per-kind REMOVED HIGH-WATER, `guild.removedAssetHighWater = { [kind]: NN }`.
+// nextAssetNumber (above) reads it, so a deleted number is never minted again — without it, deleting
+// the top-numbered miner would let the next grant or build reissue that id. The mark only climbs:
+// deleting a number at or below the one already recorded changes nothing, and the map is created only
+// when it is first written (omit-when-absent, sim/state.js).
+//
+// A KIT is not recorded: kits number from `kitAssetSerial`, a stored counter that already never goes back.
+// Nothing is conserved for an asset, so there is no counter-move; and like grantAsset, the tick is
+// recorded in the journal (an asset carries no tick of its own). It MUTATES `guild`. (It lived in
+// sim/actions.js until the sweep needed it from sim/eviction.js, which sim/actions.js requires.)
+function deleteAsset(guild, assetId) {
+  const asset = (guild.assets || []).find((a) => a.id === assetId);
+  const n = asset ? assetNumberOf(asset.id) : null;
+  const marks = guild.removedAssetHighWater || {};
+  if (asset && isAssetKind(asset.kind) && n != null && n > (marks[asset.kind] || 0)) {
+    guild.removedAssetHighWater = { ...marks, [asset.kind]: n };
+  }
+  guild.assets = (guild.assets || []).filter((a) => a.id !== assetId);
 }
 
 // nextKitAssetSerial(guild) -> the next per-guild KIT asset number: one above the guild's stored
@@ -213,6 +240,7 @@ module.exports = {
   assetId,
   assetNumberOf,
   nextAssetNumber,
+  deleteAsset,
   nextKitAssetSerial,
   deployedAssetIds,
   carriedAssetIds,

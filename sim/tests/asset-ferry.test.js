@@ -310,22 +310,20 @@ test('SEAM — unloading into the ORIGIN system once it is held again is legal (
   s = ticks(s, 5);
 });
 
-test('SEAM — the salvage race: machines already in hand never block a rival\'s claim of the fallow system; once it is the rival\'s, they cannot be unloaded there', () => {
+test('SEAM — the salvage race: a rival\'s claim sweeps only what is still stranded; the machine in hand stays the salvager\'s, and cannot be unloaded in the rival\'s system', () => {
   let { s, miner, factory } = laden();
-  // The factory is still stranded, so the TEMPORARY plant guard (engine PR 1) refuses g2's claim…
+  // The miner is aboard the heavy; the factory is still stranded. g2 claims the fallow system — legal since the sweep
+  // (engine PR 4) — and its plant takes the factory, but cannot reach the miner in the hold.
   let rivalKit;
   ({ s, kitId: rivalKit } = P.grantPrefectureKit(s, 'g2', TARGET));
   s = P.survey(s, 'g2', PLANET_A);
-  assert.match(refuse(s, P.plant('g2', rivalKit, SLOT_A1)), /stranded machines awaiting salvage/);
-  // …until a second heavy has it aboard too. Nothing is left stranded, and the claim goes through.
-  let second;
-  ({ s, id: second } = spawnAt(s, HEAVY_TRANSPORT, AT_TARGET));
-  s = accept(s, load(second, factory));
-  assert.deepEqual(strandedAssetsIn(s, TARGET), []);
   s = accept(s, P.plant('g2', rivalKit, SLOT_A1));
   assert.equal(guildHolds(s, 'g2', TARGET), true);
-  // Both machines still read TARGET — a rival's system now — and that is legal in transit; they unload only at home.
-  assert.deepEqual([assetOf(s, miner).systemId, assetOf(s, factory).systemId], [TARGET, TARGET]);
+  assert.equal(assetOf(s, factory), undefined, 'the stranded factory changed hands');
+  assert.deepEqual(s.guilds.find((g) => g.id === 'g2').assets.map((a) => a.kind), ['factory'], 're-minted as g2\'s own');
+  assert.equal(heavyOf(s).carryingAssetId, miner, 'the miner in hand is still the salvager\'s, aboard');
+  // It still reads TARGET — a rival's system now — and that is legal in transit; it unloads only at home.
+  assert.equal(assetOf(s, miner).systemId, TARGET);
   assert.equal(refuse(s, unload(HEAVY)), `guild "g1" does not hold system "${TARGET}" — a machine unloads only into a system its guild holds`);
   s = ticks(s, 5);
 });

@@ -9,7 +9,7 @@
 // removeAsset and removeVenture { asset: 'remove' } DO. Delete the top-numbered miner, grant or build
 // another, and the live max handed the deleted id straight back out.
 //
-// THE FIX: both levers delete through ONE helper (sim/actions.js deleteAsset), which first records the
+// THE FIX: both levers delete through ONE helper (sim/assets.js deleteAsset), which first records the
 // deleted number in `guild.removedAssetHighWater[kind]`; nextAssetNumber never mints at or below it.
 //
 // The tripwires:

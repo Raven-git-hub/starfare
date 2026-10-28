@@ -422,7 +422,7 @@ function createGuild({
     // operator lever has ever deleted — `{ [kind]: NN }` (design.md §15.4 "Ids never repeat"; §4 AS-BUILT).
     // Miners and factories number from "the highest live number + 1" (sim/assets.js nextAssetNumber),
     // which is safe while nothing deletes them; removeAsset and removeVenture { asset: 'remove' } do, so
-    // they record the deleted number here (sim/actions.js deleteAsset) and nextAssetNumber never mints at
+    // they record the deleted number here (sim/assets.js deleteAsset) and nextAssetNumber never mints at
     // or below it. It only ever climbs. Guarded by `checkAssetOccupancy`. OMITTED when empty so a guild
     // that never had an asset deleted carries no key and serializes byte-identically to pre-fix
     // (invariant 9). A restored save that HANDS ONE IN keeps it (copied, so it never aliases the caller's).

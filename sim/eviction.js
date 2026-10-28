@@ -24,12 +24,20 @@
 // position there: EVERY guild's lane with a stop at it ENDS (a fallow system resets all logistics there), and the
 // evicting guild's Deep Scan Arrays that hung off it go DARK (their running scans voided). Outposts are not
 // touched: they stand on their own hexes, independent of the system claim, and stay reclaimable.
+//
+// THE SWEEP (engine PR 4; §19 #67, SETTLED 28-10-26). The salvage window closes when someone claims the fallow
+// system. If the claimant is the old owner, its plant simply RECOVERS its own machines (recoverStrandedAssets). If it
+// is a rival, the machines still lying there CHANGE HANDS to it (sweepStrandedAssets): re-minted under the new owner,
+// with both guilds told. Either way, nothing is left stranded in a held system.
 
 const { applyVentureClosure } = require('./licence.js');
-const { recordEvent, SYSTEM_LOST } = require('./events.js');
+const { recordEvent, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT } = require('./events.js');
 const { forfeitSystemPool } = require('./stock.js');
 const { getSystem } = require('./seed.js');
-const { carriedAssetIds } = require('./assets.js');
+const { createAsset } = require('./state.js');
+const {
+  carriedAssetIds, assetId, nextAssetNumber, nextKitAssetSerial, isKitAssetKind, deleteAsset,
+} = require('./assets.js');
 const { endLane } = require('./routes.js');
 const { voidDetachedScans } = require('./deep-scan-arrays.js');
 
@@ -48,7 +56,7 @@ function isStranded(asset) {
 }
 
 // strandedAssetsIn(state, systemId) -> [ { guildId, assetId } ] — every stranded asset, of any guild, sitting in
-// `systemId`, in guild then asset order (invariant 9). Read by the plant's TEMPORARY re-claim guard (sim/actions.js).
+// `systemId`, in guild then asset order (invariant 9). Read by the sweep below, which takes them in this order.
 function strandedAssetsIn(state, systemId) {
   const out = [];
   for (const g of state.guilds || []) {
@@ -62,8 +70,8 @@ function strandedAssetsIn(state, systemId) {
 // recoverStrandedAssets(guild, systemId) -> the ids of the guild's own stranded assets in `systemId`, having
 // MUTATED each to drop its flag. Called when the guild plants a Prefecture there again (sim/actions.js plantKit):
 // the system is held once more, so its machines in it are ordinary idle assets again — and a stranded asset in a
-// held system is exactly what the invariant forbids. Another guild's stranded assets never reach a plant (the
-// TEMPORARY guard refuses it), so this only ever clears the planter's own.
+// held system is exactly what the invariant forbids. They are still the guild's own, so they keep their ids and
+// nobody is told. ANOTHER guild's stranded assets there are not this function's: the sweep below takes them.
 function recoverStrandedAssets(guild, systemId) {
   const recovered = [];
   for (const a of guild.assets || []) {
@@ -77,6 +85,77 @@ function recoverStrandedAssets(guild, systemId) {
 
 // byId — byte order over ASCII ids, so every list in the notice is stable (invariant 9).
 const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// --- THE SWEEP (losing ground, engine PR 4; design.md §19 #67, SETTLED 28-10-26) -------------------------------------
+//
+// A rival's claim of a fallow system closes the salvage window: whatever the old owner has not hauled out by then
+// changes hands. The planter's own plant (sim/actions.js plantKit) calls this right after recoverStrandedAssets.
+
+// sweptNumber(guild, kind) -> the number the planter's re-minted asset takes, from the sequence its kind already
+// numbers from — so the sweep invents no third way to number an asset. A miner or factory continues the guild's
+// per-kind sequence (`nextAssetNumber`, which also stays above every number the guild ever deleted); a KIT bumps the
+// guild's stored kit serial, which never goes back (the `mintKitAsset` way, sim/actions.js). MUTATES `guild` for a kit.
+function sweptNumber(guild, kind) {
+  if (!isKitAssetKind(kind)) return nextAssetNumber(guild, kind);
+  guild.kitAssetSerial = nextKitAssetSerial(guild);
+  return guild.kitAssetSerial;
+}
+
+// sweepStrandedAssets(state, guild, prefecture, tick) -> the planter's new asset ids, having MUTATED `state`.
+// `guild` has just planted `prefecture` in a fallow system, at `tick`, and now holds it. Every stranded asset of
+// ANOTHER guild still lying in that system changes hands to the planter (§19 #67). It cannot simply be moved from one
+// guild's list to the other's: its id names its owner (`asset_<guild>_<kind>_NN`), so a moved row would carry a
+// rival's name and break the per-guild numbering. So each one is RE-MINTED, in guild-then-asset order (invariant 9):
+//   1. read the old row's `kind` and `maintenanceCondition` — before the row goes;
+//   2. retire it from its former owner through THE ONE deletion, `deleteAsset` (sim/assets.js), which also records the
+//      former owner's removed high-water, so the old number is never reissued to it (design.md §15.4 — the sweep is
+//      the game's first owner change, so this is the first time play needs that record). Its `assets` list goes too
+//      if that was its last asset (omit-when-empty, as a load or a plant leaves it);
+//   3. mint a fresh asset under the planter: a new id from the planter's own sequence (sweptNumber), the same kind,
+//      in the same system (now the planter's), the SAME maintenanceCondition — the field is inert (design.md §4), so
+//      "at their current condition" means the stored value rides along, nothing more — stamped `updatedAtTick` with
+//      this tick (§15.2), and with NO `stranded` flag: an owned machine in a held system is an ordinary idle asset.
+//      It is pushed before the next is minted, so nextAssetNumber sees it and two never collide.
+// Then BOTH SIDES ARE TOLD (ruled 28-10-26): one `assets_swept` notice per former owner, in guild order, listing the
+// ids it lost and naming the new holder (who holds a system is public, L0 — the scan_voided precedent); and one
+// `assets_inherited` to the planter, listing its new ids — and NOT naming the former owner, since whether stranded
+// machines are public is still an open question (decision checklist). A sweep that finds nothing writes nothing.
+//
+// What it cannot reach, by construction: a machine aboard a heavy (loadAsset cleared its flag — it is in the hold,
+// not the system) or already unloaded elsewhere (not in this system). Goods were destroyed at the eviction. And the
+// node lockouts the eviction wrote are galaxy-scoped and untouched, so the planter inherits spoiled ground too.
+function sweepStrandedAssets(state, guild, prefecture, tick) {
+  const systemId = prefecture.systemId;
+  const lostBy = new Map(); // former owner's id -> the old ids it lost (insertion order = guild order)
+  const inherited = [];
+  for (const { guildId, assetId: oldId } of strandedAssetsIn(state, systemId)) {
+    if (guildId === guild.id) continue; // the planter's own — recoverStrandedAssets has already handed them back
+    const formerOwner = state.guilds.find((g) => g.id === guildId);
+    const { kind, maintenanceCondition } = formerOwner.assets.find((a) => a.id === oldId);
+    deleteAsset(formerOwner, oldId);
+    if (formerOwner.assets.length === 0) delete formerOwner.assets;
+    if (!Array.isArray(guild.assets)) guild.assets = [];
+    const newId = assetId(guild.id, kind, sweptNumber(guild, kind));
+    guild.assets.push(createAsset({ id: newId, kind, systemId, maintenanceCondition, updatedAtTick: tick }));
+    inherited.push(newId);
+    if (!lostBy.has(guildId)) lostBy.set(guildId, []);
+    lostBy.get(guildId).push(oldId);
+  }
+  if (inherited.length === 0) return inherited;
+
+  const system = getSystem(systemId);
+  const systemName = (system && system.name) || systemId;
+  for (const [guildId, oldIds] of lostBy) {
+    const formerOwner = state.guilds.find((g) => g.id === guildId);
+    recordEvent(formerOwner, tick, ASSETS_SWEPT, {
+      systemId, systemName, sweptAssetIds: [...oldIds].sort(byId), byGuildId: guild.id, byGuildName: guild.name || guild.id,
+    });
+  }
+  recordEvent(guild, tick, ASSETS_INHERITED, {
+    systemId, systemName, prefectureId: prefecture.id, inheritedAssetIds: [...inherited].sort(byId),
+  });
+  return inherited;
+}
 
 // The reason a lane ended by an eviction carries (sim/routes.js LANE_END_REASONS): the system went fallow. It is not
 // 'target-gone' — the system still exists — so the player is told the ground was lost.
@@ -205,5 +284,6 @@ function evictSystem(state, guild, prefecture, cause, tick) {
 }
 
 module.exports = {
-  SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, isStranded, strandedAssetsIn, recoverStrandedAssets, evictSystem,
+  SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, isStranded, strandedAssetsIn, recoverStrandedAssets,
+  sweepStrandedAssets, evictSystem,
 };
