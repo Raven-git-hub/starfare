@@ -846,7 +846,8 @@ queue depth**:
 > - **Proved** by `sim/tests/eviction-reach.test.js` (the dark and the lit array, the idle dark one, a rival's untouched,
 >   the gate, the wake, the Outpost path, the tripwire). **Not built:** the client (a dark array's marker or label, the
 >   `anchor-lost` card's words — until then the live client reads the void as "… claimed it before it finished", naming
->   "another guild").
+>   "another guild"). *(⤳ 28-10-26: the card's words are BUILT — losing ground client slice 1; the scout now says the
+>   array went dark, `docs/event-log.md` §13. A dark array's marker or label is still to come.)*
 
 **Monitoring — the watch (DEFERRED; design-ahead, NOT built).** A continuous watch that surfaces
 dynamic activity (rival transports, anomalies) — the counter-play to "operations are private",

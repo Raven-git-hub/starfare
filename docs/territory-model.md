@@ -414,7 +414,8 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   salvage waiver (the investment arc), the storyteller trigger (§9), and any client (the stranded display, the salvage
   UI, the `system_lost` message). *(⤳ 27-10-26: the salvage run is BUILT, without its timer (the rate is still
   unset) — §5's "AS-BUILT — losing ground, engine PR 2".)* *(⤳ 28-10-26: the sweep is BUILT — "AS-BUILT — losing
-  ground, engine PR 4" below.)*
+  ground, engine PR 4" below.)* *(⤳ 28-10-26: the `system_lost` message is BUILT — losing ground client slice 1, the
+  notices; `docs/event-log.md` §14's client AS-BUILT. The stranded display and the salvage UI are still to come.)*
 
 **AS-BUILT — losing ground, engine PR 3: the eviction's reach — lanes end, arrays go dark (27-10-26; engine only, no
 client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, "the eviction's reach") — the ruling lives there and is
@@ -465,7 +466,9 @@ not restated here. It extends the shared eviction above; nothing of PR 1 was reb
 - **Proved** by `sim/tests/eviction-reach.test.js` (16) over the galaxy in `sim/tests/eviction-reach-script.js`; two
   PR 1 seam tests in `prefecture-abandon.test.js` were updated to the new behaviour (above, (a) and (b)).
 - **Not built:** the client (the `system-lost` lane notice's words, a dark array's display, the `anchor-lost` card's
-  words), the salvage window, the sweep. *(⤳ 28-10-26: the sweep is BUILT — the next note.)*
+  words), the salvage window, the sweep. *(⤳ 28-10-26: the sweep is BUILT — the next note.)* *(⤳ 28-10-26: the
+  `anchor-lost` card's words are BUILT — losing ground client slice 1, the notices; `docs/event-log.md` §13. The lane
+  notice's words and a dark array's display are still to come, with the map + Operations slice.)*
 
 **AS-BUILT — losing ground, engine PR 4: the sweep — a rival's claim inherits the stranded machines (28-10-26; engine
 only, no client).** Built to `design.md` §19 **#67** (SETTLED 28-10-26, the sweep) — the ruling lives there and is not
@@ -520,7 +523,9 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
 - **Not built:** the salvage window / timer (its rate is unset, `phase-1-tuning.md`; a stranded machine persists until
   salvaged or swept), capture / takeover and the salvage waiver (the investment arc), general redeploy between held
   systems, the operator CLI's printout of a sweep (`plant-prefecture` prints the claim only), and the client (the two
-  notices' words, the inherited machines' display).
+  notices' words, the inherited machines' display). *(⤳ 28-10-26: the two notices' words are BUILT — losing ground
+  client slice 1, the notices; `docs/event-log.md` §15's client AS-BUILT. The inherited machines already list as ordinary
+  idle rows in Operations; a display that marks them as inherited is not built.)*
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
