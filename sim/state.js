@@ -1019,11 +1019,15 @@ function createOutpost({
 //   scan           — 2.5 (b2): the ONE scan job it is running, `{ level, targetSystemId | targetPlanetId,
 //                    startedTick, completeTick }` (shape: sim/deep-scan-arrays.js). OMITTED WHEN IDLE, so
 //                    an idle array is exactly the b1 row. COPIED, never aliased.
+//   updatedAtTick  — losing ground, engine PR 3: the tick its last running scan was VOIDED because it went dark
+//                    (it lost the §5 attachment — sim/deep-scan-arrays.js voidDetachedScans), §15.2's stamp for
+//                    that mutation. OMITTED until an array's first such void, so an array that never went dark
+//                    mid-job is byte-identical to the row before it — the shape `Asset.updatedAtTick` keeps.
 //
 // Nothing else: the monitoring fan is deferred, and a field nothing reads only muddies the determinism
 // hash (exploration-model.md §5). This file ASSEMBLES the shape; legality is `deployCheck`'s and
 // `queueScan`'s (sim/actions.js), and `checkDeepScanArrayIntegrity` asserts it every tick.
-function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, createdAtTick, scan }) {
+function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, createdAtTick, scan, updatedAtTick }) {
   if (id === undefined) throw new Error('createDeepScanArray: id is required');
   if (ownerGuildId === undefined) throw new Error('createDeepScanArray: ownerGuildId is required');
   if (coords === undefined) throw new Error('createDeepScanArray: coords is required');
@@ -1036,6 +1040,7 @@ function createDeepScanArray({ id, ownerGuildId, coords, anchorSystemId, created
     anchorSystemId,
     createdAtTick,
     ...(scan ? { scan: copyScanJob(scan) } : {}),
+    ...(updatedAtTick === undefined ? {} : { updatedAtTick }),
   };
 }
 

@@ -700,6 +700,21 @@ change; **no new number** (no constant, no retention change).
   engine output: rows, popups, the re-dress across opens, read-on-open; red against the pre-slice client), and
   `sim/tests/events.test.js`'s vocabulary test (now eight types).
 
+**⤳ AS-BUILT 27-10-26 — a second way to void: the array went dark (`reason: 'anchor-lost'`; losing ground, engine PR 3,
+`design.md` §19 #67 — "the running scan voids (`scan_voided`, 'anchor lost')").** A job is now also voided when its
+ARRAY loses its attachment mid-job — its hex no longer in or beside its guild's own control, because the system it hung
+off was lost (the eviction) or the Outpost it touched was packed up or removed (`exploration-model.md` §5, "AS-BUILT —
+the array goes dark"). Same type, **`scan_voided`**; ONE new writer, `voidDetachedScans` (`sim/deep-scan-arrays.js`),
+called at the tick the control goes, so the notice is stamped with it — not at the job's `completeTick`. Its payload is
+the shared part every scan notice carries (`arrayId`, `level`, the target key, `targetName` — built by the same
+`scanNoticeTarget` the completion step now uses) plus **`reason: 'anchor-lost'`**, and no `byGuildId` / `byGuildName`
+(no rival is involved). The rival void's payload is **unchanged** and carries no `reason`, so its bytes and every golden
+over it stand; a reader tells the two apart by the presence of `reason`. For the eviction it is written before the
+`system_lost` notice, and for a reclaim before the `outpost_packed` notice, so the newest-first inbox shows the cause above
+it. **Not built: the client.** The live card has no branch for it yet, so it reads "… voided; another guild claimed it
+before it finished." with `Claimed by` "—" — wrong words, flagged on the decision checklist with the copy for the design
+room.
+
 ## 14. The `system_lost` notice — losing ground, the destroyed path (engine half, 17-10-26)
 
 **What it records.** A guild's Prefecture was **destroyed** and the system it claimed went fallow (`design.md` §2
@@ -707,7 +722,9 @@ change; **no new number** (no constant, no retention change).
 Discrete and unrecoverable — the Prefecture, its claim and the forfeited goods are gone — so it is an EVENT, not a
 standing condition (§0). ONE writer: `evictSystem` (`sim/eviction.js`), the shared eviction, at the tick it happens; it
 writes exactly one `system_lost` per eviction, after the uprooted ventures' own `venture_closed` notices (cause
-`evicted`, §2), so the newest-first list shows the loss above them. Born unread.
+`evicted`, §2), so the newest-first list shows the loss above them. Born unread. *(⤳ 27-10-26, engine PR 3: and after
+the `scan_voided` notices (reason `anchor-lost`, §13) of any of the guild's arrays the loss darkened — still the newest.
+Its payload is unchanged: it does not list the lanes the eviction ended or the arrays it darkened — roadmap checklist.)*
 
 **The payload, self-contained** (the Prefecture and the claim no longer exist when the player reads it):
 - `cause` — what destroyed it: `abandoned` (the owner's voluntary abandon — the only cause built; the storyteller's

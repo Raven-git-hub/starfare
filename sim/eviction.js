@@ -19,12 +19,19 @@
 // every asset that is not stranded, so a galaxy that has evicted nothing is byte-identical to one built before this.
 // The rule it keeps (`checkStrandedAssets`, sim/invariants.js): a stranded asset is idle, and sits only in a system
 // NOBODY holds — the salvage window is open only while the system is uncontrolled (§19 #67).
+//
+// THE EVICTION'S REACH (engine PR 3; §19 #67, SETTLED 19-10-26). A lost system reaches past the guild's own
+// position there: EVERY guild's lane with a stop at it ENDS (a fallow system resets all logistics there), and the
+// evicting guild's Deep Scan Arrays that hung off it go DARK (their running scans voided). Outposts are not
+// touched: they stand on their own hexes, independent of the system claim, and stay reclaimable.
 
 const { applyVentureClosure } = require('./licence.js');
 const { recordEvent, SYSTEM_LOST } = require('./events.js');
 const { forfeitSystemPool } = require('./stock.js');
 const { getSystem } = require('./seed.js');
 const { carriedAssetIds } = require('./assets.js');
+const { endLane } = require('./routes.js');
+const { voidDetachedScans } = require('./deep-scan-arrays.js');
 
 // The causes that DESTROY a Prefecture (§19 #69). Only the owner's abandonment is built; the storyteller's cause
 // joins this list when §9 is built. An unknown cause is a caller bug, so evictSystem HALTS on one rather than write
@@ -71,6 +78,37 @@ function recoverStrandedAssets(guild, systemId) {
 // byId — byte order over ASCII ids, so every list in the notice is stable (invariant 9).
 const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
+// The reason a lane ended by an eviction carries (sim/routes.js LANE_END_REASONS): the system went fallow. It is not
+// 'target-gone' — the system still exists — so the player is told the ground was lost.
+const SYSTEM_LOST_LANE_END = 'system-lost';
+
+// stopsAt(route, systemId) -> true iff one of the route's waypoints is anchored AT that system (a system landmark
+// `{ landmarkKind: 'system', landmarkId }`), whether or not it carries an action: a waypoint is a place the craft
+// goes. A leg that merely passes through the system's footprint stops nowhere in it, and a bare hex is not the
+// system even where it lies inside the disk, so neither counts.
+function stopsAt(route, systemId) {
+  return route.waypoints.some((wp) => wp.anchor.landmarkKind === 'system' && wp.anchor.landmarkId === systemId);
+}
+
+// endLanesStoppingAt(state, systemId, tick) — MUTATES every craft whose lane it ends. EVERY guild's craft is asked,
+// not only the evicted guild's (§19 #67: a fallow system resets all logistics there). Each craft with a route that
+// stops at the system has its lane ended
+// through THE ONE `endLane` (transport-model.md §11.6 "anchor gone — the lane ENDS"): the route is dropped, the
+// craft flagged `laneEnded = { reason: 'system-lost', tick }` and stamped `updatedAtTick` (§15.2). Nothing else
+// about it changes, so it is left where it stopped: an idle craft stays at its berth (a lane waiting at its last
+// stop included); a craft in flight finishes the leg it is on and lands idle at its end; a craft in an Outpost's
+// dock finishes its turnaround there and stays parked. Whatever it carries — goods, a kit, a machine — stays aboard:
+// ending a lane drops the route, never the hold. A craft with no route (a plain dispatch) has no lane to end.
+function endLanesStoppingAt(state, systemId, tick) {
+  for (const g of state.guilds || []) {
+    for (const craft of g.vehicles || []) {
+      if (!craft.route || !stopsAt(craft.route, systemId)) continue;
+      endLane(craft, SYSTEM_LOST_LANE_END, tick);
+      craft.updatedAtTick = tick;
+    }
+  }
+}
+
 // evictSystem(state, guild, prefecture, cause, tick) -> the notice payload, having MUTATED `state` and `guild`.
 // THE ONE eviction. The caller has proved the Prefecture is the guild's; `tick` is the tick the eviction happens on
 // (an action apply passes `next.tick`). In the ruled order, failing loud:
@@ -94,9 +132,18 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 //      key leaves `guild.stockpiles` (sim/stock.js `forfeitSystemPool`). Goods carry no conservation ledger, so this
 //      is a plain delete; Galactic Supply falls by exactly those goods once the caller refreshes its cache — the
 //      market-visible drop the ruling chose. Goods aboard the guild's craft are not the pool, and are untouched.
-//   4. KEEP THE INTEL. Nothing here touches `guild.exploration`: the record is independent of the claim.
-//   5. ONE NOTICE. A single `system_lost` event on the guild's log (docs/event-log.md §14), its payload
-//      self-contained — the Prefecture and the system are gone by the time the player reads it.
+//   4. END THE LANES (engine PR 3). Every guild's lane with a stop at the system ends `system-lost`
+//      (`endLanesStoppingAt` above) — the evicted guild's and its rivals' alike.
+//   5. DARKEN THE ARRAYS (engine PR 3). Each of the guild's Deep Scan Arrays that is running a scan and no longer
+//      touches the guild's own control — the lost system was what it hung off — has its scan voided, with a
+//      `scan_voided` notice, reason 'anchor-lost' (sim/deep-scan-arrays.js `voidDetachedScans`). The array itself
+//      stands. One still touching other ground the guild holds keeps its scan; an idle one has nothing to void, and
+//      the queueScan gate keeps it idle while it is dark. A rival's arrays touch the rival's control, which this does
+//      not change. Outposts are not touched at all: they survive the eviction, and stay reclaimable.
+//   6. KEEP THE INTEL. Nothing here touches `guild.exploration`: the record is independent of the claim.
+//   7. ONE NOTICE. A single `system_lost` event on the guild's log (docs/event-log.md §14), its payload
+//      self-contained — the Prefecture and the system are gone by the time the player reads it. It is written last,
+//      after the ventures' and the arrays' own notices, so the newest-first log shows the loss above them.
 function evictSystem(state, guild, prefecture, cause, tick) {
   if (!SYSTEM_LOST_CAUSES.includes(cause)) {
     throw new Error(`evictSystem, tick ${tick}: unknown cause ${JSON.stringify(cause)} (known: ${SYSTEM_LOST_CAUSES.join(', ')})`);
@@ -132,7 +179,14 @@ function evictSystem(state, guild, prefecture, cause, tick) {
   // 3. Forfeit the goods.
   const goodsForfeit = forfeitSystemPool(guild, systemId);
 
-  // 5. One notice. (4 — the intel — is kept by touching nothing.)
+  // 4. End the lanes — every guild's.
+  endLanesStoppingAt(state, systemId, tick);
+
+  // 5. Darken the arrays — the guild's own. Step 1 has already taken the system's control away, so attachment is
+  //    asked of the ground as it now stands.
+  voidDetachedScans(state, guild, tick);
+
+  // 7. One notice. (6 — the intel — is kept by touching nothing.)
   const system = getSystem(systemId);
   const payload = {
     cause,
@@ -151,5 +205,5 @@ function evictSystem(state, guild, prefecture, cause, tick) {
 }
 
 module.exports = {
-  SYSTEM_LOST_CAUSES, EVICTED, isStranded, strandedAssetsIn, recoverStrandedAssets, evictSystem,
+  SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, isStranded, strandedAssetsIn, recoverStrandedAssets, evictSystem,
 };

@@ -31,6 +31,7 @@ const {
 } = require('./outposts.js');
 const {
   deepScanArrayId, nextDeepScanArraySerial, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
+  attachmentFootprints, isArrayAttached, voidDetachedScans,
 } = require('./deep-scan-arrays.js');
 const {
   PREFECTURE_KIT_KIND, prefectureId, prefectureClaimId, nextPrefectureSerial,
@@ -38,7 +39,7 @@ const {
 const { siteOccupantOf } = require('./occupancy.js');
 const { resolveManifest, manifestAmountError, copyManifestLine } = require('./manifest.js');
 const {
-  REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial,
+  REPEAT_MODES, CADENCES, copyRouteWaypoint, savedRouteId, nextSavedRouteSerial, endLane,
 } = require('./routes.js');
 const { postedPrice, PRICED_GOODS } = require('./prices.js');
 const { checkQuote, quotedPrice } = require('./price-ring.js');
@@ -437,11 +438,13 @@ function resolveRouteArrival(state, guild, craft, thisTick) {
     if (!check.ok) {
       // The dispatch proved this unload would succeed. Two things can undo that in flight: the Prefecture's rival
       // claim above, and — since losing ground, engine PR 1 — the guild ABANDONING the held system the craft was
-      // flying a non-Prefecture kit home to (sim/eviction.js; nothing touches a routed craft's hold). Then the run
-      // ENDS the way a route action whose target is gone ends (§11.6, the dock branch below): the craft idle at
-      // this berth, the kit STILL ABOARD (never dropped), the route cleared, flagged laneEnded 'target-gone'. It
-      // does not halt, unlike the deploy's corrupt-state branch: the kit is safe aboard, and the flag says the trip
-      // did not finish (roadmap decision checklist, "Asset-initiated slice 3a").
+      // flying a non-Prefecture kit home to (sim/eviction.js; nothing touches a routed craft's hold). Since engine
+      // PR 3 the eviction ends that lane itself, at once, flagged 'system-lost' (the unload's stop IS the lost
+      // system), so play no longer reaches this branch that way; it stays as the defensive end for any other cause.
+      // Then the run ENDS the way a route action whose target is gone ends (§11.6, the dock branch below): the
+      // craft idle at this berth, the kit STILL ABOARD (never dropped), the route cleared, flagged laneEnded
+      // 'target-gone'. It does not halt, unlike the deploy's corrupt-state branch: the kit is safe aboard, and the
+      // flag says the trip did not finish (roadmap decision checklist, "Asset-initiated slice 3a").
       endLane(craft, 'target-gone', thisTick);
       return;
     }
@@ -509,7 +512,9 @@ function resolveDeployArrival(state, guild, craft, thisTick) {
     // 'rival-territory' for a Deep Scan Array) can change while a craft flies. The dispatch proved the target
     // is a bare hex (an anchor never moves) — or, for an array, the centre of a system some guild holds, and that
     // centre is still held: the one path that unclaims a system, abandonPrefecture, refuses while one of its
-    // guild's craft is bound for the centre (its gate 3; a future storyteller eviction owes the same care) — and
+    // guild's craft is bound for the centre (its gate 3) — and, since losing ground engine PR 3, the eviction
+    // itself ends any lane with a stop at the lost system (sim/eviction.js), the centre deploy's included, so the
+    // craft lands with its kit and no deploy is attempted even if that gate were passed — and
     // the hold exactly one kit of this kind
     // (a kit is never manifested); and a guild never loses its home system, so it always holds one
     // ('no-held-system'). Any of those failing here means the state is corrupt — HALT with the tick and the
@@ -593,17 +598,9 @@ function retreatLanding(state, guildId, from) {
   }
 }
 
-// endLane(craft, reason, thisTick) — a lane ENDS on its own (transport-model.md §11.6): the route is
-// DROPPED and the craft is left an ordinary idle craft wherever it stands — at WN if caught at a lap's
-// start, at the bare hex if a target vanished mid-flight. There is no resume-in-place; the player
-// re-dispatches. The craft is FLAGGED `laneEnded = { reason, tick }` (a LANE_END_REASONS entry, and the
-// tick it happened — §15.2) so the player can see WHY it stopped; the next dispatch of the craft clears it.
-// The one place a lane is ended-and-flagged, for every halt site (the arrival resolver, a leg that can no
-// longer be built, the lap-start re-check, and an Outpost torn down under a docked craft).
-function endLane(craft, reason, thisTick) {
-  delete craft.route;
-  craft.laneEnded = { reason, tick: thisTick };
-}
+// endLane(craft, reason, thisTick) — a lane ENDS on its own (transport-model.md §11.6): the route is dropped
+// and the craft flagged `laneEnded`. It lives in sim/routes.js (losing ground, engine PR 3), so the eviction can
+// call it too without a require cycle; every halt site in this file calls it from there.
 
 // cancelLanding(craft, tick) -> { ok: true, location: { q, r } } | { ok: false, reason }
 //
@@ -2127,8 +2124,10 @@ function outpostPlacement(state, guildId, coords) {
 // Both questions go to `controlNear` (sim/claims.js), the one "who controls this hex?" helper, so this rule
 // holds no distance check of its own:
 //   - `within` 0 — any rival footprint ON the hex → 'rival-territory';
-//   - `within` 1 — the guild's own footprints the hex is IN OR BESIDE. Once no rival controls the hex, these
-//     are exactly cases 1 and 2: if the guild controls it, case 1; if nobody does, case 2. None → 'not-attached'.
+//   - `within` 1 — the guild's own footprints the hex is IN OR BESIDE (`attachmentFootprints`, sim/deep-scan-arrays.js:
+//     the §5 attachment, spelled once, which an array already standing must keep to scan — losing ground, engine
+//     PR 3). Once no rival controls the hex, these are exactly cases 1 and 2: if the guild controls it, case 1; if
+//     nobody does, case 2. None → 'not-attached'.
 // THE ANCHOR is the first of those own footprints: a held SYSTEM first (lowest id), else an Outpost (lowest
 // id), whose own `anchorSystemId` the array takes — so an array, like an Outpost, always hangs off a system.
 // controlNear lists footprints in exactly that order, so the pick is stable (invariant 9).
@@ -2138,7 +2137,7 @@ function attachedPlacement(state, guildId, coords) {
   if (rival) {
     return { ok: false, failure: 'rival-territory', reason: `${where} is inside guild ${JSON.stringify(rival.guildId)}'s territory (its ${rival.kind} ${JSON.stringify(rival.id)}) — a Deep Scan Array never deploys inside a rival's control` };
   }
-  const own = controlNear(state, coords, 1).filter((f) => f.guildId === guildId);
+  const own = attachmentFootprints(state, guildId, coords);
   if (own.length === 0) {
     return { ok: false, failure: 'not-attached', reason: `${where} is in or beside no territory guild ${JSON.stringify(guildId)} holds — a Deep Scan Array deploys inside its guild's territory, or on open space beside it: within one hex of a held system's control disk, or beside one of its Outposts` };
   }
@@ -2432,11 +2431,12 @@ function centreDeployBound(guild, systemId) {
 // there now) and the §11.10 lap-start re-check (the craft will be there this lap), so the re-check can
 // never pass a target the arrival would then refuse, or the reverse. It mirrors transferCargo's split
 // (a system, else an own Outpost, else nothing). NOTE: a system counts whoever holds it, exactly as the
-// arrival always has — a transfer at a system has never asked whether the guild holds it. Since losing
-// ground, engine PR 1, a system CAN be lost (abandonPrefecture, sim/eviction.js), but this is left as it
-// stands: §11.6's "a system lost → the lane ends" needs a rule for WHICH lanes a lost system ends when a
-// lane may legally act at any system, held or not — on the decision checklist, not decided here. When it
-// is ruled, this one predicate is still where it goes.
+// arrival always has — a transfer at a system has never asked whether the guild holds it. A system CAN be lost
+// (abandonPrefecture, sim/eviction.js), and §11.6's "a system lost → the lane ends" is now ruled and built
+// (losing ground, engine PR 3; design.md §19 #67): the EVICTION itself ends every guild's lane with a stop at
+// the lost system, on the tick it happens (sim/eviction.js `endLanesStoppingAt`). So no running lane ever reaches a stop at a
+// system that went fallow under it, and this predicate is left as it stands — a lane launched AFTER the loss,
+// to the fallow system, still acts there as a transfer at any system always has.
 function routeStoreAt(state, guildId, anchor) {
   if (anchor && anchor.landmarkKind === 'system') return { kind: 'system', systemId: anchor.landmarkId };
   const outpost = ownedOutpostAt(state, guildId, anchor);
@@ -4196,6 +4196,14 @@ function validateAction(state, action) {
     if (!array || array.ownerGuildId !== action.guildId) {
       return { valid: false, reason: `guild ${JSON.stringify(action.guildId)} owns no Deep Scan Array ${JSON.stringify(action.arrayId)}` };
     }
+    // ATTACHED — NOT DARK (design.md §19 #67, SETTLED 19-10-26; losing ground, engine PR 3). The array was placed
+    // touching its guild's own control (§5), and it scans only while it still does: one whose hex is no longer in
+    // or beside that control (the system it hung off was lost, or the Outpost it touched packed up) is dark and
+    // takes no job. Asked of the live control every time — nothing stores "dark" — so the array takes jobs again
+    // the moment friendly control abuts it once more. The same predicate the deploy placed it by.
+    if (!isArrayAttached(state, array)) {
+      return { valid: false, reason: `Deep Scan Array ${JSON.stringify(array.id)} is dark — its hex { q: ${array.coords.q}, r: ${array.coords.r} } is no longer in or beside any territory guild ${JSON.stringify(action.guildId)} holds; it takes no scan until the guild's control reaches it again` };
+    }
     // ONE ACTIVE JOB PER ARRAY, NO BACKLOG (§5, the first cut): a busy array takes nothing until its job is
     // done — the way to scan more at once is to build more arrays. There is no cancel (none is ruled).
     if (array.scan) {
@@ -4764,7 +4772,9 @@ function validateAction(state, action) {
     //    `not-bare-hex`, which is not retreatable, so the arrival would HALT (resolveDeployArrival). Abandoning the
     //    system under such a craft would make that halt reachable from play, so the abandon waits until the craft
     //    has landed or been re-dispatched. (Only the guild's own craft can be bound there: a rival's centre is
-    //    refused at its dispatch.)
+    //    refused at its dispatch.) Since losing ground engine PR 3 the eviction ends that craft's lane itself (its
+    //    stop is the lost system), so the halt is no longer reachable even without this gate; the gate is kept
+    //    as it was, and whether to retire it is on the decision checklist.
     const bound = centreDeployBound(guild, prefecture.systemId);
     if (bound !== null) {
       return { valid: false, reason: `vehicle ${JSON.stringify(bound)} is flying a Deep Scan Array to deploy on the centre of system ${JSON.stringify(prefecture.systemId)}, which needs the system held when it lands — let it land, or re-dispatch it, before abandoning the Prefecture` };
@@ -6189,6 +6199,12 @@ function applyAction(state, action) {
     next.outposts = (next.outposts || []).filter((o) => o.id !== action.outpostId);
     if (next.outposts.length === 0) delete next.outposts;
 
+    // An Outpost is CONTROL (its own hex, sim/claims.js controlNear), so a Deep Scan Array of its owner's that
+    // touched only this one has just gone DARK: its running scan is voided, as the eviction voids one whose system
+    // was lost (design.md §19 #67; sim/deep-scan-arrays.js voidDetachedScans). An array still touching other
+    // control of the guild's keeps its job.
+    voidDetachedScans(next, guild, next.tick);
+
     // The destroyed stockpile's goods LEFT galactic supply (supply.js folds Outpost stockpiles in), so
     // refresh the cache across the between-action seam (the goods-sink discipline removeVehicle already
     // follows for a laden craft) — invariant 1 balances because non-fuel supply is a consistency check,
@@ -6252,6 +6268,11 @@ function applyAction(state, action) {
     // so this id is never reissued; a redeploy mints the next one (§15.4 "Ids never repeat").
     next.outposts = next.outposts.filter((o) => o.id !== outpost.id);
     if (next.outposts.length === 0) delete next.outposts;
+
+    // The packed Outpost no longer controls its hex, so an array of the guild's that touched only it goes DARK and
+    // its running scan is voided — the same helper, and the same notice, as removeOutpost above and the eviction.
+    // Written BEFORE the `outpost_packed` notice below, so the newest-first log shows the cause above its effect.
+    voidDetachedScans(next, guild, next.tick);
 
     // THE KIT INTO THE HOLD, through the same stowKit the load uses, so the heavy ends exactly as loadKit
     // leaves one: `{ outpost_kit: 1 }`, idle, tick-stamped. No kit ASSET is minted and `kitAssetSerial` is not

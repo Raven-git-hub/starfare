@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,334 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim) — and the galaxy map now marks each system where a Prefecture kit of the guild's waits to be planted with an inward-flowing "claim pending" beacon (client PR C); **losing ground** has begun: an owner (or the operator) can now abandon a Prefecture, which is destroyed — the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting salvage, and its goods there are forfeit (engine PR 1, the destroyed path — engine + operator CLI); and a heavy can now haul a stranded machine out of the fallow system and unload it, an ordinary idle machine again, into a system the guild holds — the salvage run, built as the cross-system asset ferry exposed salvage-only (engine PR 2 — engine + operator CLI); the salvage window, eviction-v2, the rival-claim sweep, capture and the client are still to come, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim) — and the galaxy map now marks each system where a Prefecture kit of the guild's waits to be planted with an inward-flowing "claim pending" beacon (client PR C); **losing ground** has begun: an owner (or the operator) can now abandon a Prefecture, which is destroyed — the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting salvage, and its goods there are forfeit (engine PR 1, the destroyed path — engine + operator CLI); and a heavy can now haul a stranded machine out of the fallow system and unload it, an ordinary idle machine again, into a system the guild holds — the salvage run, built as the cross-system asset ferry exposed salvage-only (engine PR 2 — engine + operator CLI); and a lost system now reaches past the guild's own position there — every guild's lanes with a stop at it end, and the guild's Deep Scan Arrays that hung off it go dark, their scans voided until friendly control returns, while Outposts stand (engine PR 3, the eviction's reach — engine only); the salvage window, the rival-claim sweep, capture and the client are still to come, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3645,7 +3645,10 @@ boundary so the later hex-map swap doesn't touch it.
   the rival-claim sweep the one after.)*
   *(⤳ 27-10-26: **the salvage run is BUILT** — engine PR 2, 2.5 below — as the cross-system asset ferry (design.md §4's
   deferred redeploy, now built), exposed salvage-only: a heavy loads a stranded machine in the fallow system and unloads it
-  into a held one. Next: eviction-v2, then the sweep.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
+  into a held one. Next: eviction-v2, then the sweep.)*
+  *(⤳ 27-10-26: **the eviction's reach is BUILT** — engine PR 3, 2.5 below: an eviction ends every guild's lane with a
+  stop at the lost system (`system-lost`) and darkens the guild's arrays that hung off it (their scans voided,
+  `anchor-lost`; no new scan until control returns); Outposts stand. Next: the sweep.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:
@@ -3760,6 +3763,11 @@ boundary so the later hex-map swap doesn't touch it.
   and unloads it into a system the guild holds (`unloadAsset`), an ordinary idle machine there. Built as the cross-system
   asset ferry (design.md §4), exposed salvage-only; no window yet (its rate is unset). Engine + operator CLI; no client,
   no new number.)*
+  *(⤳ 27-10-26 — **losing ground, engine PR 3 — the eviction's reach — is BUILT**, the last entry below: an eviction now
+  ENDS every guild's lane with a stop at the lost system (flagged `system-lost`, the craft left where it stopped, its hold
+  untouched) and DARKENS the evicting guild's Deep Scan Arrays that lose their attachment (the running scan voided,
+  `scan_voided` reason `anchor-lost`; `queueScan` refuses a dark array until friendly control abuts it again); Outposts
+  are untouched. Engine only; no client, no new number.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -4767,6 +4775,57 @@ boundary so the later hex-map swap doesn't touch it.
     stranded. Sim 2,405 → **2,427** (the 22 new tests; every other file unchanged in count — the eviction, beacon and
     golden suites included), tools 97 → **98**. **Next** (the settled build order, §19 #67): eviction-v2 (every guild's lanes
     at a lost system end; arrays go dark), then the sweep, which replaces the TEMPORARY plant guard. Checklist items below.
+  - **Losing ground, engine PR 3 — the eviction's reach: lanes end, arrays go dark (engine only, no client) — ⤳ AS-BUILT
+    27-10-26.** The "eviction-v2" of §19 #67's build order: a lost system now reaches past the evicted guild's own
+    position there. Built to `design.md` §19 **#67** (SETTLED 19-10-26, the eviction's reach); as-built detail in
+    `territory-model.md` §4's "AS-BUILT — losing ground, engine PR 3", `transport-model.md` §11.6, `exploration-model.md`
+    §5 ("AS-BUILT — the array goes dark") and `event-log.md` §13. **No new number**: it reuses `controlNear`, `endLane`
+    and the scan's own notice. **(1) Lanes end — every guild's** (`sim/eviction.js`, a new step 4 of `evictSystem`, after
+    the forfeit): each craft of ANY guild whose route has a waypoint anchored AT the lost system, with an action or
+    without, has its lane ended through the one `endLane` — route dropped, flagged `laneEnded` with a new reason
+    **`system-lost`** (`sim/routes.js` `LANE_END_REASONS`; the system still exists, so not `target-gone`), stamped
+    `updatedAtTick` — and is left where it stopped (in flight, it lands at the end of its leg; in a dock, it finishes its
+    turnaround), its hold untouched. A leg crossing the footprint, or a bare-hex stop inside the disk, is not a stop at the
+    system. `endLane` moved to `sim/routes.js` (no require cycle) and now halts on an unknown reason. **(2) Arrays go
+    dark — the evicting guild's** (step 5): each of its arrays running a scan that no longer touches its own control has
+    the scan voided by the new `voidDetachedScans` (`sim/deep-scan-arrays.js`) — job cleared, nothing revealed, a
+    `scan_voided` notice with **`reason: 'anchor-lost'`** (the rival void's payload unchanged), the row stamped with a
+    new **`updatedAtTick`** (omitted until its first void; `createDeepScanArray` carries it). The attachment is ONE
+    predicate, `attachmentFootprints` (the guild's own footprints within 1 — `attachedPlacement` now calls it for its
+    own-control half), and `isArrayAttached`. **(3) Dark is derived:** `queueScan` gains a gate after the ownership check
+    — a dark array is refused, and takes jobs again the moment friendly control abuts it (no stored flag, no notice).
+    **(4) Outposts untouched** (no code; tested: the row byte-identical, still reclaimable). **(5) The Outpost path — a
+    reading beyond the brief** (checklist item 1): an Outpost is control too, so `reclaimOutpost` and the operator's
+    `removeOutpost` call the same `voidDetachedScans` — without it the new invariant would halt on a legal reclaim.
+    **(6) The invariant:** `checkDeepScanArrayIntegrity` — a running scan means an attached array
+    (`deepScanArray-scan-only-while-attached`), and `updatedAtTick` a tick in [createdAtTick, now]. Seam comments updated
+    (`routeStoreAt`, the unload arrival's `target-gone` branch, the deploy arrival's halt, the abandon's centre gate — now
+    redundant, kept). **(7) Tripwires:** `sim/tests/eviction-reach.test.js` (16), over a shared galaxy in
+    `sim/tests/eviction-reach-script.js` (g1 holding HOME + TARGET, four lanes, four arrays, an Outpost in TARGET's disk):
+    both guilds' lanes with a stop at TARGET end `system-lost` (one a dock, one a turning point) with nothing else about
+    the craft changed, land at the end of their leg and stay, a dispatch clearing the flag; the crossing lane and the
+    inside-the-disk lane byte-unchanged and still lapping; a salvaged machine and a kit ride on aboard their ended craft
+    (the machine then unloaded at home); a craft mid-turnaround finishes it and stays parked; the dark array voided
+    (exact notice, before `system_lost`), standing and stamped, the idle dark one untouched; both refused a scan in the
+    engine's words; the lit array keeping, finishing and re-queuing its scan, the rival's untouched and g2 told nothing;
+    a re-plant waking both dark arrays with no notice; the Outpost path (reclaim, notice order; remove); the Outpost in the
+    lost disk untouched and reclaimable; **the tripwire bites** — an eviction that skipped the void and a `queueScan`
+    forced past its gate each red with exactly the new rule, `advance` halting on it with the tick; the stamp rule red for
+    four bad stamps; `endLane` halting on an unknown reason; **the no-abandon goldens** (that galaxy hashed on `main` at
+    `291df19` — state + god / own / rival views on the launch tick and 760 ticks on — pinned, identical); persistence
+    (journal replay; a saved dark array keeps its stamp; the constructor copies it) and determinism (800 ticks on, every
+    invariant every tick). Two PR 1 seam tests in `prefecture-abandon.test.js` updated to the ruled behaviour (the kit
+    flying home now ends `system-lost` at the eviction; the centre deploy forced past the gate now lands with its kit
+    instead of halting); its count is unchanged (25). **Checked to fail** (one mutation at a time, over the new file and
+    the abandon, scan-job, array and teardown files): no lane sweep → 6 red; lanes of the evicted guild only → 2; a stop
+    read as any waypoint near the system → 1; no craft stamp → 1; no array void in the eviction → 13; no void stamp → 4;
+    the notice without its reason → 2; no `queueScan` gate → 2; no void on reclaim → 1; on remove → 1; the attachment
+    invariant unhooked → 1; the stamp invariant unhooked → 1; `createDeepScanArray` dropping the stamp → 1; `endLane`
+    taking any reason → 1. Sim 2,427 → **2,443** (the 16 new tests; every other file unchanged in count — the
+    eviction, salvage, beacon and golden suites included), tools **98** (unchanged). **Next** (the settled build order,
+    §19 #67): the sweep — a rival claiming the fallow system inherits the un-salvaged machines, replacing the TEMPORARY
+    plant guard; then the salvage window once its rate is tuned. This completes the eviction's reach. Checklist items
+    below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -6300,13 +6359,18 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   10. **The centre-deploy gate.** The abandon refuses while one of the guild's craft is flying a Deep Scan Array to
      deploy on the system's centre, because that arrival HALTS on a centre nobody holds (`not-bare-hex`, pinned as a
      corrupt-state halt before any path could unclaim a system). A storyteller eviction cannot refuse: it needs a rule
-     for that arrival (retreat with a new reason, or end the lane) before it is built.
+     for that arrival (retreat with a new reason, or end the lane) before it is built. *(⤳ 27-10-26, engine PR 3: answered
+     by the ruling on lanes — the eviction now ENDS that craft's lane itself (its stop is the lost system), so the
+     arrival never runs and a storyteller eviction needs nothing more. The abandon's gate is kept; whether to retire it
+     is engine PR 3's item 6 below.)*
   11. **Running lanes.** A lane that loads or unloads at the lost system keeps doing so — a transfer at a system has
      never required holding it (`routeStoreAt`). §11.6's "a system lost → the lane ends" needs a rule for WHICH lanes a
-     lost system ends, given a lane may legally act at any system.
+     lost system ends, given a lane may legally act at any system. *(⤳ RULED 19-10-26, design.md §19 #67 — every
+     guild's lane with a stop at the lost system ends; BUILT 27-10-26, engine PR 3.)*
   12. **Standing structures.** An Outpost anchored on the lost system, or a Deep Scan Array in its disk or on its
      centre, is untouched (their placement is not re-checked after the fact). Rule whether they belong to "everything
-     the guild holds in that system".
+     the guild holds in that system". *(⤳ RULED 19-10-26, design.md §19 #67 — the guild's arrays that lose their
+     attachment go dark, Outposts stand untouched; BUILT 27-10-26, engine PR 3.)*
   13. **Machines landing after the eviction.** A Syndicate asset purchase delivered to the fallow system (asset
      deliveries have no held gate — one bought before the abandon, or after it) lands idle and UNflagged, so it does
      not block a rival's claim and could end up in a rival's system. Rule whether it strands on landing.
@@ -6359,6 +6423,59 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      write by spread or `Object.assign` — review still owns those. (c) `sim/tests/asset-ferry.test.js` is ~570 lines (the
      abandon file's size); its CLI test flies the heavy for real by ticking the server (~1 s). (d) No `server.test.js` case
      was added: the CLI test drives both new endpoints on a real server process (success, refusals, the 400s).
+- **Losing ground, engine PR 3 (the eviction's reach — lanes end, arrays go dark) — items for a confirm or a ruling** —
+  *surfaced 27-10-26 by the build; each was built the way stated, and none is decided by the code beyond that. No number
+  was chosen.*
+  1. **The Outpost path — a reading beyond the brief.** The brief made the eviction the one void-trigger ("control is lost
+     only via abandon this slice"). In the code an Outpost is control too (`controlNear` counts its own hex), an array may
+     hang off one alone, and `reclaimOutpost` / the operator's `removeOutpost` already take one away — so with the new
+     invariant (a running scan means an attached array) a player packing up the Outpost a scanning array touched would
+     have HALTED the tick. Built: both call the same `voidDetachedScans`, so the array goes dark exactly as under an
+     eviction (`scan_voided`, `anchor-lost`; the reclaim writes it before its `outpost_packed`). The alternative is to
+     REFUSE the reclaim while it would darken a scanning array (the abandon's centre-gate shape). Confirm, or rule the
+     refusal.
+  2. **"A stop" = any waypoint anchored at the system, action or not** (the brief's slice-local reading). A lane that
+     only turns at the lost system ends too. Narrowing it to action-bearing waypoints is a one-line change in
+     `sim/eviction.js` `stopsAt`. Related, built as read: a bare-hex waypoint INSIDE the lost system's disk is not a stop
+     at the system (it does not name it), and neither is a leg crossing the footprint. Confirm both.
+  3. **The reason name `system-lost`** (a second `LANE_END_REASONS` entry beside `target-gone`). Confirm. The live
+     client's IN TRANSIT ended-lane notice has words only for `target-gone` and shows any other reason raw, so it reads
+     "system-lost" until the client slice gives it words.
+  4. **The dark-array notice is `scan_voided` with `reason: 'anchor-lost'`**, the rival void left without a `reason` (so
+     its payload, and every golden over it, is unchanged; a reader tells the two apart by the key). Rule whether the
+     rival void should also carry a reason (it would move the scan-notice goldens), or a dark array wants a distinct
+     notice type. **The live client** has no branch for it: its card reads "… voided; another guild claimed it before
+     it finished." with `Claimed by` "—" — wrong words. The copy (the scout's) is the design room's.
+  5. **The array's new `updatedAtTick`** — §15.2's stamp for the void, the brief's "stamp the voided array". Omitted
+     until an array's first void, and it records ONLY voids: a queue is stamped by the job's own `startedTick` and a
+     completion by its notice, as before — the same partial meaning `Asset.updatedAtTick` has (the ferry's moves only).
+     Confirm the name and that partial meaning, or rule a wider stamp (a queue stamping it would move every scan golden).
+  6. **The abandon's centre-deploy gate is now redundant.** PR 1 refused an abandon while one of the guild's craft flew a
+     Deep Scan Array to the system's centre, because that arrival halted. The eviction now ends that lane (its stop is
+     the lost system), so the craft lands with its kit and nothing halts (tested, forced past the gate). Kept, unchanged;
+     rule whether to retire it (one refusal fewer for the player).
+  7. **Who is told.** The evicted guild's own ended lanes and dark arrays are visible (the craft's `laneEnded` flag; a
+     `scan_voided` per voided array) but the `system_lost` payload does not list them, and a RIVAL whose lane ended gets
+     only the flag, no notice (as with `target-gone`). An array that goes dark while IDLE gets no notice at all — the
+     player learns at the refused queue. Rule whether any of these wants a notice or a payload field.
+  8. **Attachment ignores rival control.** "Dark" reads only the guild's OWN control in or beside the hex; the rival half of
+     the placement rule (never inside a rival's control) stays a deploy-time check, so an array whose hex later falls in a
+     rival's control still scans (the 15-10-26 "Not retroactive", kept). Confirm.
+  9. **No snapshot field for "dark".** The array row carries no `dark` / `attached` flag (dark is derived, and the brief
+     added no client), so the client slice must either derive it (it has the control map and its own Outposts) or ask
+     for an additive snapshot field. Rule which.
+  10. **A lane launched AFTER the loss to the fallow system** is not refused, and a dock there acts as a transfer at any
+     system always has (`routeStoreAt` unchanged). Only lanes running at the moment of the eviction end. Confirm.
+  11. **The operator CLI** (`abandon-prefecture`) still prints only the `system_lost` payload — not the lanes ended or the
+     arrays darkened. Rule whether it should.
+  12. **Seams — not decisions, recorded:** (a) `endLane` moved from `sim/actions.js` to `sim/routes.js` (beside
+     `LANE_END_REASONS`) so `sim/eviction.js` can call it without a require cycle; it now halts on an unknown reason.
+     (b) The attachment predicate is one function, `attachmentFootprints` (`sim/deep-scan-arrays.js`), which
+     `attachedPlacement` now calls for its own-control half — byte-identical. (c) The completion notice's shared half is
+     one helper, `scanNoticeTarget`, used by both voids — byte-identical (the scan-notice goldens hold). (d) Two PR 1 seam
+     tests changed behaviour, as this slice rules: the kit flying home now ends `system-lost` at the eviction, not
+     `target-gone` on arrival; the centre deploy forced past the gate now lands with its kit instead of halting.
+     (e) `sim/actions.js` is now ~6,770 lines (the split is still worth its own slice).
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

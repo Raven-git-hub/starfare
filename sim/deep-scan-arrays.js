@@ -21,9 +21,16 @@
 // tick step `stepScanCompletions`, which edits the tick's own clone in place, as every tick step does.
 // (That step also writes the job's completion NOTICE — `scan_complete` / `scan_voided`, docs/event-log.md
 // §13 — through the shared `recordEvent`.)
+//
+// ATTACHMENT (losing ground, engine PR 3; design.md §19 #67, SETTLED 19-10-26). An array is placed touching its
+// guild's own control (§5 "Deploy placement"), and that touch is now LIVE, not only checked at the deploy: an
+// array whose hex no longer sits in or beside its guild's own control is DARK — it runs no scan and takes none.
+// Nothing stores "dark": it is read off the live control every time (`isArrayAttached`), so an array wakes by
+// itself when friendly control abuts it again. When control goes, `voidDetachedScans` voids the running job of
+// every array that went dark, with a `scan_voided` notice whose `reason` is 'anchor-lost'.
 
 const { getPlanet, getSystem, getSystemLayout, roman } = require('./seed.js');
-const { systemControllers } = require('./claims.js');
+const { systemControllers, controlNear } = require('./claims.js');
 const { revealSystemArchetypes, revealPlanetSurface } = require('./exploration.js');
 const { recordEvent, SCAN_COMPLETE, SCAN_VOIDED } = require('./events.js');
 
@@ -56,6 +63,52 @@ function deepScanArrayNumberOf(id) {
 // `guild.deepScanArraySerial` at mint (this stays a pure read); it never decrements.
 function nextDeepScanArraySerial(guild) {
   return (guild.deepScanArraySerial || 0) + 1;
+}
+
+// --- the attachment (exploration-model.md §5; losing ground, engine PR 3) ---------------------------------
+
+// attachmentFootprints(state, guildId, coords) -> the guild's OWN control footprints that hex `coords` is IN OR
+// BESIDE: a held system's disk the hex is in or one hex outside, or one of its Outposts on or next to the hex
+// (`controlNear` at `within` 1, kept to this guild — controlNear's order, held systems first, each by id).
+// THE §5 ATTACHMENT, spelled once: the deploy rule (sim/actions.js `attachedPlacement`) places an array only where
+// this is non-empty and anchors it to the first footprint, and `isArrayAttached` below asks the same question of an
+// array already standing. Whether a RIVAL controls the hex is the deploy rule's separate question (placement only —
+// an array whose hex later falls in a rival's control stands, still attached to its own guild's ground).
+function attachmentFootprints(state, guildId, coords) {
+  return controlNear(state, coords, 1).filter((f) => f.guildId === guildId);
+}
+
+// isArrayAttached(state, array) -> true while the array's hex is in or beside its owner's own control (above).
+// An array for which this is false is DARK (design.md §19 #67): it may carry no scan job (the invariant,
+// sim/invariants.js) and takes no new one (the queueScan gate, sim/actions.js).
+function isArrayAttached(state, array) {
+  return attachmentFootprints(state, array.ownerGuildId, array.coords).length > 0;
+}
+
+// The `reason` a `scan_voided` notice carries when its array went DARK under the job (docs/event-log.md §13). The
+// rival void — the target claimed before the scan finished — carries no `reason` (it was the only void before
+// engine PR 3, and its payload is unchanged), so a reader tells the two apart by this key.
+const SCAN_VOID_ANCHOR_LOST = 'anchor-lost';
+
+// voidDetachedScans(state, guild, tick) — MUTATES `state` and `guild`. Called right after something takes control
+// away from the guild — today the eviction (sim/eviction.js) and the two ways an Outpost leaves the map
+// (sim/actions.js `reclaimOutpost` / `removeOutpost`). Each of the guild's arrays that is running a job and is no
+// longer attached goes dark: its job is cleared (the key deleted — omit-when-idle, as a finished job), nothing is
+// revealed, and the guild gets ONE `scan_voided` notice per array, `reason: 'anchor-lost'`, with the same
+// self-contained description of the job the completion notices carry. The array row itself stays — dark, not destroyed — stamped `updatedAtTick` (§15.2:
+// the void is a mutation of the row; absent until an array's first void). An idle dark array is left untouched:
+// there is nothing to void, and the queueScan gate keeps it idle.
+// Only `guild`'s arrays are asked: control is the guild's own, so another guild's arrays cannot lose theirs by it.
+// Arrays in id order, so the notices are written in a fixed order (invariant 9).
+function voidDetachedScans(state, guild, tick) {
+  const dark = (state.deepScanArrays || [])
+    .filter((a) => a.ownerGuildId === guild.id && a.scan && !isArrayAttached(state, a))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  for (const array of dark) {
+    recordEvent(guild, tick, SCAN_VOIDED, { ...scanNoticeTarget(array), reason: SCAN_VOID_ANCHOR_LOST });
+    delete array.scan;
+    array.updatedAtTick = tick;
+  }
 }
 
 // --- the discovery scan (2.5 (b2); docs/exploration-model.md §5 "Discovery — the scan") ---------------
@@ -119,6 +172,19 @@ function scanTargetName(job) {
   return ordinal > 0 ? `${layout.name} ${roman(ordinal)}` : job.targetPlanetId;
 }
 
+// scanNoticeTarget(array) -> what every scan notice says about the job the array is running: which array, which
+// level, which target (the key the job itself carries) and the target's name. Shared by the completion step and
+// the dark-array void (`voidDetachedScans`), so the notices describe a job the same way whichever way it ended.
+function scanNoticeTarget(array) {
+  const job = array.scan;
+  return {
+    arrayId: array.id,
+    level: job.level,
+    ...(job.level === 'L1' ? { targetSystemId: job.targetSystemId } : { targetPlanetId: job.targetPlanetId }),
+    targetName: scanTargetName(job),
+  };
+}
+
 // stepScanCompletions(state, tick) — every array whose job is DUE (`completeTick <= tick`) finishes it now.
 // Runs at the END of every tick (sim/tick.js), `tick` being the tick just built, and mutates `state` in
 // place. `<=` and not `===`, the arrivals idiom: a due job can never be stepped over.
@@ -135,7 +201,9 @@ function scanTargetName(job) {
 // already-known fact a no-op, so the record never shrinks and keeps each fact's first tick.
 //
 // The job is CLEARED either way — the key deleted (omit-when-idle) — and the array is free for its next job.
-// A removed array took its job with it (the job lives on the row), so it never reaches this step.
+// A removed array took its job with it (the job lives on the row), so it never reaches this step; nor does a DARK
+// one — its job was voided the moment it lost its attachment (`voidDetachedScans`), so every job due here runs on an
+// attached array (the invariant holds it).
 //
 // THE NOTICE (docs/event-log.md §13, ruled 14-10-26). Either way the owning guild gets ONE notice, written
 // here through the shared `recordEvent`, stamped `tick`:
@@ -163,14 +231,8 @@ function stepScanCompletions(state, tick) {
     if (!SCAN_LEVELS.includes(job.level)) {
       throw new Error(`stepScanCompletions: at tick ${tick} array ${JSON.stringify(array.id)} holds a scan of unknown level ${JSON.stringify(job.level)}`);
     }
-    // What both notices say about the job: which array, which level, which target (the key the job itself
-    // carries), and the target's name.
-    const target = {
-      arrayId: array.id,
-      level: job.level,
-      ...(job.level === 'L1' ? { targetSystemId: job.targetSystemId } : { targetPlanetId: job.targetPlanetId }),
-      targetName: scanTargetName(job),
-    };
+    // What both notices say about the job (scanNoticeTarget).
+    const target = scanNoticeTarget(array);
     const controller = controllers.get(scanTargetSystemId(job));
     if (controller === undefined || controller === owner.id) {
       // Learn-once: `newFacts` is how many facts were NEW (0 = it was all known already).
@@ -201,4 +263,8 @@ module.exports = {
   scanTargetSystemId,
   scanTargetName,
   stepScanCompletions,
+  attachmentFootprints,
+  isArrayAttached,
+  SCAN_VOID_ANCHOR_LOST,
+  voidDetachedScans,
 };
