@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 
 const {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
-  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, EVENT_TYPES, isEventType,
+  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
 } = require('../events.js');
@@ -36,10 +36,10 @@ function baseState(guildExtra = {}) {
 
 // ─── the vocabulary ──────────────────────────────────────────────────────────────
 
-test('the type vocabulary is exactly the nine notice types', () => {
+test('the type vocabulary is exactly the eleven notice types', () => {
   assert.deepEqual([...EVENT_TYPES].sort(), [
-    'delivery_space_warning', 'delivery_turned_back', 'deploy_failed', 'licence_lapsed', 'outpost_packed',
-    'scan_complete', 'scan_voided', 'system_lost', 'venture_closed',
+    'assets_inherited', 'assets_swept', 'delivery_space_warning', 'delivery_turned_back', 'deploy_failed',
+    'licence_lapsed', 'outpost_packed', 'scan_complete', 'scan_voided', 'system_lost', 'venture_closed',
   ]);
   assert.equal(LICENCE_LAPSED, 'licence_lapsed');
   assert.equal(VENTURE_CLOSED, 'venture_closed');
@@ -57,6 +57,10 @@ test('the type vocabulary is exactly the nine notice types', () => {
   // The ninth, written by an eviction when a Prefecture is destroyed (docs/event-log.md §14).
   assert.equal(SYSTEM_LOST, 'system_lost');
   assert.ok(isEventType('system_lost'));
+  // The tenth and eleventh, written by the sweep when a claim takes another guild's stranded machines (docs/event-log.md §15).
+  assert.equal(ASSETS_INHERITED, 'assets_inherited');
+  assert.equal(ASSETS_SWEPT, 'assets_swept');
+  assert.ok(isEventType('assets_inherited') && isEventType('assets_swept'));
   assert.ok(isEventType('licence_lapsed') && isEventType('venture_closed') && isEventType('deploy_failed'));
   assert.ok(isEventType('delivery_space_warning') && isEventType('delivery_turned_back'));
   assert.ok(!isEventType('rival_bought_in') && !isEventType(undefined));

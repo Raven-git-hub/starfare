@@ -302,7 +302,10 @@ Prefecture (the same one twice included — destroyed is destroyed), a rival's, 
 flying a Deep Scan Array to deploy on that system's centre — "let it land, or re-dispatch it". The home can never be
 abandoned: founding gives it no Prefecture to name. Until the sweep slice lands, another guild's `plant-prefecture` in
 `sys_0936` is refused while the stranded factory lies there ("awaiting salvage"); the guild's own re-plant there
-recovers it. *(Run live 17-10-26 against a fresh `seat-demo --seed 42` continuing from the plant above, and the
+recovers it. *(⤳ 28-10-26 — the sweep is built (losing ground, engine PR 4): another guild's `plant-prefecture` in
+`sys_0936` is now ACCEPTED and takes the stranded factory, which becomes that guild's own idle factory under a new id,
+with an `assets_inherited` notice to it and an `assets_swept` notice to `seat_demo`. `plant-prefecture` still prints
+only the claim, not what it inherited — read the guild's notices. The engine's tests prove it; this was not re-run live.)* *(Run live 17-10-26 against a fresh `seat-demo --seed 42` continuing from the plant above, and the
 abandon survived a server restart with persistence on.)*
 
 ## Salvage — a stranded machine hauled home (losing ground, engine PR 2)

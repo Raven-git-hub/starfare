@@ -57,7 +57,7 @@ const {
   reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsSlot,
 } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
-const { evictSystem, strandedAssetsIn, recoverStrandedAssets, isStranded } = require('./eviction.js');
+const { evictSystem, recoverStrandedAssets, sweepStrandedAssets, isStranded } = require('./eviction.js');
 const { holdLockedReason, assetAboard, assetIntoSystem } = require('./ferry.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
@@ -70,7 +70,7 @@ const {
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
   deployedAssetIds, isAssetKind, assetId, nextAssetNumber, ASSET_CONDITION_NEW, ASSET_CONDITION_MIN,
-  isKitAssetKind, nextKitAssetSerial, assetNumberOf, carriedAssetIds,
+  isKitAssetKind, nextKitAssetSerial, carriedAssetIds, deleteAsset,
 } = require('./assets.js');
 const { STARTER_HUMAN_FLEET, STARTER_HUMAN_KITS, foundingCreditsFor } = require('./starter-package.js');
 
@@ -2187,30 +2187,9 @@ function deployKit(state, guild, craft, check, kind, tick) {
   craft.updatedAtTick = tick; // §15.2: the deploy is a mutation of the craft — record its tick
 }
 
-// --- deleting an asset: the operator remove levers (design.md §15.4 "Ids never repeat") -----------------
-
-// deleteAsset(guild, assetId) — THE ONE way an operator lever deletes an asset from a guild's inventory,
-// shared by removeAsset and removeVenture { asset: 'remove' } so the two cannot drift apart.
-//
-// Before the row goes, a miner's or factory's NUMBER (the `NN` of `asset_<guild>_<kind>_NN`) is recorded
-// in the guild's per-kind REMOVED HIGH-WATER, `guild.removedAssetHighWater = { [kind]: NN }`.
-// nextAssetNumber (sim/assets.js) reads it, so a deleted number is never minted again — without it,
-// deleting the top-numbered miner would let the next grant or build reissue that id. The mark only
-// climbs: deleting a number at or below the one already recorded changes nothing, and the map is
-// created only when it is first written (omit-when-absent, sim/state.js).
-//
-// A KIT is not recorded: kits number from `kitAssetSerial`, a stored counter that already never goes back.
-// Nothing is conserved for an asset, so there is no counter-move; and like grantAsset, the tick is
-// recorded in the journal (an asset carries no tick of its own).
-function deleteAsset(guild, assetId) {
-  const asset = (guild.assets || []).find((a) => a.id === assetId);
-  const n = asset ? assetNumberOf(asset.id) : null;
-  const marks = guild.removedAssetHighWater || {};
-  if (asset && isAssetKind(asset.kind) && n != null && n > (marks[asset.kind] || 0)) {
-    guild.removedAssetHighWater = { ...marks, [asset.kind]: n };
-  }
-  guild.assets = (guild.assets || []).filter((a) => a.id !== assetId);
-}
+// (deleteAsset — THE ONE way an asset leaves a guild's inventory for good, recording its number so it is never
+// reissued — lives in sim/assets.js beside nextAssetNumber, which reads that record. It moved there with the sweep,
+// losing ground engine PR 4, so sim/eviction.js can call it without a require cycle.)
 
 // --- the kit as an idle asset: load / unload (design.md §4, RULED 02-10-26) ---------------------------
 //
@@ -2375,11 +2354,13 @@ function kitIntoInventory(guild, craft, check, tick) {
 //      linked to its claim, planted at this tick (§15.2). The slot is now occupied (sim/occupancy.js).
 //   5. (losing ground, engine PR 1) the guild's OWN stranded machines in the system, if it is re-claiming a
 //      system it was evicted from, are recovered — their `stranded` flag goes (sim/eviction.js), because a
-//      stranded asset may sit only in a system nobody holds. Another guild's never get here (the plant's
-//      TEMPORARY gate 6 refuses), and a galaxy with none touches nothing.
-// Nothing priced moves: a kit is never a good on the market or in Galactic Supply, and neither is a flag, so no
-// credits, fuel, goods or supply change and the supply cache needs no refresh. The tick is passed in, as
-// deployKit takes it.
+//      stranded asset may sit only in a system nobody holds. They keep their ids, and nobody is told.
+//   6. (losing ground, engine PR 4 — THE SWEEP) ANOTHER guild's stranded machines still lying in the system change
+//      hands to the planter: each is retired from its former owner and re-minted as the planter's own idle asset,
+//      and both sides get a notice (sim/eviction.js sweepStrandedAssets). A galaxy with none touches nothing.
+// Nothing priced moves: a kit is never a good on the market or in Galactic Supply, and neither is a flag or a
+// machine changing hands, so no credits, fuel, goods or supply change and the supply cache needs no refresh. The
+// tick is passed in, as deployKit takes it.
 function plantKit(state, guild, assetId, site, tick) {
   guild.assets = guild.assets.filter((a) => a.id !== assetId);
   if (guild.assets.length === 0) delete guild.assets;
@@ -2406,6 +2387,7 @@ function plantKit(state, guild, assetId, site, tick) {
   });
   state.prefectures.push(prefecture);
   recoverStrandedAssets(guild, site.systemId);
+  sweepStrandedAssets(state, guild, prefecture, tick);
   return prefecture;
 }
 
@@ -4727,17 +4709,9 @@ function validateAction(state, action) {
     if (holder !== null) {
       return { valid: false, reason: `system ${JSON.stringify(site.systemId)} is already held by guild ${JSON.stringify(holder)} — a Prefecture plants only in an unclaimed system` };
     }
-    // 6. NO OTHER GUILD'S STRANDED MACHINES LIE THERE — **TEMPORARY** (losing ground, engine PR 1;
-    //    territory-model.md §4). A stranded asset may sit only in a system nobody holds (design.md §19 #67 — the
-    //    salvage window is open only while the system is uncontrolled; `checkStrandedAssets` guards it). The ruled
-    //    answer to a rival claiming a fallow system is the SWEEP — the claim takes the un-salvaged machines — but
-    //    the sweep is a later slice, so until it lands the claim is refused instead. The planter's OWN stranded
-    //    machines do not block: re-claiming its own fallow system recovers them (plantKit). REPLACE this gate with
-    //    the sweep's transfer when that slice is built. The reason names neither the owner nor the machines.
-    const awaitingSalvage = strandedAssetsIn(state, site.systemId).filter((x) => x.guildId !== action.guildId);
-    if (awaitingSalvage.length > 0) {
-      return { valid: false, reason: `system ${JSON.stringify(site.systemId)} still holds another guild's stranded machines awaiting salvage — a Prefecture cannot be planted there while they lie there` };
-    }
+    // (No gate for stranded machines. Engine PR 1 refused a plant while ANOTHER guild's stranded machines lay in the
+    // system, standing in for the sweep; the sweep is built (losing ground, engine PR 4), so such a plant is legal and
+    // plantKit hands those machines to the planter. The planter's own are recovered, as before.)
     return { valid: true };
   }
 
@@ -6466,7 +6440,8 @@ function applyAction(state, action) {
   if (action.type === 'plantPrefecture') {
     // docs/territory-model.md §4: THE CLAIM ACT. Instant — the kit was built earlier and ferried here. The slot
     // is resolved once more (validate proved it is a real settlement slot) for the system and planet, and THE ONE
-    // plant apply consumes the kit, writes the claim row and places the Prefecture, all at this tick.
+    // plant apply consumes the kit, writes the claim row, places the Prefecture, recovers the guild's own stranded
+    // machines there and sweeps any other guild's (losing ground, engine PR 4), all at this tick.
     plantKit(next, findGuild(next, action.guildId), action.assetId, getSite(action.slotId), next.tick);
     return next;
   }

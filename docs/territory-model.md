@@ -20,6 +20,8 @@ claim — is BUILT, engine + operator CLI (§4's "AS-BUILT — engine PR 1"). §
 render is the next PR.)* *(⤳ 16-10-26: the client render is BUILT too: the galaxy map paints the engine's `controlMap` and
 resolves nothing (§2's "AS-BUILT — client PR A").)* *(⤳ 27-10-26: the cross-system ferry now carries
 an existing GROUND machine too — the salvage run, losing ground's engine PR 2 (§5's "AS-BUILT — losing ground, engine PR 2").)*
+*(⤳ 28-10-26: a rival's claim of a fallow system now SWEEPS the machines still stranded there — they change hands to the
+claimant — losing ground's engine PR 4 (§4's "AS-BUILT — losing ground, engine PR 4").)*
 
 ---
 
@@ -344,7 +346,8 @@ ring count, the 1.5 s fall, the rim (0.85 of the hex, never under 14 px) and the
 Built to `design.md` §2 ("Losing it evicts the system", corrected 17-10-26) and §19 **#67** / **#69** (RULED 17-10-26) —
 the ruling lives there and is not restated here. This is the computational model of the **destroyed** fate only: the
 owner abandons a Prefecture and the system goes fallow. The salvage run, the rival-claim sweep, capture / takeover and the
-storyteller trigger are later slices. No new number.
+storyteller trigger are later slices. No new number. *(⤳ The salvage run is BUILT 27-10-26 (§5) and the sweep 28-10-26
+("AS-BUILT — losing ground, engine PR 4" at the end of this section).)*
 - **The abandon action.** `abandonPrefecture { guildId, prefectureId }` (`sim/actions.js`; operator `POST
   /admin/guild/abandon-prefecture`, `tools/admin.js abandon-prefecture --guild ID --id PREFECTURE_ID`; a player sends the
   same action through `POST /action`). Refused, each with its own reason, in order: no such guild; no `prefectureId`; no
@@ -385,7 +388,11 @@ storyteller trigger are later slices. No new number.
   gate — to claim a system that still holds **another guild's** stranded assets ("awaiting salvage"; the reason names
   neither the owner nor the machines). The planter's **own** stranded machines do not block it: re-claiming its own
   fallow system **recovers** them (`plantKit` clears their flags — the sweep applied to oneself), which keeps the
-  invariant. The sweep slice replaces the refusal with the transfer; the gate and its comment say so.
+  invariant. The sweep slice replaces the refusal with the transfer; the gate and its comment say so. *(⤳ **AS-BUILT
+  28-10-26 — the refusal is gone, the transfer is in** (losing ground, engine PR 4): `plantPrefecture` no longer has this
+  gate, so a rival's plant over another guild's stranded machines is legal, and the plant hands them to the planter —
+  "AS-BUILT — losing ground, engine PR 4" at the end of this section. The owner's own re-plant still just recovers its
+  machines.)*
 - **Seams a lost system now reaches.** (a) A kit flying home to unload into the system its guild then abandons: the
   arrival re-check fails and the lane ENDS `target-gone`, the kit still aboard — the path the unload always reserved for
   "a system lost", no halt. (b) An array bound for the centre: refused at the abandon, above. (c) A Syndicate BUY
@@ -406,7 +413,8 @@ storyteller trigger are later slices. No new number.
 - **Not built (later slices):** the salvage run and its timer (next), the sweep (after it), capture / takeover and the
   salvage waiver (the investment arc), the storyteller trigger (§9), and any client (the stranded display, the salvage
   UI, the `system_lost` message). *(⤳ 27-10-26: the salvage run is BUILT, without its timer (the rate is still
-  unset) — §5's "AS-BUILT — losing ground, engine PR 2".)*
+  unset) — §5's "AS-BUILT — losing ground, engine PR 2".)* *(⤳ 28-10-26: the sweep is BUILT — "AS-BUILT — losing
+  ground, engine PR 4" below.)*
 
 **AS-BUILT — losing ground, engine PR 3: the eviction's reach — lanes end, arrays go dark (27-10-26; engine only, no
 client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, "the eviction's reach") — the ruling lives there and is
@@ -457,7 +465,62 @@ not restated here. It extends the shared eviction above; nothing of PR 1 was reb
 - **Proved** by `sim/tests/eviction-reach.test.js` (16) over the galaxy in `sim/tests/eviction-reach-script.js`; two
   PR 1 seam tests in `prefecture-abandon.test.js` were updated to the new behaviour (above, (a) and (b)).
 - **Not built:** the client (the `system-lost` lane notice's words, a dark array's display, the `anchor-lost` card's
-  words), the salvage window, the sweep.
+  words), the salvage window, the sweep. *(⤳ 28-10-26: the sweep is BUILT — the next note.)*
+
+**AS-BUILT — losing ground, engine PR 4: the sweep — a rival's claim inherits the stranded machines (28-10-26; engine
+only, no client).** Built to `design.md` §19 **#67** (SETTLED 28-10-26, the sweep) — the ruling lives there and is not
+restated here. It replaces PR 1's TEMPORARY re-claim guard (above) with the transfer the guard stood in for. No new
+number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset` and `recordEvent`.
+- **The guard is gone.** `plantPrefecture`'s validate loses its last gate; every other plant gate is unchanged (an idle
+  Prefecture kit in the slot's system, a surveyed-to-L2 free settlement slot, the system unclaimed). A plant into a
+  fallow system with another guild's stranded machines in it is legal.
+- **The sweep, in the plant.** `plantKit` (`sim/actions.js`) calls `sweepStrandedAssets` (`sim/eviction.js`) right after
+  `recoverStrandedAssets` — the planter's own machines are recovered first (flag cleared, id kept, no notice), so what is
+  left stranded in the system is other guilds'. For each, in `strandedAssetsIn`'s guild-then-asset order (invariant 9):
+  its `kind` and `maintenanceCondition` are read; it is retired from its former owner through `deleteAsset` (now in
+  `sim/assets.js`, moved from `sim/actions.js` so `sim/eviction.js` can call it without a require cycle — PR 3's `endLane`
+  move), which records the former owner's `removedAssetHighWater` so the number is never reissued to it (§15.4 — the
+  sweep is the game's first owner change, so this is the first time play needs that record), and the former owner's
+  `assets` key goes if that was its last; and a fresh asset is minted under the planter — `assetId(planter, kind, NN)`,
+  same kind, same system (now the planter's), the SAME `maintenanceCondition` (inert, so it simply rides along — no
+  maintenance built), `updatedAtTick` = this tick, and **no `stranded` flag**: an ordinary idle asset. Each is pushed
+  before the next is minted, so `nextAssetNumber` sees it and two never collide. A machine's NN continues the planter's
+  per-kind sequence (`nextAssetNumber`); a **kit's** NN is the planter's kit serial, bumped (the kit's own numbering —
+  below).
+- **Kits too — a reading beyond the brief (checklist).** The brief said "machines" and expected the sweep to move only
+  miners and factories. But PR 1 strands a guild's idle **kits** in the system too, and §19 #67 (SETTLED 19-10-26) puts
+  every stranded asset — "machines recovered by the salvage run, kits by `loadKit`" — in the one window that "a rival's
+  claim → the sweep" closes; and a stranded kit left in a system the claim now holds would halt the tick
+  (`checkStrandedAssets`). So a stranded kit changes hands the same way, numbered from the planter's `kitAssetSerial`
+  (minting it with `nextAssetNumber`, as the brief's recipe read, would break `kit-asset-serial-monotonic` and could
+  reissue a loaded kit's id). Its former owner's kit serial never goes back, so its old id is never reissued either.
+- **Both guilds are told** (ruled 28-10-26): one `assets_swept` notice to each former owner, in guild order — the ids it
+  lost, and the new holder by name — and one `assets_inherited` to the planter — its new ids, and the Prefecture that
+  swept them, naming no former owner (`docs/event-log.md` §15). A plant that sweeps nothing writes neither.
+- **What the sweep cannot reach**, by construction (tested): a machine aboard a heavy (the load cleared its flag — it is
+  in the hold, not the system; it stays its salvager's, and still cannot be unloaded in a system its guild does not hold)
+  and a machine already unloaded elsewhere. Goods were destroyed at the eviction. **Spoiled ground:** the eviction's node
+  lockouts are galaxy-scoped and the plant clears none, so the planter inherits machines it cannot at once put on those
+  nodes (tested: refused on the locked node, established on a clean one). No code.
+- **The tripwires.** `checkStrandedAssets` is unchanged and now fails loud on a claim that missed one (a stranded asset
+  in a held system). New, in `checkAssetOccupancy`: **an asset's id names its current owner**
+  (`asset-id-names-its-owner`) — every asset's id rebuilds exactly as `assetId(owner, kind, its own NN)`. It covers
+  every kind, kits included, unscoped: every engine mint (the founding grant, `grantAsset`, a dockyard build or Syndicate
+  delivery, the kit mint) already builds the id that way, and the only ids in the whole suite that failed it were three
+  hand-written placeholders in one `sim/tests/assets.test.js` fixture, renamed to the engine's scheme. A sweep that moved a
+  row instead of re-minting it trips it at once.
+- **Byte-identical where it should be.** Two galaxies that never sweep — an owner re-claiming its own fallow system, and a
+  rival claiming an empty one — hash exactly as on `main` at 6b20d2e (state + god's-eye, own and rival views, pinned in
+  `sim/tests/sweep.test.js`); no field was added to any existing record, and new asset rows appear only on a sweep.
+- **Proved** by `sim/tests/sweep.test.js` (16) over the galaxy in `sim/tests/sweep-script.js`. Four guard-era tests were
+  updated to the ruled behaviour, counts unchanged: three in `prefecture-abandon.test.js` (the guard's refusal → the
+  plant is legal and sweeps; the forced-past-the-guard invariant → a claim that skipped the sweep; the abandon racing a
+  plant → both accepted, the plant sweeping) and the salvage-race seam in `asset-ferry.test.js` (the machine in hand stays
+  the salvager's; the one still stranded is swept).
+- **Not built:** the salvage window / timer (its rate is unset, `phase-1-tuning.md`; a stranded machine persists until
+  salvaged or swept), capture / takeover and the salvage waiver (the investment arc), general redeploy between held
+  systems, the operator CLI's printout of a sweep (`plant-prefecture` prints the claim only), and the client (the two
+  notices' words, the inherited machines' display).
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
@@ -1072,10 +1135,13 @@ machine is carried BY NAME and keeps its id, so its existing `systemId` is what 
   machine is aboard still cannot establish on it (it is not idle), an abandon there again does not strand it (it is in the
   hold, not the system), and unloading it into that system once re-held is legal (a no-move unload). The TEMPORARY plant
   guard reads only stranded machines, so a machine already in hand never blocks a rival's claim of the fallow system — the
-  scramble §19 #67 rules is between the salvager's heavy and the rival's Prefecture.
+  scramble §19 #67 rules is between the salvager's heavy and the rival's Prefecture. *(⤳ 28-10-26: the guard is gone and
+  the sweep is in (§4, "AS-BUILT — losing ground, engine PR 4"); the sweep reads only stranded machines too, so a machine
+  in hand is out of its reach and stays the salvager's — the scramble is decided machine by machine.)*
 - **Proved** by `sim/tests/asset-ferry.test.js` (22 tests), and live through the operator CLI (`docs/cli-runbook.md`,
   "Salvage").
-- **Not built (later slices):** the window, the sweep (it takes only machines still stranded), general redeploy, the
+- **Not built (later slices):** the window, the sweep (it takes only machines still stranded — *⤳ BUILT 28-10-26, §4's
+  "AS-BUILT — losing ground, engine PR 4"*), general redeploy, the
   route-action form, and any client (a "carrying — salvaging" craft row, the stranded display, a salvage affordance).
 
 ## 6. Generation — starter spacing

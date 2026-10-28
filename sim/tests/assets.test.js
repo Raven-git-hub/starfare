@@ -336,20 +336,22 @@ test('GATE 2 — naming a Factory for a mine (and a Miner for a refinery) is ref
 
 // --- 5. the invariant bites --------------------------------------------------
 
-// A legal, hand-built state: two assets, one deployed to a matching venture, one idle.
+// A legal, hand-built state: two assets, one deployed to a matching venture, one idle. The ids are
+// the engine's own `asset_<guild>_<kind>_NN` — an asset's id must name its owner
+// (`asset-id-names-its-owner`, losing ground engine PR 4), so a placeholder id would not be legal.
 function assetState() {
   return createState({
     guilds: [{
       id: 'g1', credits: 0, fuelHoard: 0,
       // Both machines sit in sysA — the deployed one MUST share its venture's system
       // (§4, 12-09-26), the idle one only needs a location at all.
-      assets: [{ id: 'a_mine', kind: 'miner', systemId: 'sysA' }, { id: 'a_fact', kind: 'factory', systemId: 'sysA' }],
+      assets: [{ id: 'asset_g1_miner_01', kind: 'miner', systemId: 'sysA' }, { id: 'asset_g1_factory_01', kind: 'factory', systemId: 'sysA' }],
       ventures: [{
         id: 'v1', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA',
-        resourceType: 'titanium', productionRate: 5, assetId: 'a_mine',
+        resourceType: 'titanium', productionRate: 5, assetId: 'asset_g1_miner_01',
       }],
     }, {
-      id: 'g2', credits: 0, fuelHoard: 0, assets: [{ id: 'a_other', kind: 'miner', systemId: 'sysA' }],
+      id: 'g2', credits: 0, fuelHoard: 0, assets: [{ id: 'asset_g2_miner_01', kind: 'miner', systemId: 'sysA' }],
     }],
     reserve: { reserveLevel: 0 },
     syndicate: { ledger: 0 },
@@ -368,7 +370,7 @@ test('a legal deployed/idle mix passes checkAssetOccupancy', () => {
 
 test('a venture pointing at ANOTHER guild\'s asset is caught', () => {
   const s = assetState();
-  s.guilds[0].ventures[0].assetId = 'a_other'; // owned by g2
+  s.guilds[0].ventures[0].assetId = 'asset_g2_miner_01'; // owned by g2
   assert.deepEqual(ruleNames(s), ['venture-asset-owned-by-same-guild']);
 });
 
@@ -382,14 +384,14 @@ test('one machine, two ventures is caught', () => {
   const s = assetState();
   s.guilds[0].ventures.push({
     id: 'v2', ownerGuildId: 'g1', type: 'mining', systemId: 'sysA',
-    resourceType: 'titanium', productionRate: 5, assetId: 'a_mine', batchCarry: {},
+    resourceType: 'titanium', productionRate: 5, assetId: 'asset_g1_miner_01', batchCarry: {},
   });
   assert.ok(ruleNames(s).includes('one-venture-per-asset'));
 });
 
 test('a kind mismatch (a mining venture running a Factory) is caught', () => {
   const s = assetState();
-  s.guilds[0].ventures[0].assetId = 'a_fact';
+  s.guilds[0].ventures[0].assetId = 'asset_g1_factory_01';
   assert.deepEqual(ruleNames(s), ['venture-asset-kind-matches']);
 });
 

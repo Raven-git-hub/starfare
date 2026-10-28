@@ -80,6 +80,7 @@ const {
 } = require('./licence.js');
 const {
   ASSET_CONDITION_NEW, ASSET_CONDITION_MIN, isAssetKind, isKitAssetKind, assetKindForVentureType, assetNumberOf,
+  assetId,
 } = require('./assets.js');
 const {
   isVehicleClass, VEHICLE_STATUSES, resolveVehicleLocation, vehicleNumberOf, HEAVY_TRANSPORT,
@@ -1341,7 +1342,7 @@ function checkSiteOccupancy(state) {
 //     (`kit-asset-serial-monotonic`): a loaded kit leaves the inventory, so kits
 //     number from that stored counter, and a live kit above it means the counter
 //     drifted and a future kit could re-issue an id (§15.4 "Ids never repeat").
-// The REMOVED HIGH-WATER (§15.4 "Ids never repeat"; sim/actions.js deleteAsset) has two:
+// The REMOVED HIGH-WATER (§15.4 "Ids never repeat"; sim/assets.js deleteAsset) has two:
 //   - when present, `removedAssetHighWater` maps a venture asset kind (miner / factory)
 //     to a whole number >= 1 (`removed-asset-high-water-valid`);
 //   - that number is never LIVE (`removed-asset-number-not-reissued`): the asset that
@@ -1349,6 +1350,14 @@ function checkSiteOccupancy(state) {
 //     asset with that number is the deleted id issued again.
 //   It is deliberately NOT "the mark >= every live number" (the kit-serial rule's shape):
 //   deleting miner 03 while 04..15 are live records 3, below live numbers — a legal state.
+// And one for every asset, of every kind (losing ground engine PR 4 — the sweep; §15.4):
+//   - its id NAMES ITS CURRENT OWNER (`asset-id-names-its-owner`): it rebuilds exactly from this
+//     guild, the asset's kind and its own number — `assetId(g.id, a.kind, NN)`. Every mint builds
+//     the id from the guild that will hold it (the founding grant, grantAsset, a dockyard build or
+//     Syndicate delivery, and the kit mint, whose NN is the kit serial), so this held before the
+//     sweep and must keep holding after it. The sweep is the first time an asset changes owner, and
+//     it RE-MINTS rather than moving a row: a row moved across without a new id would carry the old
+//     owner's name (and sit outside the new owner's numbering) — this is what catches it.
 function checkAssetOccupancy(state) {
   const out = [];
   for (const g of state.guilds || []) {
@@ -1358,6 +1367,11 @@ function checkAssetOccupancy(state) {
       // A known kind is a venture kind (miner / factory) OR a kit kind ('outpost').
       if (!isAssetKind(a.kind) && !isKitAssetKind(a.kind)) {
         out.push({ rule: 'asset-kind-known (assets.js)', where: `guild:${g.id}.asset:${a.id}`, detail: { kind: a.kind } });
+      }
+      // The id names its current owner — see the note above. An id with no number rebuilds to "..._null" and fails too.
+      const rebuilt = assetId(g.id, a.kind, assetNumberOf(a.id));
+      if (a.id !== rebuilt) {
+        out.push({ rule: 'asset-id-names-its-owner (design.md §15.4)', where: `guild:${g.id}.asset:${a.id}`, detail: { assetId: a.id, owner: g.id, kind: a.kind, expected: rebuilt } });
       }
       if (isKitAssetKind(a.kind)) {
         const n = assetNumberOf(a.id);
@@ -2489,9 +2503,9 @@ function checkPrefectureIntegrity(state) {
 //   - IDLE: no venture of its guild runs it (the eviction tore them down, and Gate 3 refuses a venture in a system
 //     the guild does not hold);
 //   - ONLY IN AN UNCLAIMED SYSTEM: nobody holds the system it sits in. The salvage window is open only while the
-//     system is uncontrolled; a rival claiming the system while they lie there is refused by the plant's TEMPORARY
-//     gate 6 until the sweep slice transfers them instead, and the owner's own re-plant clears the flag. A stranded
-//     asset in a held system is a broken state — the one the gate exists to prevent.
+//     system is uncontrolled, and any claim closes it: the owner's own re-plant clears the flag, and a rival's plant
+//     SWEEPS the machines — re-minted as the rival's own, unflagged (engine PR 4, sim/eviction.js). So a stranded
+//     asset in a held system is a broken state: a claim that missed one.
 // A pure read. An asset with no `stranded` key (every asset in a galaxy that has evicted nothing) is skipped.
 function checkStrandedAssets(state) {
   const out = [];
@@ -2531,7 +2545,8 @@ function checkStrandedAssets(state) {
 //   - IN TRANSIT, NOTHING ELSE: no venture runs it (a deployed machine cannot also be aboard), and it is not stranded
 //     (the load clears the flag — a machine in hand is no longer awaiting salvage, so a sweep must not find it);
 //   - ONE CARRIER: no machine is named by two craft.
-// And for every asset the ferry has stamped, `updatedAtTick` is a whole tick in [0, now] (§15.2).
+// And for every asset the ferry (or, since engine PR 4, the sweep's re-mint) has stamped, `updatedAtTick` is a whole
+// tick in [0, now] (§15.2).
 // What it does NOT assert: where the carried machine's `systemId` points. It keeps the system it was loaded from
 // until the unload moves it — legal whether or not that system is held now — and the unload being the only thing
 // that moves it is pinned by a source scan in sim/tests/asset-ferry.test.js, which an invariant cannot see.

@@ -13,8 +13,9 @@
 //   2. THE REFUSALS: no guild, no id, no such Prefecture, a rival's, the same one twice; the home (it has no
 //      Prefecture — and a corrupt one there is refused and halts the helper); an array bound for the centre.
 //   3. NOTHING COMES BACK: no kit is returned, the serial never goes back.
-//   4. THE INVARIANT + THE TEMPORARY GUARD: a stranded asset only in an unclaimed system — a rival's plant there is
-//      refused, and forcing it past the guard turns the invariant red; the owner's own re-plant recovers its machines.
+//   4. THE INVARIANT: a stranded asset only in an unclaimed system — a claim that skipped the sweep turns it red; a
+//      rival's plant there (refused by PR 1's TEMPORARY guard until engine PR 4) now sweeps the machines, and the
+//      owner's own re-plant recovers its machines. The sweep itself is sweep.test.js.
 //   5. THE SNAPSHOT: `stranded` on the guild's own asset rows only; a rival sees no assets.
 //   6. BYTE-IDENTITY: a galaxy that never abandons hashes exactly as it did before this slice (pinned goldens).
 //   7. PERSISTENCE + DETERMINISM: a journalled abandon replays to the same bytes; a createState hand-in keeps the flag.
@@ -282,10 +283,10 @@ test('NO RECLAIM-TO-KIT: abandoning returns nothing to inventory — no Prefectu
   assert.equal(g1Of(s).assets.length, g1Of(before).assets.length, 'not one asset added or removed');
 });
 
-// --- 4. the invariant and the TEMPORARY guard --------------------------------------------------------------------
+// --- 4. the invariant, and the guard the sweep replaced ----------------------------------------------------------
 
 // fallowWithRivalKit() -> g1 has abandoned TARGET (its machines stranded there), and g2 has a Prefecture kit idle in
-// TARGET and has surveyed PLANET_B — every plant gate passes but the TEMPORARY one.
+// TARGET and has surveyed PLANET_B — every plant gate passes.
 function fallowWithRivalKit() {
   let { s } = evicted();
   let rivalKit;
@@ -294,20 +295,21 @@ function fallowWithRivalKit() {
   return { s, rivalKit };
 }
 
-test('THE GUARD (TEMPORARY): a rival may not plant in a fallow system while another guild\'s stranded machines lie there — and the reason names neither', () => {
+test('NO GUARD (the sweep replaced it, engine PR 4): a rival may plant in a fallow system where another guild\'s stranded machines lie — and its plant takes them', () => {
   const { s, rivalKit } = fallowWithRivalKit();
-  const reason = refuse(s, P.plant('g2', rivalKit, SLOT_B1));
-  assert.equal(reason, `system "${TARGET}" still holds another guild's stranded machines awaiting salvage — a Prefecture cannot be planted there while they lie there`);
-  assert.equal(reason.includes('g1'), false, 'the owner is not named');
-  assert.equal(reason.includes('asset_'), false, 'nor the machines');
+  assert.deepEqual(validateAction(s, P.plant('g2', rivalKit, SLOT_B1)), { valid: true }, 'the plant PR 1 refused is legal now');
+  const after = accept(s, P.plant('g2', rivalKit, SLOT_B1)); // accept runs every invariant after it
+  assert.equal(systemHolder(after, TARGET), 'g2');
+  assert.deepEqual(strandedAssetsIn(after, TARGET), [], 'nothing is left stranded in a held system');
+  assert.equal(guildOf(after, 'g2').assets.filter((a) => a.systemId === TARGET).length, 4, 'all four are g2\'s now (the detail: sweep.test.js)');
 });
 
-test('THE INVARIANT is red without the guard: forced past it, the plant leaves stranded machines in a held system', () => {
-  const { s, rivalKit } = fallowWithRivalKit();
+test('THE INVARIANT is red on a claim that skipped the sweep: a claim row written over the stranded machines, leaving them where they lay', () => {
+  const { s } = fallowWithRivalKit();
   assert.deepEqual(checkInvariants(s, s.tick), [], 'the fallow galaxy itself is sound');
-  // applyAction does not validate — this is the plant the guard refuses, applied anyway.
-  const forced = applyAction(s, P.plant('g2', rivalKit, SLOT_B1));
-  const red = checkInvariants(forced, forced.tick).filter((v) => v.rule === 'stranded-asset-only-in-an-unclaimed-system (design.md §19 #67)');
+  const skipped = structuredClone(s);
+  skipped.claims.push({ claimId: 'claim_prefecture_g2_01', ownerGuildId: 'g2', landmarkId: TARGET, landmarkKind: 'system', claimedAtTick: s.tick, contested: false });
+  const red = checkInvariants(skipped, skipped.tick).filter((v) => v.rule === 'stranded-asset-only-in-an-unclaimed-system (design.md §19 #67)');
   assert.equal(red.length, 4, 'one violation per stranded machine');
   assert.deepEqual(red[0].detail.heldBy, 'g2');
   assert.equal(red[0].detail.systemId, TARGET);
@@ -435,15 +437,17 @@ test('DETERMINISM: the same galaxy and the same abandon give the same bytes, and
   const a = evicted().s;
   const b = evicted().s;
   assert.equal(hashState(a), hashState(b));
-  // g1 abandons and g2 plants in ONE batch: in that order the plant finds g1's machines stranded and is refused (the
-  // TEMPORARY guard); the other way round the plant finds the system held and is refused. Never both, never a halt.
+  // g1 abandons and g2 plants in ONE batch: in that order the plant finds the system fallow and plants, sweeping g1's
+  // just-stranded machines (engine PR 4); the other way round the plant finds the system held and is refused. Never a
+  // halt either way.
   let { s } = heldGalaxy();
   let rivalKit;
   ({ s, kitId: rivalKit } = P.grantPrefectureKit(s, 'g2', TARGET));
   s = P.survey(s, 'g2', PLANET_B);
   const first = intake(s, [abandon('g1', PREFECTURE), P.plant('g2', rivalKit, SLOT_B1)]);
-  assert.deepEqual(first.results.map((r) => r.accepted), [true, false]);
-  assert.match(first.results[1].reason, /stranded machines awaiting salvage/);
+  assert.deepEqual(first.results.map((r) => r.accepted), [true, true]);
+  assert.equal(systemHolder(first.state, TARGET), 'g2');
+  assert.deepEqual(strandedAssetsIn(first.state, TARGET), [], 'the plant swept what the abandon stranded, in the same tick');
   const second = intake(s, [P.plant('g2', rivalKit, SLOT_B1), abandon('g1', PREFECTURE)]);
   assert.deepEqual(second.results.map((r) => r.accepted), [false, true]);
   assert.match(second.results[0].reason, /already held by guild "g1"/);

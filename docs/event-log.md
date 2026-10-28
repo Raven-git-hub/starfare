@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine half BUILT, client not yet):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine half BUILT, client not yet; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine half BUILT, client not yet):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -748,4 +748,44 @@ client can send writes one: it has no abandon affordance (the operator CLI and `
 **A NO-OP elsewhere.** A galaxy that never abandons writes no `system_lost` and no `evicted` closure, so every log,
 snapshot and golden without one is unchanged (`sim/tests/prefecture-abandon.test.js` pins the no-abandon hashes from
 `main`). The vocabulary test (`sim/tests/events.test.js`) now counts nine types.
+
+## 15. The sweep notices — `assets_inherited` and `assets_swept` (losing ground, engine half, 28-10-26)
+
+**What they record.** A guild planted a Prefecture in a fallow system where ANOTHER guild's stranded machines still
+lay, and its claim **swept** them: each changed hands to the planter, re-minted as its own idle asset (`design.md` §19
+#67, SETTLED 28-10-26 — "both guilds are told"; `docs/territory-model.md` §4 "AS-BUILT — losing ground, engine PR 4").
+Discrete and unrecoverable — the old rows are gone — so these are EVENTS, not standing conditions (§0). ONE writer:
+`sweepStrandedAssets` (`sim/eviction.js`), called by the plant apply (`plantKit`) at the tick of the plant. Both are
+**passive, informational** notices — no action-item, no decision. Born unread. A plant that sweeps nothing (an empty
+fallow system, or an owner re-claiming its own — that recovers its machines, it does not sweep them) writes neither.
+
+**Who gets what.**
+- **`assets_swept`** — to each **former owner**, ONE per guild, written in guild order (invariant 9): its stranded
+  machines in the system were taken by the new holder's claim.
+- **`assets_inherited`** — to the **planter**, ONE: its claim came with machines.
+(Each goes to its own guild's log; the former owners' are written first, which only matters for a reader of the god's
+eye. The plant writes no other notice.)
+
+**The payloads, self-contained** (the old rows no longer exist when the former owner reads its notice):
+- both carry `systemId` and `systemName` (its seed name, falling back to the id, as the other notices resolve names);
+- **`assets_swept`** adds **`sweptAssetIds`** — the former owner's OLD ids, sorted (they no longer exist; a stranded kit
+  is in the list too) — and **`byGuildId`** + **`byGuildName`**, the guild that now holds the system and its machines
+  (from its row, falling back to the id). Who holds a system is L0 and public (`exploration-model.md` §1), so naming it
+  leaks nothing — the `scan_voided` precedent (§13);
+- **`assets_inherited`** adds **`prefectureId`** (the plant that swept them) and **`inheritedAssetIds`** — the planter's
+  NEW ids, sorted. It does **not** name the former owner, and the new ids carry the planter's name, not the old owner's:
+  whether stranded machines are public is an open fog question (roadmap checklist), so the planter learns only what it
+  now owns.
+Ids, not counts, as `system_lost` lists `strandedAssetIds`: the count is the list's length, and the kinds read off the
+ids. (Both names, the ids-not-counts choice and who is named are on the decision checklist.)
+
+**The surface — today.** No snapshot change: `guilds[].events` carries the rows with their `whenDay`,
+`attention.notices` counts them while unread, and the per-guild view shows a guild only its own (`sim/fog.js` drops a
+rival's `events`). **Not built: the client** — the inbox rows, the cards and their voice. Until it lands the live
+client's notice renderer treats a type it does not know as a licence lapse, so either row would read "Licence lapsed —
+…" — the gap every engine-first notice has had (`system_lost` included).
+
+**A NO-OP elsewhere.** A galaxy that never sweeps writes neither notice, so every log, snapshot and golden without a
+sweep is unchanged (`sim/tests/sweep.test.js` pins two never-sweeps galaxies' hashes from `main`). The vocabulary test
+(`sim/tests/events.test.js`) now counts eleven types.
 
