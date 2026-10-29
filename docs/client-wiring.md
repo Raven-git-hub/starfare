@@ -1454,7 +1454,10 @@ through `deployRange.deepScan.hexes`, which now spans the inside of each held di
 - **No new snapshot read.** The galaxy map now also draws the view's own `deepScanArrays` rows (`LIVE.myArrays`, the
   survey popup's list): a hollow player-teal triangle on each array's hex and a "DEEP SCAN ARRAY 01" tag. It is a marker,
   never part of the territory paint, with no click panel; the map pass adds no owner filter of its own, so the per-guild
-  view (`sim/fog.js`) is what keeps a rival's array off the map.
+  view (`sim/fog.js`) is what keeps a rival's array off the map. *(⤳ 29-10-26, losing ground client slice 3: the row
+  now also carries `dark: true` while the array is not attached (omitted while it is). The marker reads it for a slate
+  edge and a DARK tag line, and OPERATIONS → Deployed reads it for the dark state line. It is the engine's answer, read
+  as sent: the client never works the attachment out. `exploration-model.md` §5.)*
 - **Words, not rules:** the deploy map says "in or beside your territory", and for a hex off the lane inside a rival's
   painted disk "Inside rival territory" — chosen from the territory the map already paints; the lane decides the hex.
   *(⤳ 16-10-26, client PR A: the paint is now the seniority `controlMap`, but these words still read a rival's WHOLE

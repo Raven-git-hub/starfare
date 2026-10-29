@@ -48,7 +48,7 @@ const { deployedAssetIds, carriedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
-const { copyScanJob } = require('./deep-scan-arrays.js');
+const { copyScanJob, isArrayAttached } = require('./deep-scan-arrays.js');
 const { usedSpace, copyManifestLine } = require('./manifest.js');
 // copyRouteWaypoint (sim/routes.js — the ONE spelling of the { anchor, action? } waypoint copy, shared
 // so a snapshotted route — a craft's journalled one or a guild's saved one — can't drift from the stored).
@@ -813,10 +813,13 @@ function computeAttention(state) {
 //       // Sorted by q then r; ALWAYS EMITTED (`[]` when no system is held). Public — the same in every view.
 //     deepScanArrays?: [ { id, ownerGuildId, coords: {q,r}, anchorSystemId,
 //                          scan?: { level: 'L1'|'L2', targetSystemId? | targetPlanetId?,
-//                                   startedTick, completeTick } } ],
+//                                   startedTick, completeTick },
+//                          dark?: true } ],
 //       // 2.5 (b1), docs/exploration-model.md §5 — OMITTED while no array exists (byte-identical to
 //       // pre-slice); in a per-guild view, only the viewer's OWN arrays (sim/fog.js). `scan` (2.5 (b2))
-//       // is the array's running job, omitted while it is idle.
+//       // is the array's running job, omitted while it is idle. `dark` (losing ground, client slice 3) is
+//       // `true` while the array is NOT attached to its owner's control (`isArrayAttached`), omitted while it
+//       // is — derived at snapshot time, never stored. A dark array never carries a `scan`.
 //     prefectures?: [ { id, ownerGuildId, systemId, planetId, slotId, claimId, plantedAtTick } ],
 //       // 2.5, the Prefecture / claims slice (docs/territory-model.md §4) — every planted Prefecture, echoed
 //       // as stored, sorted by id. OMITTED while none exists (byte-identical to pre-slice). A rival's is a
@@ -1199,13 +1202,20 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
 // what it is scanning and when it finishes. OMITTED WHEN IDLE, exactly as on the row — so an idle array's
 // row is byte-identical to b1's. The per-guild view keeps only the viewer's own arrays (sim/fog.js), so a
 // job never reaches a rival.
-function snapshotDeepScanArrayRow(a) {
+// Losing ground, client slice 3: plus `dark: true` while the array is DARK — not attached to its owner's
+// control (exploration-model.md §5, "AS-BUILT — the array goes dark"). The engine already knows this
+// (`isArrayAttached`), but nothing stores it, so the client could not see it, and the client must not work
+// attachment out for itself (design.md §18). It is read off the live control here, the same predicate
+// queueScan's gate asks. OMITTED WHILE ATTACHED, as `scan` is while idle, so a galaxy with no dark array
+// serves exactly the bytes it did before. It needs `state` (the control lives there, not on the row).
+function snapshotDeepScanArrayRow(state, a) {
   return {
     id: a.id,
     ownerGuildId: a.ownerGuildId,
     coords: { q: a.coords.q, r: a.coords.r },
     anchorSystemId: a.anchorSystemId,
     ...(a.scan ? { scan: copyScanJob(a.scan) } : {}),
+    ...(isArrayAttached(state, a) ? {} : { dark: true }),
   };
 }
 
@@ -1909,7 +1919,7 @@ function buildGodsEyeSnapshot(state) {
   // because this block is new: a galaxy with no array must serve EXACTLY the god's-eye bytes it served
   // before the array existed (tests/fog.test.js pins those bytes), so the key appears only once an array does.
   const deepScanArrays = (state.deepScanArrays || [])
-    .map(snapshotDeepScanArrayRow)
+    .map((a) => snapshotDeepScanArrayRow(state, a))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   // Every planted Prefecture (docs/territory-model.md §4; roadmap 2.5, the Prefecture / claims slice) — the

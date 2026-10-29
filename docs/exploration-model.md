@@ -847,7 +847,28 @@ queue depth**:
 >   the gate, the wake, the Outpost path, the tripwire). **Not built:** the client (a dark array's marker or label, the
 >   `anchor-lost` card's words — until then the live client reads the void as "… claimed it before it finished", naming
 >   "another guild"). *(⤳ 28-10-26: the card's words are BUILT — losing ground client slice 1; the scout now says the
->   array went dark, `docs/event-log.md` §13. A dark array's marker or label is still to come.)*
+>   array went dark, `docs/event-log.md` §13. A dark array's marker or label is still to come.)* *(⤳ 29-10-26: BUILT —
+>   losing ground client slice 3, the note below.)*
+
+> **⤳ AS-BUILT 29-10-26 — the dark state is published, and shown (losing ground, client slice 3; engine + client).**
+> Dark is still derived and never stored; the snapshot now carries it, so the client can show it without working the
+> attachment out (design.md §18). **No new number.**
+> - **The field.** The array's snapshot row (`snapshotDeepScanArrayRow`, `sim/snapshot.js`) gains **`dark: true`**
+>   while `isArrayAttached` is false, read off the live control at snapshot time. The key is **omitted while the array
+>   is attached**, as `scan` is while idle, so a galaxy with no dark array serves exactly the bytes it served before
+>   (pinned against `main` in `sim/tests/dark-array-snapshot.test.js`). A dark row never carries a `scan`. Attachment is
+>   about the OWNER's control, so the row reads the same in every lens. The per-guild view holds only the viewer's own
+>   arrays (`sim/fog.js` reuses the god's-eye rows), so a dark array only ever appears to its owner.
+> - **The map.** A dark array keeps its triangle and under-stroke, but its edge is a dim slate instead of the player
+>   teal, so it reads as switched off beside a live one (idle or surveying, both teal). Its tag gains a second line,
+>   **DARK**. Look only: no new geometry, no click target.
+> - **Operations → Deployed.** A dark array's state line reads **"dark · touches no territory you hold"** (amber, the
+>   stranded marker's tone; draft copy), where it read "idle · anchored to …"; `docs/operations-hub.md` §5.
+> - **Proved** by `sim/tests/dark-array-snapshot.test.js` (the field equals `!isArrayAttached` in every lens; an idle
+>   array going dark is published dark; nothing stored; byte-identity) and `sim/tests/losing-ground-dark-client.test.js`
+>   (the page's own code, against real views).
+> - **Not built:** the survey popup still offers a dark array as idle (the engine refuses the queue in its own words);
+>   no legend key; no "dark since". The roadmap's decision checklist has the detail.
 
 **Monitoring — the watch (DEFERRED; design-ahead, NOT built).** A continuous watch that surfaces
 dynamic activity (rival transports, anomalies) — the counter-play to "operations are private",
