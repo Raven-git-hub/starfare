@@ -306,7 +306,9 @@ recovers it. *(⤳ 28-10-26 — the sweep is built (losing ground, engine PR 4):
 `sys_0936` is now ACCEPTED and takes the stranded factory, which becomes that guild's own idle factory under a new id,
 with an `assets_inherited` notice to it and an `assets_swept` notice to `seat_demo`. `plant-prefecture` still prints
 only the claim, not what it inherited — read the guild's notices. The engine's tests prove it; this was not re-run live.)* *(Run live 17-10-26 against a fresh `seat-demo --seed 42` continuing from the plant above, and the
-abandon survived a server restart with persistence on.)*
+abandon survived a server restart with persistence on.)* *(⤳ 29-10-26 — a player can now send the same action from the
+client (losing ground client slice 5): Abandon Prefecture on the overlay of their own Prefecture's slot, behind a confirm
+that spells out the loss. The operator path above is unchanged.)*
 
 ## Salvage — a stranded machine hauled home (losing ground, engine PR 2)
 

@@ -1501,6 +1501,20 @@ the first Prefecture / claims slice is complete: a player claims a second system
   engine's refusal and nothing changes. Every other slot behaves as before.
 - **Proved** headless against a live server — 33 checks, zero console errors (`docs/roadmap.md`, 2.5).
 
+## Revision — the Prefecture's abandon *(29-10-26, roadmap 2.5, losing ground client slice 5, client-only)*
+
+The full as-built is `docs/territory-model.md` §4, "AS-BUILT — losing ground client slice 5"; this is the client's view
+of it. The plant's mirror: a vacant slot offers Plant, the player's own Prefecture's slot offers Abandon.
+
+- **No new snapshot read.** The confirm counts rows the page already had: the snapshot's `ventures` (the player's own,
+  at the system) and the guild's own `assets` there, read through one shell bridge, `window.__myHoldingsIn(systemId)`.
+- **What the player sees:** the overlay of their own Prefecture's slot carries **Abandon Prefecture** beside Dismiss.
+  It opens the Guild Adviser's confirm ("Abandon the Prefecture?" — destroyed, no kit back, the system unclaimed; how
+  many ventures, machines and kits they have there; what each becomes); Abandon Prefecture sends `abandonPrefecture`,
+  Cancel sends nothing. Afterwards the slot reads VACANT and the map shows the system unclaimed. A refusal is shown in
+  the engine's words, and the Prefecture still stands. Every other slot, overlay and row behaves as before.
+- **Proved** by `sim/tests/prefecture-abandon-client.test.js` (16); the live click-through is the human's Playwright pass.
+
 ## Revision — the claim-pending beacon *(16-10-26, roadmap 2.5, the Prefecture / claims slice, client PR C, client-only)*
 
 The full as-built is `docs/territory-model.md` §4, "AS-BUILT — client PR C"; this is the client's view of it.
