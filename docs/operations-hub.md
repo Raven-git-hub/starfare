@@ -112,6 +112,16 @@ include stranded rows; no day is shown (the client may not turn a tick into a da
 `myIdle` reads only `deployedToVentureId` and not the snapshot's `inTransitOnVehicleId` — the salvage-run client's
 (roadmap checklist). Proved by `sim/tests/losing-ground-ops-client.test.js`.
 
+**AS-BUILT 29-10-26 — a DARK array reads dark (losing ground client slice 3; engine + client).** The snapshot's array
+row now carries the engine's `dark: true` while the array is not attached to the guild's control
+(`exploration-model.md` §5). DEPLOYED reads that flag, and checks it before the idle / surveying split: a dark array's
+state line reads **"dark · touches no territory you hold"** (draft copy), in the stranded marker's amber, where it read
+"idle · anchored to <system>". The anchor is no longer named, because it no longer holds the array up. A dark array
+never carries a job, so it is never "busy". The flag is the only thing read; the row never asks what the guild holds
+(design.md §18). Every other row is byte-identical, and the list needs no signature: it diffs its own html, so an
+array going dark while idle redraws it on the next poll. Unchanged: the kind header's count includes dark arrays.
+Proved by `sim/tests/losing-ground-dark-client.test.js`.
+
 ## 6. LEASED — future (Phase 4)
 
 Transports leased to the Syndicate under the lease/recall contract (`transport-model.md` §10 open q —

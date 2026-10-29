@@ -425,6 +425,13 @@ test('venture_closed and licence_lapsed: every other cause reads exactly as main
 // slice), hashed and pinned. The host this slice changes in a state is named and left out of that state's hash (the
 // readable tests above prove it); every other host must render byte for byte as on main. It touches nothing the slice
 // added, so it passes on main's game.html too.
+// ⤳ losing ground client slice 3: each view is taken with its Deep Scan Array rows' `dark` keys out — exactly main's
+// view of the same galaxy (dark-array-snapshot.test.js) — because a dark array's DEPLOYED row is slice 3's own change
+// (g1's two in "reach, lost"), proved in losing-ground-dark-client.test.js. The pins are unchanged.
+const stripDark = (view) => {
+  for (const row of view.deepScanArrays || []) delete row.dark;
+  return view;
+};
 const AS_ON_MAIN = [
   { name: 'reach, before the loss (g1)', state: () => REACH.pre, guild: 'g1', changed: [],
     pin: 'd5ecb075c3bc34c77696919bf18fd9e33c2f3c86e1801b4a8ed9608e04da1c9b' },
@@ -450,7 +457,7 @@ const AS_ON_MAIN = [
 
 test('the rest of the Operations hub renders exactly as main rendered it — every host this slice leaves alone, in every state', () => {
   for (const c of AS_ON_MAIN) {
-    const p = opsPage(viewOf(c.state(), c.guild), c.guild);
+    const p = opsPage(stripDark(viewOf(c.state(), c.guild)), c.guild);
     p.open();
     const hub = p.hub();
     for (const id of c.changed) delete hub[id];

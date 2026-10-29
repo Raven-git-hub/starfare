@@ -1364,6 +1364,8 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-dep .kd{font-size:10px; color:var(--ops-ink4); letter-spacing:.03em; flex:0 0 auto;}
 #tp-ops .ops-dep .st{margin-top:3px; font-size:10.5px; color:var(--ops-ink3); letter-spacing:.02em;}
 #tp-ops .ops-dep .st.busy{color:var(--ops-teal);}
+/* a DARK array's state line (losing ground client slice 3): the stranded marker's amber — a loss's after-effect. Look only. */
+#tp-ops .ops-dep .st.dark{color:var(--ops-amber2);}
 
 /* IDLE TRANSPORTS — the guild's own idle guild-transports (design.md §15.4), grouped by SYSTEM
    (the ops-idle tree idiom, tp-prefixed) then ONE COLLAPSIBLE TAB per craft. A craft tab collapsed
@@ -5091,6 +5093,19 @@ select.field{appearance:none; cursor:pointer;}
   // survey popup and the survey notices use (2.5 slice 15). Display only (§18).
   function arrayMapName(a) { return 'Deep Scan Array ' + String(a.id).split('_').slice(-1)[0]; }
 
+  // A DARK array on the map (losing ground, client slice 3; exploration-model.md §5) — one whose row carries the
+  // engine's `dark`, read as sent: the client never works the attachment out (§18). It keeps its triangle and
+  // under-stroke, but its edge is a dim slate instead of the player teal, so it reads as switched off beside a live
+  // one (idle or surveying, both teal), and its tag gains a second line, DARK. Look, not a game number.
+  const DARK_ARRAY_EDGE = 'rgba(140,150,165,0.55)';
+  // arrayMarkerEdge(a) -> the colour of an array's triangle edge.
+  function arrayMarkerEdge(a) { return a.dark ? DARK_ARRAY_EDGE : col('player', 0.95); }
+  // arrayMapTag(a) -> the lines of an array's map tag.
+  function arrayMapTag(a) {
+    const name = arrayMapName(a).toUpperCase();
+    return a.dark ? [name, 'DARK'] : [name];
+  }
+
   // ticks -> a compact ETA string ("12m" / "11h 58m" / "1d 04h"), the same tick->time
   // transform the trade/clock UI already does (1 tick = 1 minute, N=1440 = 24h). This is
   // PRESENTATION of the engine's own `ticksRemaining` — never a figure recomputed from
@@ -5407,7 +5422,8 @@ select.field{appearance:none; cursor:pointer;}
     // deployed it is still parked there). It is a MARKER ONLY: an array creates no control and changes no
     // territory, so it never joins computeTerritoryMap. The rows are the view's own `deepScanArrays`, as the shell
     // keeps them (LIVE.myArrays) — the engine's per-guild view carries no rival's array (sim/fog.js), and nothing
-    // here filters, so a leak would show rather than hide. The label pass below names each one.
+    // here filters, so a leak would show rather than hide. The label pass below names each one. A DARK array's edge
+    // is slate, not teal (arrayMarkerEdge, losing ground client slice 3).
     const myArraysOnMap = (window.__myArrays && window.__myArrays()) || [];
     myArraysOnMap.forEach((a) => {
       const p = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
@@ -5429,7 +5445,7 @@ select.field{appearance:none; cursor:pointer;}
       ctx.strokeStyle = 'rgba(4,8,16,0.75)';
       ctx.stroke();
       ctx.lineWidth = 1.6;
-      ctx.strokeStyle = col('player', 0.95);
+      ctx.strokeStyle = arrayMarkerEdge(a);
       ctx.stroke();
       ctx.restore();
     });
@@ -5836,7 +5852,7 @@ select.field{appearance:none; cursor:pointer;}
         const p = hexToPixel(a.coords.q, a.coords.r, galaxy.galaxyParams.hexSize);
         const scr = worldToScreen(p.x, p.y);
         if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
-        drawLabelBox(scr, [arrayMapName(a).toUpperCase()], 'player', true);
+        drawLabelBox(scr, arrayMapTag(a), 'player', true);
       });
     }
 
@@ -8319,7 +8335,7 @@ var GAME = { guildId:null, guildName:null, homeSystemId:null, galaxy:null, pollT
 //   occupancy     { siteId: ventureId }        verbatim from the snapshot
 //   siteInfo      { siteId: {...} }            the player-safe read of who holds a site
 //   known         { systemId: { planetId: {...} } }  geography.known: the earned L1/L2 detail
-//   myArrays      [ { id, coords, anchorSystemId, scan? } ]  the player's own Deep Scan Arrays
+//   myArrays      [ { id, coords, anchorSystemId, scan?, dark? } ]  the player's own Deep Scan Arrays
 var LIVE = { systemClaims:{}, controlMap:[], guildNameById:{}, occupancy:{}, siteInfo:{}, siteSig:'', known:{},
              myVentures:{}, myAssets:[], myArrays:[], windowN:null,
              // The last snapshot as it arrived. The TRADE panel reads its prices,
@@ -8621,6 +8637,13 @@ function myIdleGroundKits(){
     return !!(kit && kit.ground) && a.deployedToVentureId == null;
   });
 }
+// The arrays' term of the detail screen's redraw signature: each array's id, its job, and whether it is DARK (the
+// engine's `dark`, losing ground client slice 3). An array can go dark while IDLE — it had no job to void — so a
+// term of id and job alone would not move when it does. (The detail screen itself reads only the jobs today, through
+// __scanFor; the flag rides here so the signature follows every array state the snapshot publishes.)
+function arraysSignature(arrays){
+  return JSON.stringify(arrays.map(function(a){ return [a.id, a.scan || null, !!a.dark]; }));
+}
 function applySnapshot(snap){
   LIVE.snap = snap;
   var me = (snap.guilds || []).filter(function(g){ return g.id === GAME.guildId; })[0] || null;
@@ -8655,6 +8678,8 @@ function applySnapshot(snap){
   LIVE.known = (snap.geography && snap.geography.known) || {};
   // The player's OWN Deep Scan Arrays (exploration-model.md §5), verbatim. An array is IDLE when it
   // carries no `scan` key and BUSY when it does; the job's target and `completeTick` are the engine's.
+  // It is DARK when it carries `dark: true` (losing ground client slice 3) — the engine's answer, never
+  // worked out here; a dark array is never busy.
   // The fogged view already keeps only the viewer's arrays (and omits the key when it owns none) —
   // the owner filter just says so here as well.
   LIVE.myArrays = (snap.deepScanArrays || []).filter(function(a){ return a.ownerGuildId === GAME.guildId; });
@@ -8717,13 +8742,14 @@ function applySnapshot(snap){
   (snap.prefectures || []).forEach(function(f){ LIVE.siteInfo[f.slotId] = prefectureSite(f); });
   // Re-render an open detail screen only when what it draws actually MOVED — occupancy, the
   // known detail (a survey landing, a system claimed or lost), a controller, an array starting
-  // or finishing a scan job, or an idle Prefecture kit landing in (or leaving) a system, which
-  // is what offers Plant on a slot there — so a change under the player shows without the list
-  // churning, and without a re-render every second throwing away their scroll position.
+  // or finishing a scan job or going dark (arraysSignature), or an idle Prefecture kit landing in
+  // (or leaving) a system, which is what offers Plant on a slot there — so a change under the
+  // player shows without the list churning, and without a re-render every second throwing away
+  // their scroll position.
   var sig = Object.keys(LIVE.occupancy).sort().map(function(k){ return k + ':' + LIVE.occupancy[k]; }).join(',') +
     '|' + JSON.stringify(LIVE.known) +
     '|' + Object.keys(LIVE.systemClaims).sort().map(function(k){ return k + ':' + LIVE.systemClaims[k]; }).join(',') +
-    '|' + JSON.stringify(LIVE.myArrays.map(function(a){ return [a.id, a.scan || null]; })) +
+    '|' + arraysSignature(LIVE.myArrays) +
     '|' + myIdleGroundKits().map(function(a){ return a.id + '@' + a.systemId; }).join(',');
   if (sig !== LIVE.siteSig){
     LIVE.siteSig = sig;
@@ -11725,11 +11751,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // the per-guild view carries our own), grouped by type under collapsible headers as IDLE is (operations-hub.md
   // §5). Each row is the structure's name and, as its descriptor, its HEX COORDINATE (RULED 10-09-26, §5), over
   // one line of state: what it is anchored to and, for an array, what its row says — idle (no `scan`), or
-  // surveying a target with the time left read off the job's own `completeTick` (the survey button's eta). The
-  // names are the ones the rest of the client uses: an Outpost's from __outpostName, an array's from the serial
-  // on its id, as the survey popup names it. Nothing here acts — the Manage popup (§5) is not built; the Outpost
-  // Manager and the survey flow are where those acts live. Each group in id order. The client computes no game
-  // number.
+  // surveying a target with the time left read off the job's own `completeTick` (the survey button's eta), or —
+  // losing ground, client slice 3 — DARK, when the row carries the engine's `dark` (no control of the guild's
+  // touches its hex any more, exploration-model.md §5). The client reads that flag as sent and never works the
+  // attachment out itself (design.md §18). The names are the ones the rest of the client uses: an Outpost's
+  // from __outpostName, an array's from the serial on its id, as the survey popup names it. Nothing here acts —
+  // the Manage popup (§5) is not built; the Outpost Manager and the survey flow are where those acts live. Each
+  // group in id order. The client computes no game number.
   function arrayLabel(a){ return 'Deep Scan Array ' + String(a.id).split('_').slice(-1)[0]; }
   function scanTargetName(job){
     if(job.level === 'L1') return systemName(job.targetSystemId);
@@ -11745,11 +11773,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         + '<h3>Nothing deployed yet</h3>'
         + '<p>Outposts and Deep Scan Arrays your guild places list here. Deploy a kit from Idle to place one.</p></div>';
     }
-    // One structure: its name and hex (the ruled descriptor), over its state line.
-    var row = function(name, coords, state, busy){
+    // One structure: its name and hex (the ruled descriptor), over its state line. `tone` is the state line's
+    // extra class, or '' for none: 'busy' (a running survey) or 'dark' (a dark array).
+    var row = function(name, coords, state, tone){
       return '<div class="ops-dep"><div class="hd"><span class="nm">' + esc(name) + '</span>'
         + '<span class="kd">hex ' + esc(coords.q) + ', ' + esc(coords.r) + '</span></div>'
-        + '<div class="st' + (busy ? ' busy' : '') + '">' + esc(state) + '</div></div>';
+        + '<div class="st' + (tone ? ' ' + tone : '') + '">' + esc(state) + '</div></div>';
     };
     // One type's group — the IDLE tree's collapsible kind group (its classes, caret and CSS), keyed in
     // O.depCollapsed so a poll's rebuild keeps the reader's choice. An empty type has no group.
@@ -11762,13 +11791,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     };
     var tick = (s && typeof s.tick === 'number') ? s.tick : null;
     var outpostRows = outposts.map(function(o){
-      return row(outpostName(o.id), o.coords, 'anchored to ' + systemName(o.anchorSystemId), false);
+      return row(outpostName(o.id), o.coords, 'anchored to ' + systemName(o.anchorSystemId), '');
     });
     var arrayRows = arrays.map(function(a){
+      // Dark is checked first. A dark array never carries a job (the engine voids it), so it is never busy, and its
+      // anchor is no longer what holds it up, so the line does not name it.
+      if(a.dark) return row(arrayLabel(a), a.coords, 'dark · touches no territory you hold', 'dark');
       var state = !a.scan
         ? 'idle · anchored to ' + systemName(a.anchorSystemId)
         : 'surveying ' + scanTargetName(a.scan) + (tick == null ? '' : ' · ' + fmtETA(a.scan.completeTick - tick));
-      return row(arrayLabel(a), a.coords, state, !!a.scan);
+      return row(arrayLabel(a), a.coords, state, a.scan ? 'busy' : '');
     });
     return group('outposts', 'Outposts', outpostRows) + group('arrays', 'Deep Scan Arrays', arrayRows);
   }

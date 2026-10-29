@@ -465,7 +465,9 @@ not restated here. It extends the shared eviction above; nothing of PR 1 was reb
   the fallow system still acts there, as a transfer at any system always has.
 - **Byte-identical where it should be.** A galaxy with lanes, scanning arrays and an Outpost around a held system that
   never abandons hashes exactly as on `main` at 291df19 — state and the god's-eye, own and rival views, on the launch
-  tick and 760 ticks on (`sim/tests/eviction-reach.test.js`, pinned). No snapshot field was added.
+  tick and 760 ticks on (`sim/tests/eviction-reach.test.js`, pinned). No snapshot field was added. *(⤳ 29-10-26:
+  losing ground client slice 3 adds one, `dark: true` on a dark array's row. It is omitted while the array is attached,
+  so these pins still hold.)*
 - **Proved** by `sim/tests/eviction-reach.test.js` (16) over the galaxy in `sim/tests/eviction-reach-script.js`; two
   PR 1 seam tests in `prefecture-abandon.test.js` were updated to the new behaviour (above, (a) and (b)).
 - **Not built:** the client (the `system-lost` lane notice's words, a dark array's display, the `anchor-lost` card's
@@ -475,6 +477,10 @@ not restated here. It extends the shared eviction above; nothing of PR 1 was reb
   BUILT — losing ground client slice 2, the read-state: "… — a stop's system was lost.", naming where an in-flight craft
   will land (`docs/operations-hub.md` §4, `docs/transport-model.md` §11.6). A dark array's display is the next slice,
   engine + client: the array row carries no attached / dark state, so it needs a snapshot field first (roadmap checklist, engine PR 3 item 9).)*
+  *(⤳ 29-10-26: a dark array's display is BUILT — losing ground client slice 3. The snapshot's array row now carries
+  `dark: true` while the array is not attached (`isArrayAttached`, read at snapshot time; omitted while attached). The
+  map draws a dark array's marker with a slate edge and a DARK tag, and Operations → Deployed reads "dark · touches no
+  territory you hold". `exploration-model.md` §5, "AS-BUILT — the dark state is published, and shown".)*
 
 **AS-BUILT — losing ground, engine PR 4: the sweep — a rival's claim inherits the stranded machines (28-10-26; engine
 only, no client).** Built to `design.md` §19 **#67** (SETTLED 28-10-26, the sweep) — the ruling lives there and is not
@@ -1117,7 +1123,8 @@ array's running job at once (`voidDetachedScans` — the eviction, `reclaimOutpo
 wakes the array. The rival half of the rule (never inside a rival's control) stays a placement check only — an array
 whose hex later falls in a rival's control still scans. The structure is never removed by any of this. Detail:
 `exploration-model.md` §5, "AS-BUILT — the array goes dark"; the eviction's side, §4 "AS-BUILT — losing ground, engine
-PR 3".
+PR 3". *(⤳ 29-10-26, losing ground client slice 3: the snapshot now publishes it, `dark: true` on the array's row
+(omitted while attached, still stored nowhere), and the client shows it — on the map and in Operations → Deployed.)*
 
 > **RULED 05-10-26 — the reclaim (teardown → redeploy); AS-BUILT 05-10-26, engine half.** The inverse of the deploy: a deployed Outpost with an empty stockpile and nothing docked is packed back into an `outpost_kit` aboard the single empty heavy parked on its hex, which then re-enters this section's flow unchanged. It is built as `reclaimOutpost` (`sim/actions.js`), with tripwires in `sim/tests/outpost-teardown.test.js`. The round-trip test runs deploy, reclaim, dispatch and deploy-on-arrival through this section's machinery, untouched; the redeploy takes a new id. The client half (the Outpost Manager's Teardown affordance) is next. Full ruling and AS-BUILT: `docs/outpost-teardown.md` §9; `design.md` §4.
 
