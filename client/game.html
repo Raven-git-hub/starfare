@@ -665,6 +665,10 @@
     padding:8px 14px; border-radius:6px; cursor:pointer;
   }
   .overlay-panel button.close:hover{ border-color:var(--brass); color:var(--brass); }
+  /* Abandon, on the overlay of the player's own Prefecture (losing ground client slice 5): Dismiss's shape, in the rust
+     red the client's other destructive controls hover to, because it opens a one-way act. */
+  .overlay-panel button.abandon{ margin-left:8px; border-color:rgba(194,96,58,0.55); color:#C2603A; }
+  .overlay-panel button.abandon:hover{ border-color:#C2603A; color:#C2603A; background:rgba(194,96,58,0.12); }
 </style>
 
 <style id="shell-css">
@@ -3319,6 +3323,7 @@ select.field{appearance:none; cursor:pointer;}
     <h3 id="overlayTitle">Node</h3>
     <p id="overlayCopy">Extraction data, richness, and claim status for this node are not yet instrumented.</p>
     <button class="close" id="overlayClose">Dismiss</button>
+    <button class="close abandon" id="overlayAbandon" style="display:none">Abandon Prefecture</button>
   </div>
 </div>
 
@@ -6863,6 +6868,65 @@ async function sendPlant(site){
   }
 }
 
+// THE ABANDON (losing ground client slice 5; design.md §2 "Losing it evicts the system", §19 #67 / #69;
+// docs/territory-model.md §4). Plant's mirror: the player gives up a system it holds by a Prefecture. The engine's
+// abandonPrefecture judges it. It takes only a Prefecture of the guild's own, and that is the only one the overlay
+// offers Abandon on (a rival's reads as `other`, and a home never carries a Prefecture). It also refuses while one of
+// the guild's craft is flying a Deep Scan Array to the system's centre. That rare case is not mirrored here: the
+// confirm sends, and the refusal is shown in the engine's words.
+//
+// The HEAVY confirm (ruled 29-10-26), on the Guild Adviser's card like the plant's. An abandon is one-way, so before
+// anything is sent it spells out what is lost, and what the player has in the system now: a tally of the guild's own
+// venture and asset rows there (__myHoldingsIn), not a game number (§18). The words are static, and a draft.
+function openAbandonFor(site){
+  if (!window.__adviserConfirm) return;
+  const held = window.__myHoldingsIn ? window.__myHoldingsIn(SYSTEM.id) : { ventures:[], assets:[] };
+  const kits = held.assets.filter(function(a){ return !!window.__kitKind(a.kind); }).length;
+  const machines = held.assets.length - kits;
+  const body =
+    '<p>Your Prefecture on <em>' + esc(site.slotLabel) + '</em> holds <em>' + esc(SYSTEM.name) + '</em> for ' +
+      esc(myGuildName() || 'your guild') + '. Abandon it, and it is <em>destroyed</em>. It does not come back as a ' +
+      'kit, and ' + esc(SYSTEM.name) + ' is unclaimed again, open to any guild\u2019s claim.</p>' +
+    '<p>You have <em>' + countWords(held.ventures.length, 'venture', 'ventures') + '</em>, <em>' +
+      countWords(machines, 'machine', 'machines') + '</em> and <em>' + countWords(kits, 'kit', 'kits') + '</em> in ' +
+      esc(SYSTEM.name) + ' now.</p>' +
+    '<p>Your ventures there close. Every machine and kit you have there, the ventures\u2019 own included, is left ' +
+      'stranded, awaiting salvage: a heavy transport must carry them out. Any goods you hold there are forfeit. Any ' +
+      'lane of yours with a stop there ends, and any Deep Scan Array of yours that touches no other territory you hold ' +
+      'goes dark, its survey voided. Your exploration record of the system is kept.</p>' +
+    '<p>This cannot be undone.</p>';
+  window.__adviserConfirm({ title:'Abandon the Prefecture?', body:body,
+    confirmLabel:'Abandon Prefecture \u25b8', onConfirm:function(){ return sendAbandon(site); } });
+}
+
+// countWords(n, one, many) -> a count of rows in words: "no kits", "1 venture", "3 machines". Never "0" or "null".
+function countWords(n, one, many){ return (n ? String(n) : 'no') + ' ' + (n === 1 ? one : many); }
+
+// The write, as sendPlant's. A refusal (the centre-bound craft, or the Prefecture already gone) is shown in the
+// engine's own words, and nothing is pretended: the Prefecture still stands. On success the re-read snapshot repaints
+// the slot (vacant), the map (the system unclaimed) and every list the loss reaches. `abandonInFlight` stops a second
+// click from sending the same abandon twice.
+let abandonInFlight = false;
+async function sendAbandon(site){
+  const player = window.__player ? window.__player() : null;
+  if (abandonInFlight || !player || !player.guildId) return;
+  abandonInFlight = true;
+  let out = null, failure = null;
+  try {
+    out = await window.__sendAction({ type:'abandonPrefecture', guildId:player.guildId, prefectureId:site.prefectureId });
+  } catch (err) {
+    failure = 'The Syndicate could not be reached: ' + err.message;
+  }
+  if (!failure && !(out && out.accepted)) failure = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined');
+  // Re-read either way: a success repaints the loss; a refusal repaints whatever moved under it.
+  if (window.__refreshNow) { try { await window.__refreshNow(); } catch (e) {} }
+  abandonInFlight = false;
+  if (failure) {
+    window.__adviserConfirm({ title:'The Prefecture was not abandoned',
+      body:'<p>' + esc(failure) + '</p>', confirmLabel:'Close', singleButton:true, onConfirm:function(){} });
+  }
+}
+
 // A vacant row hands the establishment popup everything it needs about the site.
 // Territory is passed because it is now a GATE, not just a caption: §4 gate 3 lets a
 // guild deploy only inside a system it holds, so `site.mine` is what the popup's deploy
@@ -6889,6 +6953,7 @@ function openNodeOverlay(title, siteId, label){
   el.overlayTitle.textContent = title;
   const state = siteState(siteId);
   let copy;
+  let abandon = null;   // the Prefecture the overlay's Abandon would give up — set only on the player's own
   if (!state){
     // VACANT is now a live fact (no venture sits on this site), not a placeholder.
     copy = label + ' \u2014 ' + siteId + '. Vacant: no venture is seated here. Establishing one from this screen arrives with the next slice.';
@@ -6901,6 +6966,7 @@ function openNodeOverlay(title, siteId, label){
     copy = label + ' \u2014 ' + siteId + '. Held by your venture ' + state.ventureId + '.';
   } else if (state.kind === 'prefecture'){
     copy = label + ' \u2014 ' + siteId + '. Your Prefecture ' + state.prefectureId + ' stands here: it holds ' + SYSTEM.name + ' for your guild.';
+    abandon = { prefectureId:state.prefectureId, slotLabel:title };
   } else if (state.prefectureId){
     // A rival's Prefecture is public (RULED 16-10-26): whose it is, and that it holds the system.
     copy = label + ' \u2014 ' + siteId + '. ' + (state.ownerName || 'Another guild') + '\u2019s Prefecture stands here: it holds ' + SYSTEM.name + '.';
@@ -6911,6 +6977,12 @@ function openNodeOverlay(title, siteId, label){
       '. What they produce here is not visible to you.';
   }
   el.overlayCopy.textContent = copy;
+  // Plant's mirror (losing ground client slice 5): the player's own Prefecture's overlay carries Abandon, which closes
+  // the overlay and opens the abandon's confirm — it never sends. Every other overlay hides it. The handler is replaced
+  // on every open, so the button can only act on the Prefecture the overlay is showing.
+  const abandonBtn = document.getElementById('overlayAbandon');
+  abandonBtn.style.display = abandon ? '' : 'none';
+  abandonBtn.onclick = abandon ? function(){ el.overlay.classList.remove('open'); openAbandonFor(abandon); } : null;
   el.overlay.classList.add('open');
 }
 el.overlayClose.addEventListener('click', function(){ el.overlay.classList.remove('open'); });
@@ -9008,6 +9080,17 @@ window.__myIdleAssets = function(kind){
 // The player's idle Prefecture kits sitting in ONE system — what the planet manifest's Plant offer reads.
 window.__myIdleGroundKitsIn = function(systemId){
   return myIdleGroundKits().filter(function(a){ return a.systemId === systemId; });
+};
+// What the player has in ONE system — the planet manifest's Abandon confirm counts it (losing ground client slice 5):
+// the guild's own venture rows there, and its own asset rows there (machines and kits). A machine aboard a heavy keeps
+// the system it was loaded from but is in the hold, not the system, so a row carrying `inTransitOnVehicleId` is not
+// counted (the eviction leaves such a machine be). Published rows, filtered; nothing here is a game number (§18).
+window.__myHoldingsIn = function(systemId){
+  var ventures = ((LIVE.snap && LIVE.snap.ventures) || []).filter(function(v){
+    return v.ownerGuildId === GAME.guildId && v.systemId === systemId;
+  });
+  var assets = LIVE.myAssets.filter(function(a){ return a.systemId === systemId && a.inTransitOnVehicleId == null; });
+  return { ventures:ventures, assets:assets };
 };
 // pendingPrefectures(kits, systemClaims, systems) -> [ { systemId, q, r } ]: the systems where a Prefecture kit of
 // the guild's lies idle and NOBODY holds the system yet — the "ready to plant" state the map's claim-pending beacon

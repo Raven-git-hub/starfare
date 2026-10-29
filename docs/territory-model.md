@@ -420,7 +420,9 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   the group of the system it was lost in, read off the `stranded` flag alone (`docs/operations-hub.md` §5's AS-BUILT
   28-10-26). The salvage UI is still to come; the map is unchanged (a fallow system already renders unclaimed).)*
   *(⤳ 29-10-26: the salvage UI is BUILT — losing ground client slice 4; §5's "AS-BUILT — losing ground client slice 4".
-  The abandon control — a player button to give a system up — is still to come.)*
+  The abandon control — a player button to give a system up — is still to come.)* *(⤳ 29-10-26: the abandon control is
+  BUILT — losing ground client slice 5; "AS-BUILT — losing ground client slice 5" at the end of this section. **The
+  losing-ground client is complete.**)*
 
 **AS-BUILT — losing ground, engine PR 3: the eviction's reach — lanes end, arrays go dark (27-10-26; engine only, no
 client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, "the eviction's reach") — the ruling lives there and is
@@ -540,6 +542,33 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
   notices' words, the inherited machines' display). *(⤳ 28-10-26: the two notices' words are BUILT — losing ground
   client slice 1, the notices; `docs/event-log.md` §15's client AS-BUILT. The inherited machines already list as ordinary
   idle rows in Operations; a display that marks them as inherited is not built.)*
+
+**AS-BUILT — losing ground client slice 5: the abandon control (29-10-26; `client/game.html` only).** The owner's abandon
+(engine PR 1, above) given to the player — Plant's mirror on the same planet manifest. No engine, snapshot or fog change
+(`abandonPrefecture` was already a legal `POST /action`, and the confirm's rows were already published); no new number.
+- **The control.** The read-only overlay a settlement slot opens shows the player's own Prefecture ("Your Prefecture …
+  stands here: it holds <system> for your guild"); it now also carries **Abandon Prefecture**, beside Dismiss. Only
+  there: a rival's Prefecture reads as the neutral `other` site and gets none, a home never carries a Prefecture, and
+  every other overlay hides the button. Its one handler is replaced on every open, so it can only act on the Prefecture
+  the overlay shows. It sends nothing: it closes the overlay and opens the confirm. The slot's row is unchanged.
+- **The confirm** (ruled 29-10-26 — the heavy one; a two-step inline arm is not enough for a one-way act), on the Guild
+  Adviser's card, as the plant's. It says the Prefecture is **destroyed** — no kit comes back — and the system is
+  unclaimed again; what the player has there **now**, counted off published rows: its own venture rows at the system,
+  and its own asset rows there split into machines and kits (`window.__myHoldingsIn`; a machine aboard a heavy keeps its
+  old `systemId` but is in the hold, so it is not counted — as the eviction leaves it be); and the rest of the loss:
+  the ventures close, every machine and kit there is stranded awaiting salvage (a heavy must carry them out), the goods
+  are forfeit, the guild's lanes with a stop there end, and an array that touches no other held ground goes dark. A
+  count of zero reads "no …". Abandon Prefecture and Cancel; Cancel sends nothing.
+- **The send.** Confirm sends `abandonPrefecture { guildId, prefectureId }` and re-reads the snapshot, which repaints the
+  slot (vacant), the map (unclaimed) and every list the loss reaches. One abandon is sent however often the player
+  confirms. A refusal — the one gate not mirrored, a craft flying a Deep Scan Array to the system's centre (gate 3), or
+  a Prefecture already gone — is shown in the engine's own words on a second card, and the Prefecture still stands.
+- **Proved** by `sim/tests/prefecture-abandon-client.test.js` (16) over `sim/tests/abandon-script.js`: the control on
+  exactly the player's own Prefecture, against the engine's verdict; the confirm's counts against the engine's own
+  eviction of each state (the `system_lost` payload); the send, Cancel and the refusal through the card's real buttons;
+  and a guard pinning every slot row, row click, overlay and Plant confirm as `main` drew them at a869f6b.
+- **Not built:** a label on the slot's row (Plant has one; Abandon lives on the overlay), and a pre-check of the
+  centre-bound gate (the engine refuses it, and the card shows why).
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
