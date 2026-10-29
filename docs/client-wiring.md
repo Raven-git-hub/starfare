@@ -885,6 +885,11 @@ for a settlement slot. The label comes from `kind` and the condition from
 `Math.round(maintenanceCondition * 100)`: every figure is the engine's, and the browser
 **re-derives nothing** — least of all idle-vs-deployed, which `sim/snapshot.js` already answers
 (§7's display rule). Option shape is unchanged (`Miner · asset_… · 100%`).
+*(⤳ 29-10-26 — the picker's scope fix: the bridge is now `window.__myIdleAssets(kind, systemId)`. It also requires
+`inTransitOnVehicleId == null` (not aboard a heavy) and the row's `systemId` to be the node's own system, so it
+offers exactly the machines the engine's asset-side establish gates accept, and never one in another system, stranded
+in a lost one, or carried (§18). Both popups pass the system off the site `openEstablishFor` stamps. `roadmap.md` 2.5,
+"The Establish picker's scope fix".)*
 
 **2. The picked machine rides the deploy.** `establishVenture` now carries
 `assetId: S.asset.id`. `gate()` already required a picked asset; it now means something.
