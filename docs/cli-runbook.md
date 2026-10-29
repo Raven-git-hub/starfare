@@ -332,4 +332,6 @@ berthed at the fallow `sys_0936` ("does not hold system"); a second machine onto
 laden, the heavy also refuses `transfer-cargo`, `load-kit`, any route action and a repeating lane. There is no salvage
 window yet — its rate is unset — so a stranded machine waits until it is salvaged. *(Run live 27-10-26 against a fresh
 `seat-demo --seed 42` continuing from the abandon above, and the salvaged factory survived a server restart with
-persistence on.)*
+persistence on.)* *(⤳ 29-10-26: a player can now run the same salvage from the client — Salvage on the stranded machine's
+Operations → IDLE row, then the laden heavy's Dispatch, then its Unload (losing ground client slice 4;
+`docs/operations-hub.md` §5). These commands still work, and send the same actions.)*

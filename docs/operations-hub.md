@@ -70,7 +70,7 @@ Expanded, the row shows a **manifest**:
 No fuel is shown here — a Syndicate delivery's fuel is spent once at dispatch, and the fuel gauges live
 elsewhere.
 
-**AS-BUILT 24-09-26 (guild craft + lanes now render here, 2.2 b2a → 3c; CLIENT `client/game.html`).** IN TRANSIT is no longer Syndicate-only. Alongside the Syndicate `shipments[]` rows above, the panel now lists the guild's OWN in-flight craft and its active REPEATING lanes. A guild row's identity line is the craft's **class + number** (e.g. `mediumTransport #01`) — the *Craft ID → craft-stats popup* named above stays future. A repeating lane adds a read-out — `Lap k of N · X fuel / lap · per-cycle` (every figure the snapshot's; `perLapUnits` is the engine's per-lap cost, the `+1` on `lapsDone` is presentation); a held lane reads `Holding for fuel` or `Next lap at cycle`; and the expanded region carries **Cancel** (asks first, then `cancelRoute`) and **Stop after this run** (`stopRouteAfterRun`, repeating lanes only). A lane that ENDS on its own — a stop's store gone, `laneEnded { reason: 'target-gone' }` — raises a dismissible notice at the top of IN TRANSIT (the alert's "destination lost in flight" trigger, now real for guild lanes; the reserved per-row alert pill is still unwired). *(⤳ 28-10-26, losing ground client slice 2: a second reason reads in words — `laneEnded { reason: 'system-lost' }`, a stop's system lost and gone fallow, as "Light #05's lane stopped at Nyx — a stop's system was lost." (draft copy). It names no system: the flag carries none, and the craft lands at the end of whatever leg it was flying, which need not be the lost system. Such a lane can end while its craft is still FLYING (`transport-model.md` §11.6), with no `location` yet, so the notice now names where it will land — the leg's end, the destination its IN TRANSIT row already shows (`craftDestName`) — where it read "stopped at Unknown"; a landed craft reads its `location` as before. The strip's rebuild signature now carries that place too, so a craft that lands on a bare hex redraws its notice once ("Deep Space (q, r)" → "(q, r)"). `target-gone` reads exactly as before.)* **Still future:** the Craft-ID craft-stats popup, and the full DEPLOYED / IDLE / LEASED board where a waiting or ended-lane craft would also live (Phase 4).
+**AS-BUILT 24-09-26 (guild craft + lanes now render here, 2.2 b2a → 3c; CLIENT `client/game.html`).** IN TRANSIT is no longer Syndicate-only. Alongside the Syndicate `shipments[]` rows above, the panel now lists the guild's OWN in-flight craft and its active REPEATING lanes. A guild row's identity line is the craft's **class + number** (e.g. `mediumTransport #01`) — the *Craft ID → craft-stats popup* named above stays future. A repeating lane adds a read-out — `Lap k of N · X fuel / lap · per-cycle` (every figure the snapshot's; `perLapUnits` is the engine's per-lap cost, the `+1` on `lapsDone` is presentation); a held lane reads `Holding for fuel` or `Next lap at cycle`; and the expanded region carries **Cancel** (asks first, then `cancelRoute`) and **Stop after this run** (`stopRouteAfterRun`, repeating lanes only). A lane that ENDS on its own — a stop's store gone, `laneEnded { reason: 'target-gone' }` — raises a dismissible notice at the top of IN TRANSIT (the alert's "destination lost in flight" trigger, now real for guild lanes; the reserved per-row alert pill is still unwired). *(⤳ 28-10-26, losing ground client slice 2: a second reason reads in words — `laneEnded { reason: 'system-lost' }`, a stop's system lost and gone fallow, as "Light #05's lane stopped at Nyx — a stop's system was lost." (draft copy). It names no system: the flag carries none, and the craft lands at the end of whatever leg it was flying, which need not be the lost system. Such a lane can end while its craft is still FLYING (`transport-model.md` §11.6), with no `location` yet, so the notice now names where it will land — the leg's end, the destination its IN TRANSIT row already shows (`craftDestName`) — where it read "stopped at Unknown"; a landed craft reads its `location` as before. The strip's rebuild signature now carries that place too, so a craft that lands on a bare hex redraws its notice once ("Deep Space (q, r)" → "(q, r)"). `target-gone` reads exactly as before.)* *(⤳ 29-10-26, losing ground client slice 4 — the salvage run: a heavy carrying a MACHINE (the snapshot's `carryingAssetId`; `territory-model.md` §5) carries no cargo, so its manifest read "No cargo.". It now names the machine — its kind, read from the machine's own asset row, in a Syndicate machine delivery's words ("Miner Asset"), with its id beside it — over a Hold line that reads the engine's own `used / capacity`, full, marked **"· locked"** (draft copy), because nothing else can go in beside it. The row's signature carries the machine too: no player act changes a hold in flight, but the operator's `removeAsset` of the carried machine does, and the open manifest then redraws to "No cargo.". A laden heavy flies on an ordinary dispatch, so it reaches this list the way any craft does; nothing about the flight was built.)* **Still future:** the Craft-ID craft-stats popup, and the full DEPLOYED / IDLE / LEASED board where a waiting or ended-lane craft would also live (Phase 4).
 
 ## 5. DEPLOYED & IDLE — future (2.1 / 2.2 / 2.3)
 
@@ -110,7 +110,45 @@ stranded term; an unchanged poll still rebuilds nothing. Unchanged: the system h
 include stranded rows; no day is shown (the client may not turn a tick into a day — the asset row carries no
 `whenDay`). Not built: a machine aboard a heavy (the salvage load) still lists here under the fallow system, because
 `myIdle` reads only `deployedToVentureId` and not the snapshot's `inTransitOnVehicleId` — the salvage-run client's
-(roadmap checklist). Proved by `sim/tests/losing-ground-ops-client.test.js`.
+(roadmap checklist). Proved by `sim/tests/losing-ground-ops-client.test.js`. *(⤳ 29-10-26: BUILT — losing ground client
+slice 4, below. A loaded machine now leaves IDLE, so the salvage load is no longer an in-place clear of the flag; the
+owner's re-plant, which recovers its stranded machines in place, still is, and the signature's stranded term is for
+that and for the eviction.)*
+
+**AS-BUILT 29-10-26 — the salvage run, from the client (losing ground client slice 4; `client/game.html` only).** The
+engine's salvage run (`territory-model.md` §5 — `loadAsset` in the fallow system, an ordinary dispatch, `unloadAsset` at a
+held system) could be played only from the operator CLI. The player now has the three steps, and sees the machine
+throughout. No engine, snapshot or fog change (`carryingAssetId`, `inTransitOnVehicleId` and `stranded` were already
+published); no new number. The words are drafts.
+- **Salvage, on a stranded machine's IDLE row.** A stranded miner or factory gets a **Salvage** button where a kit has
+  its Deploy (a stranded kit keeps its own Deploy / Ferry). It is live only when the load could pass: an empty, idle
+  heavy, off any lane, with no machine aboard, berthed in the machine's own system — the deploy popup's carrier list,
+  `carriersFor`, which the row asks through `window.__carriersFor`. Those are `loadAsset`'s carrier gates, and
+  `loadKit`'s too, so the kit's Carrier dropdown and Salvage read one list. With no such heavy the button is drawn
+  disabled, its title saying why ("No empty, idle heavy transport is berthed in this system"). Live, it opens the
+  **deploy popup in a salvage mode** (`openSalvage`): "Salvage Miner", the machine and where it lies, the heavy
+  transport's portrait, the same Carrier dropdown, and one commit, **Salvage**, which sends `loadAsset { guildId,
+  vehicleId, assetId }`. There is no route to plan: the load is the whole act. An accepted load closes the popup and
+  re-reads the snapshot; a refusal shows the engine's reason and keeps it open. The carrier is re-read off the live
+  snapshot at the click, as Plan Route re-reads it, so one that has left is never sent.
+- **A carried machine is not idle.** `myIdle` now also leaves out a row carrying `inTransitOnVehicleId` — the engine's own
+  `idleAssets` rule — so a machine leaves IDLE when it is loaded and returns, in the held system's group, as an ordinary
+  row when it is unloaded. Membership moving moves the signature by itself. What did not move it is a heavy arriving in,
+  or leaving, a fallow system: the stranded rows keep their id, system and flag, while their Salvage turns live or dead.
+  So `idleSignature` adds whether a row's Salvage is live.
+- **The laden heavy.** Its IDLE TRANSPORTS card read "Hold empty" under a full Hold. Its hold now names the machine (as
+  the IN TRANSIT manifest does, §4) and the Hold reads "· locked". **Dock** steps aside on it: a laden hold is locked, and
+  the engine refuses it every transfer. **Unload** appears in Dock's place when `unloadAsset` would pass — a machine
+  aboard, idle, off any lane, berthed AT a system (not a bare hex, not an Outpost) the guild holds, "holds" read off the
+  snapshot's own claim rows as the engine's `guildHolds` reads its claims. So a heavy just loaded in the fallow system
+  shows none until it has flown somewhere held. Unload sends `unloadAsset { guildId, vehicleId }` (the engine reads the
+  machine off the craft and the system off its berth). It is held disabled while it posts. A refusal stays on the card
+  until the tick moves on, as a lane control's does (§4). The card's signature now carries the machine aboard, whether
+  Unload is offered, and which cards hold an Unload in flight or its refusal. A load or unload changes neither the cargo
+  nor anything else the signature read, so without these terms the card would have frozen.
+- **The flight between is an ordinary dispatch.** The Dispatch popup builds a plain `dispatchVehicle` for a route with no
+  stop actions, the engine's quote allows it for a laden heavy, and the heavy lists under IN TRANSIT with its manifest.
+- Proved by `sim/tests/salvage-client.test.js`, over the galaxy in `sim/tests/salvage-script.js`.
 
 **AS-BUILT 29-10-26 — a DARK array reads dark (losing ground client slice 3; engine + client).** The snapshot's array
 row now carries the engine's `dark: true` while the array is not attached to the guild's control

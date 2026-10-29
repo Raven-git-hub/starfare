@@ -1405,10 +1405,17 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-tp-btns{display:flex; gap:6px;}
 #tp-ops .ops-tp-dispatch,
 #tp-ops .ops-tp-dock,
+#tp-ops .ops-tp-unload,
 #tp-ops .ops-idle-deploy{width:100%; font-family:var(--ops-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ops-amber2); background:var(--ops-panel); border:1px solid var(--ops-amber-dim); border-radius:6px; padding:8px; cursor:pointer;}
 #tp-ops .ops-tp-dispatch:hover,
 #tp-ops .ops-tp-dock:hover,
+#tp-ops .ops-tp-unload:hover,
 #tp-ops .ops-idle-deploy:hover{background:var(--ops-amber-dim); color:var(--ops-ink);}
+/* (losing ground client slice 4) UNLOAD on a laden heavy's card (beside Dispatch, in Dock's place) and SALVAGE on a
+   stranded machine's IDLE row (in a kit's Deploy place) wear the buttons above. Disabled — an Unload in flight, or a
+   Salvage with no heavy in the system to take the machine — they dim, as a disabled lane button does. */
+#tp-ops .ops-tp-unload:disabled,
+#tp-ops .ops-idle-deploy:disabled{opacity:.45; cursor:default; background:var(--ops-panel); color:var(--ops-amber2);}
 /* An idle KIT's row in IDLE (2.2 deploy pipeline; every kit kind, 2.5 slice 14b) carries DEPLOY — the Dispatch / Dock button above, sized
    to its label because it shares one line with the kit's id and kind. The id takes the slack, so the kind stays
    beside the button (on a two-item miner / factory row that is the layout it already had). */
@@ -10966,6 +10973,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     tpSig: null,       // last rendered IDLE-TRANSPORTS signature; null forces a rebuild
     tpSysCollapsed: {}, // which transport SYSTEM groups are collapsed (default open) — survives a poll
     tpOpen: {},        // which craft tabs are EXPANDED (default collapsed) — survives a poll
+    tpUi: {},          // (losing ground client slice 4) per craft id: an Unload in flight, or its refusal — see onUnload
     laneUi: {},        // (automation 3c) per craft id: a lane control's in-between state — see laneControlsHtml
     endedSig: null,    // (3c) last rendered ended-lane notices; null forces a rebuild
     endedDismissed: {} // (3c) which ended-lane notices were dismissed, by endedKey — this page visit only
@@ -11103,11 +11111,14 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // craft stays on the list. That is the leg it is flying (its arrival tick) and the lane read-out (lap
   // count, wait reason, a pending stop, the dock state, the per-lap figure). The per-poll update only moves
   // the bar and the ETA, so a change to anything here must rebuild the row.
+  // (Losing ground client slice 4) The machine aboard is drawn too. No player act loads or unloads a craft while it is
+  // on this list (both need it idle, off any lane), but an operator lever can clear the hold, and a signature covers
+  // what is drawn.
   function craftSig(v){
     var r = v.route || {};
     return craftKey(v) + '@' + (v.trip ? v.trip.arrivalTick : 'parked') + ':' + JSON.stringify([
       r.lapsDone, r.waiting ? r.waiting.reason : null, !!r.stopAfterRun, r.perLapUnits,
-      v.dockStatus ? v.dockStatus.state : null,
+      v.dockStatus ? v.dockStatus.state : null, v.carryingAssetId,
     ]);
   }
 
@@ -11122,6 +11133,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(!to || typeof to.q !== 'number' || typeof to.r !== 'number') return 'Deep Space';
     var nm = window.__landmarkNameAt && window.__landmarkNameAt(to.q, to.r);
     return nm || ('Deep Space (' + to.q + ', ' + to.r + ')');
+  }
+
+  // carriedRow(v) -> the one manifest row of a heavy carrying a MACHINE (losing ground client slice 4; the salvage
+  // run, territory-model.md §5). A machine rides by name: the craft row's `carryingAssetId` names it, and the machine
+  // keeps its own asset row in the guild's list, so its kind is read from there. The row reads as a Syndicate
+  // machine delivery's does ("Miner Asset", craftManifestLabel), with the machine's id beside it. A machine fills the
+  // whole hold, so it is the only row; each caller adds the hold line, which reads full (the engine's own `used`).
+  function carriedRow(v){
+    var g = meGuild();
+    var m = ((g && g.assets) || []).filter(function(a){ return a.id === v.carryingAssetId; })[0];
+    return '<div class="ops-manrow"><span class="g">' + esc(m ? craftManifestLabel(m.kind) : 'Machine') + '</span>'
+      + '<span class="q">' + esc(v.carryingAssetId) + '</span></div>';
   }
 
   // One craft IN TRANSIT row — the delivery row's twin (rowHtml), so the two interleave seamlessly:
@@ -11139,13 +11162,18 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The identity cell reads the short class + the craft's number ("Light #02"), so two craft of one class
   // can be told apart. A REPEATING lane adds its read-out line (laneLine) under the head, so it shows even
   // with the row collapsed. The expanded region adds the lane controls (laneControlsHtml).
+  // (Losing ground client slice 4) A heavy carrying a MACHINE — the salvage run — has no cargo, so it read "No cargo."
+  // Its manifest now names the machine (carriedRow) and shows the hold full and locked.
   function craftRowHtml(v){
     var key = craftKey(v);
     var open = O.expanded[key] === true;
     var name = craftClassName(v['class']) + ' #' + craftNumber(v);
     var cargo = v.cargo || {};
     var goods = Object.keys(cargo).sort();
-    var manRows = goods.length
+    var manRows = v.carryingAssetId != null
+      ? carriedRow(v)
+        + '<div class="ops-manrow"><span class="g">Hold</span><span class="q">' + fmt(v.used) + ' / ' + fmt(v.capacity) + ' · locked</span></div>'
+      : goods.length
       ? goods.map(function(g){
           return '<div class="ops-manrow"><span class="g">' + esc(prettyGood(g)) + '</span><span class="q">' + fmt(cargo[g]) + '</span></div>';
         }).join('')
@@ -11429,6 +11457,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // "idle" (design.md §18: the engine decides). The guild row's `assets` block is the same
   // `me.assets` the shell caches as LIVE.myAssets; reading it off the polled snapshot here keeps
   // the section live as machines deploy (leave) and ventures tear down (return).
+  // (Losing ground client slice 4.) A machine aboard a heavy — the salvage run's load — carries the snapshot's
+  // `inTransitOnVehicleId`. It is in a hold, not in any system's inventory, and the engine's own `idleAssets` leaves
+  // it out, so it is not idle here either: it leaves IDLE when it is loaded and comes back when it is unloaded.
   var KIND_ORDER = ['miner', 'factory'];   // the two ground-asset kinds that exist this slice
   var KIND_PLURAL = { miner: 'Miners', factory: 'Factories' };
   // An idle KIT (an undeployed Outpost or Deep Scan Array) is headed by its kit-kinds label: "Outpost kits".
@@ -11438,7 +11469,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   function myIdle(guild){
-    return ((guild && guild.assets) || []).filter(function(a){ return a.deployedToVentureId == null; });
+    return ((guild && guild.assets) || []).filter(function(a){ return a.deployedToVentureId == null && a.inTransitOnVehicleId == null; });
   }
 
   // Order the kinds present in a system: the known kinds first (miner, factory), then any other
@@ -11459,17 +11490,38 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // A machine or kit an eviction left behind carries the engine's `stranded` flag (losing ground; territory-model.md
   // §4), so its row is marked "awaiting salvage". The flag is the engine's answer: the row never asks whether the
   // guild still holds the system (design.md §18). A stranded kit keeps its button, because it loads like any kit.
+  // (Losing ground client slice 4.) A stranded MACHINE — a miner or factory — gets Salvage (salvageHtml, below).
   function machineHtml(a){
     var kit = window.__kitKind && window.__kitKind(a.kind);
     var deploy = kit
       ? '<button class="ops-idle-deploy" type="button" data-kit-deploy="' + esc(a.id) + '">' + (kit.ground ? 'Ferry' : 'Deploy') + '</button>'
-      : '';
+      : (a.stranded ? salvageHtml(a) : '');
     return '<div class="ops-idle-machine' + (a.stranded ? ' stranded' : '') + '">'
       +   '<span class="mid">' + esc(a.id) + '</span>'
       +   '<span class="mkind">' + esc(kit ? kit.label : a.kind) + '</span>'
       +   deploy
       +   (a.stranded ? '<span class="mstranded">Stranded · awaiting salvage</span>' : '')
       + '</div>';
+  }
+
+  // ---- (losing ground client slice 4) SALVAGE: the pickup of a stranded machine (territory-model.md §5) ------------
+  // The engine's loadAsset takes a stranded miner or factory aboard an empty, idle heavy, off any lane, berthed in the
+  // machine's own system. The row offers that only when it could pass, so it asks the deploy popup's carrier list
+  // (window.__carriersFor), the one list the popup's Carrier dropdown is built from too. The client re-derives
+  // nothing: the flag and the craft rows are the snapshot's, and the engine re-checks it all at the load.
+  //
+  // salvageable(a) -> true when this row's Salvage is live: a stranded machine (a kit loads through its own Deploy /
+  // Ferry instead) with at least one heavy that could take it aboard right now.
+  function salvageable(a){
+    var kit = window.__kitKind && window.__kitKind(a.kind);
+    return !!a.stranded && !kit && !!window.__carriersFor && window.__carriersFor(a).length > 0;
+  }
+  // salvageHtml(a) -> the Salvage button: live, it opens the popup for this machine; with no heavy to take it, it is
+  // drawn disabled, and its title says why.
+  function salvageHtml(a){
+    return salvageable(a)
+      ? '<button class="ops-idle-deploy ops-idle-salvage" type="button" data-salvage="' + esc(a.id) + '">Salvage</button>'
+      : '<button class="ops-idle-deploy ops-idle-salvage" type="button" disabled title="No empty, idle heavy transport is berthed in this system">Salvage</button>';
   }
 
   function kindHtml(sysId, kind, assets){
@@ -11508,8 +11560,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // idleSignature(idle) — everything the IDLE tree draws that can change: each row's id, where it sits, and whether it
   // is stranded. The stranded term is there because an eviction flags a machine IN PLACE (same id, same system), and
   // a salvage load clears the flag in place too, so without it the marker would never appear, or never go.
+  // (Losing ground client slice 4.) A loaded machine now leaves the list (myIdle), which moves the signature by
+  // itself. What does not move it is a heavy arriving in, or leaving, a fallow system: the stranded machines there
+  // keep their id, system and flag, but their Salvage turns live or dead. So whether it is live is in it too.
   function idleSignature(idle){
-    return idle.map(function(a){ return a.id + '@' + a.systemId + (a.stranded ? ':stranded' : ''); }).sort().join('|');
+    return idle.map(function(a){ return a.id + '@' + a.systemId + (a.stranded ? ':stranded' : '') + (salvageable(a) ? '+salvage' : ''); }).sort().join('|');
   }
 
   // Rebuild the tree only when the idle set (id + where each sits + stranded) changes, so a poll never
@@ -11627,13 +11682,20 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // name + quantity, sorted by good id); an empty hold reads "Hold empty" under a "0 / capacity"
   // summary. Displays published values, computes no game number (§18). Dispatch opens the Dispatch
   // popup (2.2 spawn client) for this craft; its only action this slice is "Show on map".
+  // (Losing ground client slice 4) A heavy carrying a MACHINE — loaded in a fallow system, or flown home with it — read
+  // "Hold empty" under a full Hold. Its hold now names the machine (carriedRow), and the Hold reads locked. Two buttons
+  // follow the engine's gates for it. UNLOAD (unloadAsset) shows when the machine could be unloaded here (unloadable).
+  // DOCK steps aside: a laden hold is locked, so the engine refuses every transfer into or out of it.
   function tpCraftHtml(v){
     var key = 'tp:' + v.id;
     var open = O.tpOpen[key] === true;
     var maint = Math.round((typeof v.maintenanceCondition === 'number' ? v.maintenanceCondition : 0) * 100);
     var cargo = v.cargo || {};
     var goods = Object.keys(cargo).sort();
-    var holdRows = goods.length
+    var laden = v.carryingAssetId != null;
+    var holdRows = laden
+      ? carriedRow(v)
+      : goods.length
       ? goods.map(function(g){
           return '<div class="ops-manrow"><span class="g">' + esc(prettyGood(g)) + '</span><span class="q">' + fmt(cargo[g]) + '</span></div>';
         }).join('')
@@ -11645,9 +11707,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // `location` is `{ landmarkKind:'system', ... }` only when it sits at a system (a parked-at-outpost
     // or adrift craft's location is a bare hex — its DOCK is the Outpost Manager, not here). A spycraft
     // has capacity 0 / no hold and the engine refuses its transfer, so it gets NO DOCK — Dispatch only.
-    var showDock = !!(v.location && v.location.landmarkKind === 'system') && v['class'] !== 'spycraft';
+    var showDock = !!(v.location && v.location.landmarkKind === 'system') && v['class'] !== 'spycraft' && !laden;
     var dockBtn = showDock
       ? '<button class="ops-tp-dock" type="button" data-tp-dock="' + esc(v.id) + '">Dock</button>'
+      : '';
+    var ui = O.tpUi[v.id] || {};
+    var unloadBtn = unloadable(v)
+      ? '<button class="ops-tp-unload" type="button" data-tp-unload="' + esc(v.id) + '"' + (ui.busy ? ' disabled' : '') + '>Unload</button>'
       : '';
     return '<div class="ops-tp-craft' + (open ? '' : ' collapsed') + '" data-tp-key="' + esc(key) + '">'
       +   '<div class="ops-tp-crafthd">'
@@ -11657,15 +11723,58 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '</div>'
       +   '<div class="ops-tp-craftbody">'
       +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
-      +     '<div class="ops-tp-stat"><span class="k">Hold</span><span class="v">' + fmt(v.used) + ' / ' + fmt(v.capacity) + '</span></div>'
+      +     '<div class="ops-tp-stat"><span class="k">Hold</span><span class="v">' + fmt(v.used) + ' / ' + fmt(v.capacity) + (laden ? ' · locked' : '') + '</span></div>'
       +     holdRows
       +     '<div class="ops-tp-btns">'
+      +       unloadBtn
       +       dockBtn
       +       '<button class="ops-tp-dispatch" type="button" data-tp-dispatch="' + esc(v.id) + '">Dispatch</button>'
       +     '</div>'
+      +     (ui.msg ? '<div class="ops-lane-msg">' + esc(ui.msg) + '</div>' : '')
       +   '</div>'
       + '</div>';
   }
+
+  // unloadable(v) -> true when this craft could unload its machine right now: unloadAsset's gates (sim/actions.js) —
+  // a machine aboard, idle, off any lane, and berthed AT a system (not a bare hex, not an Outpost) the guild holds.
+  // "Holds" is read off the snapshot's own claim rows, the rows the engine's guildHolds reads: a system claim, owned
+  // by this guild. So a heavy just loaded in the fallow system offers no Unload until it has flown somewhere held.
+  function unloadable(v){
+    var loc = v.location;
+    if(v.carryingAssetId == null || v.status !== 'idle' || v.route) return false;
+    if(!loc || loc.landmarkKind !== 'system') return false;
+    var s = snap(), g = meGuild();
+    return !!g && ((s && s.claims) || []).some(function(c){
+      return c.landmarkKind === 'system' && c.landmarkId === loc.landmarkId && c.ownerGuildId === g.id;
+    });
+  }
+
+  // onUnload(vid) — the Unload button: POST unloadAsset { guildId, vehicleId } through the one action path. The engine
+  // reads the machine off the craft and the system off its berth, so the craft is all the action names. On accept the
+  // snapshot is re-read at once: the machine joins IDLE in that system, and the hold empties. On refuse the engine's
+  // reason stays on the card until the tick moves on, as a lane control's refusal does (onLaneAction).
+  async function onUnload(vid){
+    var gid = window.__player ? window.__player().guildId : null;
+    O.tpUi[vid] = { busy: true };
+    rebuildTransports();
+    var out;
+    try {
+      out = await window.__sendAction({ type: 'unloadAsset', guildId: gid, vehicleId: vid });
+    } catch(err){
+      out = { accepted: false, reason: 'the Syndicate could not be reached: ' + ((err && err.message) || err) };
+    }
+    if(out && out.accepted){
+      delete O.tpUi[vid];
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+    } else {
+      var s = snap();
+      O.tpUi[vid] = { msg: 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'), tick: s ? s.tick : null };
+    }
+    rebuildTransports();
+  }
+  // rebuildTransports() — redraw IDLE TRANSPORTS now, though the set of craft has not changed (a card's Unload state
+  // moved). rebuildTransit's twin.
+  function rebuildTransports(){ O.tpSig = null; render(); }
 
   // A transport GROUP (a system, an outpost, or DEEP SPACE — one `ops-tp-sys` group either way, §15.4):
   // default OPEN (collapse remembered in O.tpSysCollapsed, keyed on the group `key`), header shows the
@@ -11705,11 +11814,25 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // a canonical (sorted) per-good fingerprint — mirroring the goods list, not just a total, so a
     // load, an unload, or an equal-volume swap all shift it (an empty hold → empty string). `capacity`
     // is fixed per craft, so it needs no term.
+    // (Losing ground client slice 4) A machine loaded or unloaded changes none of those — the cargo stays empty — so
+    // the machine aboard is a term, and so is whether Unload is offered: a heavy that waits, laden, in a system its
+    // guild then claims or loses gains or loses the button with nothing else moving. Which cards hold an Unload in
+    // flight or its refusal is in it too, as the lane controls' state is in IN TRANSIT's. A refusal answers the tick
+    // it was asked on, so it is dropped once the clock moves on (renderTransit's rule), and a craft no longer listed
+    // here keeps none.
+    var s = snap();
+    var listed = {};
+    craft.forEach(function(v){ listed[v.id] = true; });
+    Object.keys(O.tpUi).forEach(function(id){
+      var ui = O.tpUi[id];
+      if(!listed[id] || (ui.msg && s && ui.tick !== s.tick)) delete O.tpUi[id];
+    });
     var sig = craft.map(function(v){
       return v.id + '@' + tpGroupOf(v).key + JSON.stringify(v.location)
         + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100)
-        + ':' + Object.keys(v.cargo || {}).sort().map(function(g){ return g + (v.cargo[g]); }).join(',');
-    }).sort().join('|');
+        + ':' + Object.keys(v.cargo || {}).sort().map(function(g){ return g + (v.cargo[g]); }).join(',')
+        + ':' + (v.carryingAssetId || '') + (unloadable(v) ? '+unload' : '');
+    }).sort().join('|') + '#' + Object.keys(O.tpUi).sort().join(',');
     if(sig === O.tpSig) return;
     O.tpSig = sig;
 
@@ -11842,6 +11965,22 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(dockBtn){
       var dvid = dockBtn.getAttribute('data-tp-dock');
       if(window.__openDock) window.__openDock(dvid, null);
+      return;
+    }
+    // (losing ground client slice 4) UNLOAD on a laden heavy's card — sends unloadAsset (onUnload). Rendered only when
+    // the engine would take it (unloadable), and disabled while one is in flight.
+    var unloadBtn = e.target.closest('.ops-tp-unload');
+    if(unloadBtn){
+      if(!unloadBtn.disabled) onUnload(unloadBtn.getAttribute('data-tp-unload'));
+      return;
+    }
+    // (losing ground client slice 4) SALVAGE on a stranded machine — opens the deploy popup's salvage mode for it,
+    // which re-reads the machine off the snapshot by id. Checked before the kit's DEPLOY below, because it wears that
+    // button's class for its look. A disabled one (no heavy to take it) carries no id and opens nothing.
+    var salvageBtn = e.target.closest('.ops-idle-salvage');
+    if(salvageBtn){
+      var sid = salvageBtn.getAttribute('data-salvage');
+      if(sid && window.__openSalvage) window.__openSalvage(sid);
       return;
     }
     // DEPLOY on an idle kit (2.2 deploy pipeline, asset-initiated; any kit kind, 2.5 slice 14b) — opens the Deploy popup for that
@@ -14111,6 +14250,8 @@ function paintInventoryHero(d){
    — is never deployed on a hex, so for it this popup is the FERRY: the same carrier pick and the same commit
    (loadKit, then the dispatch), but Plan Route opens the planner's UNLOAD MODE (__planFerry) instead of the deploy
    map, so the route ends in { type:'unload' } at a system, and the words read Ferry. The plant is client PR B2.
+   (Losing ground client slice 4) A third use, SALVAGE: a STRANDED machine's Salvage button opens this popup for that
+   machine — the same carrier pick, then one commit, loadAsset, and no route (openSalvage, below).
    ============================================================================ */
 (function(){
   function $(id){ return document.getElementById(id); }
@@ -14122,7 +14263,9 @@ function paintInventoryHero(d){
   // refused dispatch sends the dispatch alone, never a second load. `sending` holds the buttons while Deploy
   // posts; `refused` is the last refusal. A FRESH object on every open and close, so an answer that lands after
   // the popup has moved on can tell (see onDeploy). Plan Route / Edit Route only hide the popup, keeping it.
-  function freshKD(kit){ return { kit: kit, carrier: null, waypoints: [], quote: null, aboard: false, sending: false, refused: '' }; }
+  // (Losing ground client slice 4) In SALVAGE mode the popup is open for a stranded `machine` instead, and `kit` is
+  // null (openSalvage). Exactly one of the two is set while the popup is open.
+  function freshKD(kit, machine){ return { kit: kit, machine: machine || null, carrier: null, waypoints: [], quote: null, aboard: false, sending: false, refused: '' }; }
   var KD = freshKD(null);
 
   // The player's own guild row, off the polled snapshot — null if it is momentarily absent.
@@ -14142,12 +14285,16 @@ function paintInventoryHero(d){
   // kit fills a whole heavy hold), idle, off any lane, with an EMPTY hold, and berthed at the kit's own system
   // (design.md §4 — the ruled same-system constraint). Read off the published rows; the engine re-checks every
   // one of these at Deploy.
+  // (Losing ground client slice 4) The salvage pickup, loadAsset, asks a carrier exactly these questions for a
+  // stranded machine, so the same list serves a machine too: the salvage popup's dropdown, and (window.__carriersFor)
+  // whether a stranded machine's IDLE row offers Salvage at all. An empty hold now also means no MACHINE aboard
+  // (`carryingAssetId`): a machine fills the hold without any cargo, and both loads refuse a heavy carrying one.
   function carriersFor(kit){
     var g = myGuild();
     return ((g && g.vehicles) || []).filter(function(v){
       var loc = v.location;
       return v.class === 'heavyTransport' && v.status === 'idle' && !v.route
-        && Object.keys(v.cargo || {}).length === 0
+        && Object.keys(v.cargo || {}).length === 0 && v.carryingAssetId == null
         && !!loc && loc.landmarkKind === 'system' && loc.landmarkId === kit.systemId;
     }).sort(function(x, y){ return x.id < y.id ? -1 : (x.id > y.id ? 1 : 0); });
   }
@@ -14192,7 +14339,7 @@ function paintInventoryHero(d){
   // The Carrier dropdown: a "Select carrier" prompt, then one option per carrier — or, with none, the one
   // "No Available Transport", disabled. Plan Route is enabled only once a carrier is picked.
   function renderCarriers(){
-    var carriers = carriersFor(KD.kit);
+    var carriers = carriersFor(KD.kit || KD.machine);
     var sel = $('kdCarrier');
     sel.innerHTML = carriers.length
       ? '<option value="">Select carrier</option>' + carriers.map(function(v){
@@ -14200,7 +14347,7 @@ function paintInventoryHero(d){
         }).join('')
       : '<option value="">No Available Transport</option>';
     sel.disabled = !carriers.length;
-    syncPlanBtn();
+    if(KD.machine) syncSalvageBtn(); else syncPlanBtn();
   }
   function syncPlanBtn(){ $('kdPlanBtn').disabled = !$('kdCarrier').value; }
 
@@ -14327,6 +14474,85 @@ function paintInventoryHero(d){
     }
   }
 
+  // ---- (losing ground client slice 4) SALVAGE mode: the pickup of a stranded machine (territory-model.md §5) --------
+  // A stranded miner or factory's Salvage button (OPERATIONS → IDLE) opens this same popup for that machine, with the
+  // same Carrier dropdown (carriersFor). There is no route to plan: the engine's loadAsset is the whole act, instant,
+  // because the machine and the heavy sit in the same fallow system. The flight home afterwards is an ordinary
+  // dispatch from the heavy's own card, and the drop is its Unload. So the one button is Salvage, and it sends
+  // loadAsset. PRESENTATION ONLY (§18): the engine re-checks the machine and the carrier at the load.
+
+  // openSalvage(assetId) — fill the popup for one stranded machine and show it. The machine is re-read off the
+  // snapshot by id; one gone, deployed, already aboard a craft, no longer stranded, or a kit (a kit has its own
+  // Deploy / Ferry) opens nothing. The words name the machine; the art is the heavy that will carry it (no machine
+  // portrait exists). Opening abandons any in-progress route, as openKitDeploy does.
+  function openSalvage(assetId){
+    var g = myGuild();
+    var m = ((g && g.assets) || []).filter(function(a){ return a.id === assetId; })[0];
+    if(!m || !m.stranded || m.deployedToVentureId != null || m.inTransitOnVehicleId != null) return;
+    if(window.__kitKind && window.__kitKind(m.kind)) return;
+    if(window.__abandonPlanning) window.__abandonPlanning();
+    KD = freshKD(null, m);
+    var kind = String(m.kind).charAt(0).toUpperCase() + String(m.kind).slice(1);   // miner → "Miner"
+    $('kdEyebrow').textContent = 'Salvage ' + kind;
+    $('kdName').textContent = kind + ' · #' + idSuffix(m.id);
+    $('kdSechead').textContent = 'Stranded ' + kind;
+    $('kdKind').textContent = kind;
+    $('kdStitle').textContent = 'Heavy Transport';
+    $('kdArt').style.backgroundImage = "url('assets/units/heavytransport.jpg')";
+    $('kdStored').textContent = (window.__systemName && window.__systemName(m.systemId)) || m.systemId;
+    renderSalvage();
+    $('deploy-overlay').classList.add('open');
+  }
+
+  // The salvage body: the Carrier dropdown, the engine's last refusal (if any), and the Salvage button, live once a
+  // carrier is picked. `keep` (optional) is a carrier id to leave picked, if it is still offered.
+  function renderSalvage(keep){
+    $('kdCarrierRow').style.display = 'none';
+    $('kdSection').innerHTML =
+      '<div class="kd-carrier">' +
+        '<div class="dp-sechead">Carrier</div>' +
+        '<select class="est-select" id="kdCarrier"></select>' +
+      '</div>' +
+      (KD.refused ? '<div class="dp-refuse">' + esc(KD.refused) + '</div>' : '');
+    $('kdActions').innerHTML = '<button class="dp-btn primary" id="kdSalvageBtn" type="button" disabled>Salvage</button>';
+    $('kdCarrier').addEventListener('change', syncSalvageBtn);
+    $('kdSalvageBtn').addEventListener('click', onSalvage);
+    renderCarriers();
+    if(keep && carriersFor(KD.machine).some(function(v){ return v.id === keep; })){ $('kdCarrier').value = keep; syncSalvageBtn(); }
+  }
+  function syncSalvageBtn(){ $('kdSalvageBtn').disabled = KD.sending || !$('kdCarrier').value; }
+
+  // Salvage → loadAsset { guildId, vehicleId, assetId } (sim/ferry.js), the whole commit. The carrier is re-read off
+  // the live snapshot first, as Plan Route re-reads it: one that has left since the popup opened is caught, and the
+  // dropdown redraws without it. On accept the popup closes and the snapshot is re-read at once, so the machine leaves
+  // IDLE and shows in the heavy's hold. On refuse the engine's reason is shown and the popup stays open. If the popup is
+  // closed while the load posts, nothing is shown.
+  async function onSalvage(){
+    var kd = KD;
+    var vid = $('kdCarrier').value;
+    if(kd.sending || !kd.machine || !vid) return;
+    if(!carriersFor(kd.machine).some(function(v){ return v.id === vid; })){ renderSalvage(); return; }
+    kd.sending = true; kd.refused = '';
+    $('kdSalvageBtn').disabled = true;
+    $('kdSalvageBtn').textContent = 'Salvaging…';
+    var player = window.__player ? window.__player() : null;
+    var out;
+    try {
+      out = await window.__sendAction({ type: 'loadAsset', guildId: player && player.guildId, vehicleId: vid, assetId: kd.machine.id });
+    } catch(err){
+      out = { accepted: false, reason: 'the Syndicate could not be reached: ' + (err && err.message || err) };
+    }
+    if(KD !== kd) return;   // closed while the load posted
+    kd.sending = false;
+    if(out && out.accepted){
+      closeKitDeploy();
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+      return;
+    }
+    kd.refused = 'Refused: ' + ((out && out.reason) || 'the Syndicate declined');
+    renderSalvage(vid);
+  }
+
   // Close (✕ / backdrop / Escape, or an accepted Deploy): hide the popup, reset its state, and abandon the plan
   // the map kept at Finalise, as closing the Dispatch popup does (§B).
   function closeKitDeploy(){
@@ -14337,6 +14563,8 @@ function paintInventoryHero(d){
 
   window.__openKitDeploy = openKitDeploy;           // OPERATIONS' idle-outpost Deploy button calls this
   window.__kitDeployFinalise = kitDeployFinalise;   // the deploy map's Finalise calls this
+  window.__openSalvage = openSalvage;               // (slice 4) OPERATIONS' stranded-machine Salvage button calls this
+  window.__carriersFor = carriersFor;               // (slice 4) …and asks this whether to offer Salvage at all
 
   $('kdClose').addEventListener('click', closeKitDeploy);
   $('deploy-overlay').addEventListener('click', function(e){ if(e.target === this) closeKitDeploy(); });

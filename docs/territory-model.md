@@ -419,6 +419,8 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   slice 2, the read-state: Operations → IDLE marks a stranded machine or kit "Stranded · awaiting salvage" on its row, in
   the group of the system it was lost in, read off the `stranded` flag alone (`docs/operations-hub.md` §5's AS-BUILT
   28-10-26). The salvage UI is still to come; the map is unchanged (a fallow system already renders unclaimed).)*
+  *(⤳ 29-10-26: the salvage UI is BUILT — losing ground client slice 4; §5's "AS-BUILT — losing ground client slice 4".
+  The abandon control — a player button to give a system up — is still to come.)*
 
 **AS-BUILT — losing ground, engine PR 3: the eviction's reach — lanes end, arrays go dark (27-10-26; engine only, no
 client).** Built to `design.md` §19 **#67** (SETTLED 19-10-26, "the eviction's reach") — the ruling lives there and is
@@ -1161,6 +1163,27 @@ machine is carried BY NAME and keeps its id, so its existing `systemId` is what 
 - **Not built (later slices):** the window, the sweep (it takes only machines still stranded — *⤳ BUILT 28-10-26, §4's
   "AS-BUILT — losing ground, engine PR 4"*), general redeploy, the
   route-action form, and any client (a "carrying — salvaging" craft row, the stranded display, a salvage affordance).
+  *(⤳ 28-10-26: the stranded display is BUILT — losing ground client slice 2. ⤳ 29-10-26: the craft row and the salvage
+  affordance are BUILT — client slice 4, the next note.)*
+
+**AS-BUILT — losing ground client slice 4: the salvage run from the client (29-10-26; `client/game.html` only).** The run
+above, given to the player in the places the slice-2 read-state already marks — no engine, snapshot or fog change, no new
+number; field-by-field in `docs/operations-hub.md` §5 ("AS-BUILT 29-10-26 — the salvage run, from the client").
+- **(1) The load.** A stranded miner or factory's row in Operations → IDLE gets **Salvage**, live only while a heavy that
+  `loadAsset` would take is berthed in its system (otherwise drawn disabled, saying why). It opens the deploy popup in a
+  salvage mode: the kit flow's Carrier dropdown (one carrier list serves both, since `loadKit` and `loadAsset` ask a
+  carrier the same questions), and one commit, `loadAsset`. The machine then leaves IDLE, which now reads
+  `inTransitOnVehicleId` as the engine's `idleAssets` does.
+- **(2) The flight.** An ordinary dispatch from the heavy's card, unchanged. The laden heavy's IN TRANSIT manifest and its
+  IDLE TRANSPORTS hold now name the machine and read the hold "· locked"; Dock steps aside on it.
+- **(3) The drop.** **Unload** on the laden heavy's card, live only while `unloadAsset` would pass (idle, off any lane,
+  berthed at a system the guild holds), sends it. The machine returns to IDLE as an ordinary idle machine in that system.
+- **Manual, as the engine is.** There is no salvage-on-arrival: the engine has no route action for a machine (above).
+- **Seen, not built:** the Dispatch popup's Onboard Manifest still reads "Hold empty" for a laden heavy, on the run's
+  flight step (a small follow-up); the establish panels' asset pickers still list a stranded or carried machine, which
+  the engine refuses (a separate correctness fix, the roadmap's next task); the Dispatch planner still offers a laden
+  heavy stop actions and a repeating lane, which the engine refuses in its own words (roadmap checklist).
+- **Proved** by `sim/tests/salvage-client.test.js` (17) over `sim/tests/salvage-script.js`.
 
 ## 6. Generation — starter spacing
 
