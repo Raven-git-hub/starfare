@@ -7559,7 +7559,8 @@ function gate(){
   if(S.busy) return;                                   // the in-flight message stands
   hint.classList.remove('err');
   if(!held) hint.textContent='You don\u2019t hold this system \u2014 deploy requires holding it first (\u00a74).';
-  else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in your inventory \u2014 every one you own is already deployed.';
+  // The picker holds only this node's system's machines (§4): empty means none HERE, not none owned (§18).
+  else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in this system.';
   else if(!S.asset) hint.textContent='Select an asset to continue.';
   else if(S.site && S.site.kind==='slot' && !isFuel && !isDock && S.tier!==2 && S.tier!==3) hint.textContent='Only Tier 2 refining and Tier 3 manufacture are built (§4).';
   else if(S.site && S.site.kind==='slot' && !isFuel && !isDock && !S.recipeId) hint.textContent='Pick a recipe to continue.';
@@ -8252,7 +8253,7 @@ function deutDraw(){
   if(D.busy) return;                                    // the in-flight message stands
   hint.classList.remove('err','ok');
   if(!held) hint.textContent='You don’t hold this system — deploy requires holding it first (§4).';
-  else if(!DPOOL.length) hint.textContent='No idle miners in your inventory.';
+  else if(!DPOOL.length) hint.textContent='No idle miners in this system.';
   else if(!D.asset) hint.textContent='Select a mining asset.';
   else if(D.licensed===false) hint.textContent='Unlicensed — contraband, refine it yourself.';
   else hint.textContent='Licensed — output sold to the Syndicate each tick.';

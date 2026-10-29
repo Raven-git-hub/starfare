@@ -905,7 +905,10 @@ which was written before the gate existed.
 **4. The empty pool is the CLIENT's message.** The engine no longer has a "you have no idle
 miner" refusal — it speaks only about the id it was handed — so the panel owns it: a disabled
 `— no idle {miners|factories} in inventory —` option, the deploy button disabled, and a hint
-saying every machine of that kind is already deployed.
+saying every machine of that kind is already deployed. *(⤳ 29-10-26 — the picker's scope fix: once the
+pool is scoped to the node's own system, that hint is false (the guild may have one elsewhere, stranded,
+or aboard). Both popups' hints now read "No idle {miners|factories} in this system."; the option label
+is unchanged. `roadmap.md` 2.5, "The Establish picker's scope fix".)*
 
 **5. Every retired string.** `— your own claim.` · the Asset mocknote · the licence explainer
 note ending *"not the figure you will owe"* · the fee-graph `Indicative.` gnote · the label tail

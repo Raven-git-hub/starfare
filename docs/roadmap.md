@@ -5188,23 +5188,29 @@ boundary so the later hex-map swap doesn't touch it.
     published field of the row, the same fields `__myHoldingsIn` and Operations' `myIdle` already read, so nothing is
     re-derived. Both callers pass the node's own system off the site `openEstablishFor` stamps (`S.site.systemId`,
     `D.site.systemId`). There is no stranded clause: a stranded machine is only ever in an unheld system, which no held
-    node is in. **No engine, snapshot or design change; no new number; no new words** — an empty pool shows the
-    existing "— no idle … in inventory —". **Tripwires.** The served-page guard in `sim/tests/server.test.js` now pins
+    node is in. **No engine, snapshot or design change; no new number.** An empty pool keeps the picker's existing
+    "— no idle … in inventory —" option. The hint under the deploy button now reads "No idle <kind> in this system."
+    in both popups (ruled 29-10-26, checklist item 1 below): `main`'s "every one you own is already deployed" (and the
+    deuterium popup's "No idle miners in your inventory.") is false once the pool is scoped, since the guild may have
+    one elsewhere, stranded, or aboard. **Tripwires.** The served-page guard in `sim/tests/server.test.js` now pins
     each of the four clauses on its own inside the reader's body, and both callers' system argument.
-    `sim/tests/deploy-picker-scope-client.test.js` (6) runs the shell's reader, the manifest's slot row and node-row
+    `sim/tests/deploy-picker-scope-client.test.js` (7) runs the shell's reader, the manifest's slot row and node-row
     click with the `openEstablishFor` they call, and the whole Establish script (both popups) in a `node:vm` sandbox,
     over real per-guild snapshots of `abandon-script.js`'s galaxies, the position abandoned, and a variant with the
     miner aboard (a heavy holds one machine, so this gives the deuterium popup a carried machine of its own). It covers
     another held system (with the positive control), stranded, and carried. Then, in every held system of four views,
     each machine and kit the guild owns is offered **exactly when the engine's own establish validate accepts it**,
-    and every one left out is refused at an asset-side gate (all four gates reached). A guard pins what the two popups
-    draw — site lines, territory, options, empty pool, hint and deploy button, before and after a pick — in ten views
-    where `main`'s picker was already right. It was hashed on a `main` worktree at 0a3ccea and passes there; against
-    `main`'s client the other four tests are red. **Checked to fail**, one mutation at a time: the system clause
+    and every one left out is refused at an asset-side gate (all four gates reached). The new hint words are pinned
+    directly, and "already deployed" is gone from the page. A guard pins what the two popups draw — site lines,
+    territory, options, empty pool and deploy button, before and after a pick — in ten views where `main`'s picker was
+    already right. The hint line is left out of it, since this slice changes its empty-pool words. It was hashed on a
+    `main` worktree at 0a3ccea and passes there; against `main`'s client the other five tests are red. **Checked to
+    fail**, one mutation at a time: the system clause
     dropped → other-system, stranded, the engine check and the served-page guard red (carried stays green); the
     not-aboard clause dropped → carried, the engine check and the served-page guard red (other-system and stranded
-    stay green); the generic caller passing no system → 7 red; the deuterium caller → 5. Sim 2,534 → **2,540** (the 6
-    new tests). Two items on the checklist below.
+    stay green); the generic caller passing no system → 7 red; the deuterium caller → 5; a hint reverted to the old
+    words → the wording test red; the territory copy or the deploy button's state changed → the guard red. Sim 2,534 →
+    **2,541** (the 7 new tests). Both checklist items it raised are ruled (below).
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -7173,7 +7179,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      a869f6b, and it passes there; (f) `client/game.html` is ~16,040 lines (+~85); the new test is ~495 lines and its
      galaxy, `sim/tests/abandon-script.js`, ~85 (built on `sweep-script.js` and `prefecture-fixtures.js`).
 - **The Establish picker's scope fix — items for a ruling or a confirm** — *surfaced 29-10-26 by the build. Nothing
-  was decided by the code beyond what is stated; no number was chosen.*
+  was decided by the code beyond what is stated; no number was chosen.* *(⤳ 29-10-26: both ruled and CLOSED, below.)*
   1. **The generic popup's empty-pool hint now claims too much.** With the picker scoped to the node's own system, an
      empty pool no longer means the guild has no idle machine of that kind. It may have one in another held system,
      stranded in a lost one, or aboard a heavy. The hint under the deploy button (`gate()`'s `deployHint`) still reads
@@ -7181,12 +7187,18 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      deuterium popup's "No idle miners in your inventory." and both pickers' "— no idle … in inventory —" option are
      vague, not wrong. Left as it was: the brief ruled out new empty-state words. Rule a wording, e.g. "No idle
      factories in this system." (`client-wiring.md`'s "The Establish-Venture panel goes real", item 4, describes the
-     same hint.)
+     same hint.) **⤳ 29-10-26 — RULED, BUILT and CLOSED:** both empty-pool hints now read "… in this system." — the
+     generic popup's "No idle <kind> in this system." and the deuterium popup's "No idle miners in this system." The
+     dropdown placeholder labels "— no idle … in inventory —" stay as they are: terse empty-list labels, not factual
+     claims. The mild "inventory" vs "this system" difference between the two is accepted.
   2. **A reading to confirm: a picker opened in an unheld system lists the machines there.** On a vacant site of a
      system the guild does not hold — e.g. the fallow system its stranded machines lie in — the picker offers them:
      they are in that system, idle and not aboard. The deploy stays disabled with "deploy requires holding it first
      (§4)", as before, and the engine refuses on territory (gate 3) before any asset gate, so no deploy the engine
-     refuses is offered. Tested. Confirm, or rule that an unheld system's picker should be empty.
+     refuses is offered. Tested. Confirm, or rule that an unheld system's picker should be empty. **⤳ 29-10-26 —
+     CONFIRMED and CLOSED, left as it is:** the picker lists the machines physically in the system. The deploy
+     button's territory gate (§4 gate 3) refuses before any asset gate, so nothing the engine would refuse is offered.
+     That gate is the single owner of the hold check; the picker is not made to re-derive territory.
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

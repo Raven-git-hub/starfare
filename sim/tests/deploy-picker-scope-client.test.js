@@ -14,10 +14,12 @@
 //   4. THE ENGINE AGREES, machine by machine: in every held system of every view, a machine is offered exactly when
 //      the engine's own establish validate accepts it on that node, and every one left out is refused at an
 //      asset-side gate.
-//   5. THE GUARD: everything else the two popups draw (the site lines, the territory line, the option rows, the empty
-//      pool, the hint and the deploy button, before and after a pick) is pinned as `main`'s client drew it at 0a3ccea,
-//      in views where main's picker already offered the right machines. It reads nothing this slice added, so it
-//      passes on main's game.html too.
+//   5. THE EMPTY-POOL HINT says what is true: no idle machine of that kind in THIS system. Main's "every one you own is
+//      already deployed" is false once the pool is scoped (the guild may have one elsewhere, stranded, or aboard).
+//   6. THE GUARD: everything else the two popups draw (the site lines, the territory line, the option rows, the empty
+//      pool and the deploy button, before and after a pick) is pinned as `main`'s client drew it at 0a3ccea, in views
+//      where main's picker already offered the right machines. It reads nothing this slice changed, so it passes on
+//      main's game.html too. The hint line under the deploy button is left out of it: 5 changes it.
 //
 // The client has no DOM test harness, so — as prefecture-abandon-client.test.js does — this cuts the page's OWN code
 // out of game.html and runs it in a node:vm sandbox on stubs: the shell's applySnapshot head and bridges (the picker's
@@ -309,7 +311,23 @@ test('the engine agrees, machine by machine: in every held system, offered exact
   for (const [k, n] of Object.entries(seen)) assert.ok(n > 0, `${k}: reached (${n})`);
 });
 
-// --- 5. everything else, unchanged ----------------------------------------------------------------------------------
+// --- 5. the empty-pool hint ------------------------------------------------------------------------------------------
+
+test('the empty-pool hint says what is true — none in this system, never "every one you own is already deployed"', () => {
+  // position: HOME's slot has no idle factory, but g1 has one in TARGET; TARGET's nodes have no idle miner, but g1 has
+  // one at HOME. Main's hint said every one was deployed — false in each case.
+  let p = page(W.position, { systemId: HOME.id });
+  assert.deepEqual(p.open(AT[HOME.id].slot).offered, []);
+  assert.equal(p.$('deployHint').textContent, 'No idle factories in this system.');
+  p = page(W.position, { systemId: TARGET });
+  assert.deepEqual(p.open(AT[TARGET].node).offered, []);
+  assert.equal(p.$('deployHint').textContent, 'No idle miners in this system.');
+  assert.deepEqual(p.open(AT[TARGET].deuterium).offered, []);
+  assert.equal(p.$('deutHint').textContent, 'No idle miners in this system.');
+  assert.ok(!html.includes('already deployed'), 'the false claim is gone from the page');
+});
+
+// --- 6. everything else, unchanged ----------------------------------------------------------------------------------
 
 const sha = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 
@@ -324,9 +342,12 @@ const GUARD = {
   'one miner, TARGET node': [ONE_MINER, TARGET, AT[TARGET].node], 'one miner, TARGET deuterium': [ONE_MINER, TARGET, AT[TARGET].deuterium],
   'fallow, TARGET node': [W.fallow, TARGET, PLANET_A_NODE],
 };
+// What the guard pins of each popup. The hint under the deploy button (`deployHint`, `deutHint`) is NOT in it: its
+// empty-pool sentence is this slice's to change (test 5), so pinning main's words would make the guard fail on one
+// side or the other. The deploy button's disabled state, which the same gate sets, stays pinned.
 const DRAWN = {
-  establish: ['siteNode', 'siteRes', 'sitePlanet', 'siteArch', 'siteTerr', 'assetSel', 'deployHint', 'deployBtn'],
-  deuterium: ['deutTitle', 'deutSite', 'deutAssetLbl', 'deutAsset', 'deutHint', 'deutDeploy'],
+  establish: ['siteNode', 'siteRes', 'sitePlanet', 'siteArch', 'siteTerr', 'assetSel', 'deployBtn'],
+  deuterium: ['deutTitle', 'deutSite', 'deutAssetLbl', 'deutAsset', 'deutDeploy'],
 };
 // popupAsMain(state, systemId, site) -> what the site's popup draws, as it opens and again after the first machine it
 // offers is picked: every element above — its text, its markup, whether it is disabled, its options.
@@ -345,13 +366,13 @@ function popupAsMain(state, systemId, site) {
   return { hash: sha(out).slice(0, 16), opened };
 }
 // Every case, as main's own engine + client drew it at 0a3ccea — hashed there by this same test (it reads nothing this
-// slice added, so it passes on main's game.html too) and pinned.
+// slice changed, so it passes on main's game.html too) and pinned.
 const PINS = {
-  'bare, HOME node': '5a5ee870aa15173b', 'bare, HOME slot': '98d21369112bc4a7', 'bare, TARGET node': 'e9bf04d095c4567d',
-  'bare, TARGET slot': '66a07b16cd91228c', 'bare, TARGET deuterium': '288c1630d88f04bf',
-  'position, HOME node': 'fad64418d7668870', 'position, TARGET slot': 'd044505b38e43244',
-  'one miner, TARGET node': '411f6cc2e247ecab', 'one miner, TARGET deuterium': '1d323726086244b6',
-  'fallow, TARGET node': '892115e72edb0d02',
+  'bare, HOME node': '527932cd6c9db038', 'bare, HOME slot': '20b84d204891263f', 'bare, TARGET node': '36d4689c54b2cc7a',
+  'bare, TARGET slot': 'c90b29a013310463', 'bare, TARGET deuterium': '74e7ca9411bca927',
+  'position, HOME node': '56c258d2ddf2f8d8', 'position, TARGET slot': '3578939dd4b36e31',
+  'one miner, TARGET node': 'dee88070c59aabf6', 'one miner, TARGET deuterium': '8ce3ae68e6f5039e',
+  'fallow, TARGET node': 'd1de023d25570fae',
 };
 
 test('GUARD: the popups draw exactly as main drew them wherever main\'s picker was already right', () => {
