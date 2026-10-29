@@ -19,7 +19,7 @@ Detailed build history lives in git; each ✅ line here is the terse record, gro
 |---|---|---|
 | 0 | Prove it's fun, learn to code | ✅ Done |
 | 1 | The guild↔Syndicate economy | ✅ Done (deep, 2,334 tests, deterministic) |
-| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim) — and the galaxy map now marks each system where a Prefecture kit of the guild's waits to be planted with an inward-flowing "claim pending" beacon (client PR C); **losing ground** has begun: an owner (or the operator) can now abandon a Prefecture, which is destroyed — the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting salvage, and its goods there are forfeit (engine PR 1, the destroyed path — engine + operator CLI); and a heavy can now haul a stranded machine out of the fallow system and unload it, an ordinary idle machine again, into a system the guild holds — the salvage run, built as the cross-system asset ferry exposed salvage-only (engine PR 2 — engine + operator CLI); and a lost system now reaches past the guild's own position there — every guild's lanes with a stop at it end, and the guild's Deep Scan Arrays that hung off it go dark, their scans voided until friendly control returns, while Outposts stand (engine PR 3, the eviction's reach — engine only); and a rival's claim of a fallow system now takes the machines still stranded there — they change hands, re-minted as its own idle machines, and both guilds are told (engine PR 4, the sweep — engine only), which completes losing ground's engine work; and its client has begun — MESSAGES now gives the four losing-ground notices their own words, facts and (for the three about a system) Show on map: the system lost, the machines a claim inherited or took, and a survey voided because its array went dark (client slice 1, the notices); and Operations now marks a machine left stranded "awaiting salvage" in the system it was lost in, the IN TRANSIT strip words a lane a lost system ended, and a venture an eviction closed no longer reads as one the player closed (client slice 2, the read-state); and a Deep Scan Array that has gone dark now shows as dark — the snapshot publishes the engine's derived state on the array's row, the map dims its marker and tags it DARK, and Operations → Deployed reads it "dark" (client slice 3, dark arrays — engine + client), which completes the read-state side of losing ground's client; the abandon control, the salvage-run client, the salvage window and capture are still to come, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
+| 2 | **The walking skeleton — a contested galaxy vs bots** | 🔶 **In progress** — the single-guild expansion spine is landing (transport visibility, the asset economy: dockyard + Syndicate buy; the trade layer rebuilt onto cargo-space haulers + held orders; the deploy pipeline's first three rungs — a hauled Outpost kit deployed by hand or on arrival, with the retreat rule, and the legal deploy range published for the client — and its first client rung, the deploy map, which quotes the leg's time / fuel before DEPLOY; a failed deploy's retreat now records a `deploy_failed` notice, which the MESSAGES inbox shows in the pilot's voice with Show on map; re-ruled asset-initiated, the kit is now an idle asset in a system's inventory, loaded onto and unloaded from a heavy, and deployed from its own idle row: a carrier picked in the Deploy Outpost popup, a route of one stop or many planned on the deploy map, and the kit loaded at the popup's Deploy; a route can also carry a kit back to a held system and unload it there on arrival, the engine half of a failed deploy's Return; and the `deploy_failed` message now resolves a retreated kit itself — its Redeploy / Return forks plan a new deploy, or a route home with the unload, for the retreated heavy, committed in its Dispatch popup); a guild can now trade with the Syndicate through its own Outposts as well as its systems — sell from an Outpost's stockpile, and buy into one, a delivery that lands whole or not at all, with a warning notice when it leaves for an Outpost without room and a turn-back notice when it is lost (engine), and an Outpost's manager now sells from its own stockpile, BUY's Deliver to now offers the guild's Outposts beside its systems, opening on the node nearest a waystation, and the MESSAGES inbox shows both delivery notices in the Trader's voice (client; the trading to/from outposts item is complete); a deployed Outpost can now be packed back into a kit aboard the empty heavy parked on it, ready to be flown and deployed again, with an `outpost_packed` notice (engine), and the Outpost Manager's Teardown button sends it, the pilot's message reporting it in MESSAGES with Show on map (client; the teardown item is complete, though no button yet sends the packed heavy to deploy — decision checklist); a guild can now build (dockyard) or buy (Syndicate) a Deep Scan Array or Outpost kit, which lands as an idle kit the deploy pipeline already carries, and the client commissions or buys either, deploys it from its idle row on a map that paints the engine's legal hexes, and lists a placed array under OPERATIONS → Deployed; **exploration (2.5)**: per-guild fog of war is live — every guild sees the public L0 board and the whole surface of what it controls, and the player client reads only its own fogged view (the `/galaxy` leak is closed) — and a deployed Deep Scan Array surveys any system galaxy-wide (L1 archetypes, then L2 nodes, one job at a time), with completion / voided notices in MESSAGES; an array may stand inside the guild's own control, on uncontrolled deep space beside it, or on its own held system's centre hex, never in a rival's control, and the guild's own arrays are drawn on its map — the array loop is closed for a player (build or buy, load, ferry, deploy, survey); every new galaxy keeps its starters ≥ 3 hexes apart (`territory-model.md` §6's de-cluster repair, built in the seed generator; `data/seed.json` regenerated, 335 → 319 starters; a galaxy already created keeps its seed); **territory claims (2.5, the Prefecture / claims slice — engine PR 1 of 2)**: a guild can now take a second system — build a Prefecture kit at a dockyard (build-only; the Syndicate never sells one), ferry it into an unclaimed system, and plant it on a slot of a planet it has surveyed to full L2, which writes its claim on the whole system (a rival claiming the target in flight sends the craft back, the outpost's retreat) — engine + operator CLI; and where two held systems' footprints overlap, the engine now awards each contested hex by seniority (the older claim wins; every system keeps its own centre) and the snapshot carries that resolved control map to every guild (engine PR 2) — and the galaxy map now paints it as sent, so a contested hex shows the older claim's colour, a rival's over the player's own included (client PR A); and a player can now ferry a Prefecture kit from its idle row into an unclaimed system — a carrier, a route ending in an unload, the kit loaded at Ferry — with a rival's system refused (client PR B1); and plant it from a vacant slot of a planet it has surveyed there, which claims the system (client PR B2) — **the first Prefecture / claims slice is COMPLETE**, the claim loop closed from the client (survey → build → ferry → plant → claim) — and the galaxy map now marks each system where a Prefecture kit of the guild's waits to be planted with an inward-flowing "claim pending" beacon (client PR C); **losing ground** has begun: an owner (or the operator) can now abandon a Prefecture, which is destroyed — the system goes fallow, the guild's ventures there are torn down, its machines there are left stranded awaiting salvage, and its goods there are forfeit (engine PR 1, the destroyed path — engine + operator CLI); and a heavy can now haul a stranded machine out of the fallow system and unload it, an ordinary idle machine again, into a system the guild holds — the salvage run, built as the cross-system asset ferry exposed salvage-only (engine PR 2 — engine + operator CLI); and a lost system now reaches past the guild's own position there — every guild's lanes with a stop at it end, and the guild's Deep Scan Arrays that hung off it go dark, their scans voided until friendly control returns, while Outposts stand (engine PR 3, the eviction's reach — engine only); and a rival's claim of a fallow system now takes the machines still stranded there — they change hands, re-minted as its own idle machines, and both guilds are told (engine PR 4, the sweep — engine only), which completes losing ground's engine work; and its client has begun — MESSAGES now gives the four losing-ground notices their own words, facts and (for the three about a system) Show on map: the system lost, the machines a claim inherited or took, and a survey voided because its array went dark (client slice 1, the notices); and Operations now marks a machine left stranded "awaiting salvage" in the system it was lost in, the IN TRANSIT strip words a lane a lost system ended, and a venture an eviction closed no longer reads as one the player closed (client slice 2, the read-state); and a Deep Scan Array that has gone dark now shows as dark — the snapshot publishes the engine's derived state on the array's row, the map dims its marker and tags it DARK, and Operations → Deployed reads it "dark" (client slice 3, dark arrays — engine + client), which completes the read-state side of losing ground's client; and a player can now salvage a stranded machine from the client — Salvage on its Operations row loads it onto an empty heavy berthed in the fallow system, the heavy's hold names it in flight, and Unload drops it into a system the guild holds (client slice 4, the salvage-run client); the abandon control, the salvage window and capture are still to come, and the rest of the guild↔guild contest (a rival, the market) is not built yet |
 | 3 | Persist & harden for the long game | ⬜ Not started (dev rig already ticks + persists) |
 | 4 | Human multiplayer | ⬜ Not started |
 | 5 | The political layer (council, legality) | ⬜ Not started |
@@ -3659,7 +3659,7 @@ boundary so the later hex-map swap doesn't touch it.
   salvage", the IN TRANSIT strip words a `system-lost` lane, and an evicted venture's closure says its system was lost.
   The "map + Operations read-state" slice split in two: a dark array has no published state to render, so it is the
   next slice, engine + client (a snapshot field, then its display); the map gets nothing (a fallow system already
-  renders unclaimed). Remaining: dark arrays, the abandon action, the salvage-run client.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
+  renders unclaimed). Remaining: dark arrays, the abandon action, the salvage-run client.)* *(⤳ 29-10-26: **client slice 3, dark arrays, is BUILT** — 2.5 below. ⤳ 29-10-26: **client slice 4, the salvage-run client, is BUILT** — 2.5 below: a stranded machine's Salvage loads it onto an empty heavy in the fallow system, the laden heavy's hold names it, and Unload drops it at a held system. Remaining of the losing-ground client: the abandon action.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:
@@ -3801,6 +3801,12 @@ boundary so the later hex-map swap doesn't touch it.
   you hold" in Operations → Deployed — with the detail screen's redraw signature carrying the flag. Engine (a derived
   snapshot field) + client; no new number. This completes the read-state side of the losing-ground client; the abandon
   action and the salvage-run client remain.)*
+  *(⤳ 29-10-26 — **losing ground, client slice 4 — the salvage-run client — is BUILT**, the last entry below: the player
+  can now run the salvage from Operations. A stranded miner or factory's IDLE row offers Salvage while a heavy that
+  `loadAsset` would take is berthed in its system; it opens the deploy popup's carrier pick and sends `loadAsset`. The
+  carried machine leaves IDLE, the laden heavy's IN TRANSIT manifest and IDLE TRANSPORTS hold name it (the hold
+  "locked"), and its card's Unload sends `unloadAsset` at a system the guild holds. Client only; no new number. The
+  abandon action is the one losing-ground client slice left.)*
   - **(a) engine slice 1 — ⤳ AS-BUILT 05-10-26, part 1 of 2: the exploration RECORD.** New
     `sim/exploration.js`: the owned per-guild record `guild.exploration = { [planetId]: { tick,
     nodes: { [nodeId]: tick } } }` (ids only — archetype and node type stay in the seed; omitted when
@@ -5032,6 +5038,73 @@ boundary so the later hex-map swap doesn't touch it.
     human's Playwright pass, outside the repo. **This completes the read-state side of the losing-ground client.**
     **Next** (the remaining losing-ground client slices): the abandon action (a player control to give a system up)
     and the salvage-run client (load / ferry / unload a stranded machine). Checklist items below.
+  - **Losing ground, client slice 4 — the salvage-run client (client only, `client/game.html`) — ⤳ AS-BUILT 29-10-26.**
+    The engine's salvage run (engine PR 2) — `loadAsset` in the fallow system, an ordinary dispatch, `unloadAsset` at a
+    held system — could be played only from the operator CLI. The player can now run it from Operations, and sees the
+    machine throughout. **No engine, snapshot or fog change** (`carryingAssetId`, `inTransitOnVehicleId` and `stranded`
+    were already published; `POST /action` already takes both actions); **no new number**. As-built detail:
+    `operations-hub.md` §4 / §5 ("AS-BUILT 29-10-26 — the salvage run, from the client"), `territory-model.md` §5
+    ("AS-BUILT — losing ground client slice 4"), `design.md` §4. **(1) Salvage** — a stranded miner or factory's IDLE row
+    gets a Salvage button where a kit has Deploy (a stranded kit keeps its own Deploy / Ferry). It is live only while a
+    heavy that `loadAsset` would take is berthed in the machine's system. Otherwise it is drawn disabled, its title
+    saying why. The row asks the deploy popup's carrier list, `carriersFor`, through `window.__carriersFor`: `loadKit`
+    and `loadAsset` ask a carrier the same questions, so one list serves the kit's dropdown and Salvage. Live, it opens
+    **the deploy popup in a salvage mode** (`openSalvage`): the machine, where it lies, the heavy transport's portrait,
+    the kit flow's Carrier dropdown, and one commit, Salvage, which sends `loadAsset { guildId, vehicleId, assetId }`
+    (no route — the load is the whole act). An accepted load closes the popup and re-reads the snapshot. A refusal
+    shows the engine's reason. The carrier is re-read off the live snapshot at the click. **(2) A carried machine is
+    not idle** — `myIdle` also leaves out a row carrying `inTransitOnVehicleId` (the engine's `idleAssets` rule). So a
+    machine leaves IDLE on the load and comes back as an ordinary row in the held system on the unload, which moves the
+    signature by itself. `idleSignature` adds whether a row's Salvage is live, because a heavy arriving in, or leaving,
+    a fallow system changes nothing else about the stranded rows there. **(3) The laden heavy's hold** — its IN TRANSIT
+    manifest read "No cargo." and its IDLE TRANSPORTS card "Hold empty", under a full hold. Both now name the machine
+    (its kind off its own asset row, "Miner Asset", and its id), and the hold reads `used / capacity · locked` off the
+    engine's own figures. The IN TRANSIT row's signature carries the machine, and so does the card's, which also carries
+    whether Unload is offered and any Unload in flight. A load or unload moves nothing those signatures read before, so
+    the card would have frozen. **(4) Unload** — on the laden heavy's card, in Dock's place, live only while
+    `unloadAsset` would pass: a machine aboard, idle, off any lane, berthed AT a system the guild holds ("holds" read off
+    the snapshot's own claim rows, as `guildHolds` reads its claims). It sends `unloadAsset { guildId, vehicleId }`, held
+    disabled while it posts. A refusal stays on the card until the tick moves on (the lane controls' rule). **(5) Two
+    readings beyond the brief** (checklist items 4 and 5): **Dock steps aside on a laden heavy**, since its locked hold
+    makes the engine refuse every transfer; and **the kit's carrier list no longer offers a heavy carrying a machine**.
+    It filtered only on an empty `cargo`, so once the client could load a machine, a stranded kit beside the laden
+    heavy would have offered it, and `loadKit` refuses it. **(6) The flight between is an ordinary dispatch** — nothing
+    built. The Dispatch popup's own send builds a plain `dispatchVehicle` for it, the engine's quote allows it, and the
+    laden heavy lists under IN TRANSIT with its manifest. **(7) Tripwires:** `sim/tests/salvage-client.test.js` (17)
+    runs the Operations hub (unwrapped) and the deploy popup in a `node:vm` sandbox, against real per-guild snapshots of
+    `sim/tests/salvage-script.js`'s galaxy. That galaxy plays the run through by the real engine: held → stranded → loaded
+    → in flight → home → unloaded → returned, plus a fleet with a craft on each carrier gate. The page's action path is
+    the real engine: an action it sends is validated and applied, and the page re-reads the galaxy. Two **oracles**: for
+    every state, every craft and every stranded machine, the client offers a carrier exactly when the engine's
+    `loadAsset` accepts (and the kit's list exactly when `loadKit` does); and for every state, every craft and four
+    hand-built berths (a bare hex, an Outpost, a rival's system, a lane), Unload exactly when `unloadAsset` accepts. Also
+    covered: the popup (its words, the carriers, the one well-formed `loadAsset`, the refusal, the carrier re-read, the
+    cases that open nothing); IDLE through the whole run (the machine absent while aboard, back as an ordinary row; main's
+    member rule swapped back keeps it listed); the salvage term (a heavy's arrival makes Salvage live, which the
+    signature sees, and does not without the term); the manifest and the card (named, locked; Dock gone; Unload only at
+    HOME; the operator's mid-flight `removeAsset` redrawing it); the card's signature (without its new term it freezes at
+    "Hold empty"); the Unload click and its refusal; and the dispatch. **A guard** undoes this slice's documented changes
+    (the Salvage buttons out, the manifest and the card back to main's words, the carried row read out of the view) and
+    pins every Operations host, in ten states, as `main`'s own engine + client drew it at 367a3cf. Every undo is a no-op
+    on main's html, so the guard passes on `main`'s `game.html` too. Against `main`'s client, 15 of the 17 are red (the
+    guard and the dispatch test pass). **Slice 2's test moved to the ruled behaviour, its count unchanged (11):** its
+    harness runs the deploy popup beside the hub, as the page does; its stranded rows now carry Salvage (live at TARGET,
+    disabled at HOME); its loaded miner is now absent from IDLE rather than an unmarked row; its main-signature proof now
+    uses the owner's re-plant, the in-place clear that remains; and its guard takes each view with the ferry's two
+    pointers out, which `main`'s client never read, so its d353816 pins are unchanged (and it still passes on `main`).
+    **Checked to fail**, one mutation at a time over the salvage, slice-2, slice-3 and Prefecture-ferry client tests:
+    `myIdle` keeping a carried machine → 3 red; no salvage term in the IDLE signature → 1; no carry / Unload term in the
+    card's signature → 2; the carrier list ignoring a machine aboard → 3; Salvage always live → 5; no Salvage button →
+    7; Salvage on a stranded kit too → 2; the manifest ignoring the machine → 1; the hold not marked locked → 2; the card
+    ignoring the machine → 4; Dock kept on a laden heavy → 1; Unload at any system → 2; Unload while not idle or on a
+    lane → 1; Unload sending `unloadKit` → 2; Salvage sending `loadKit` → 2; `openSalvage` opening for any machine → 1;
+    no carrier re-read at the click → 1; an Unload refusal never expiring → 1; no busy state on Unload → 1; the craft
+    signature without the machine → 1. Sim 2,501 → **2,518** (the 17 new tests; every other file unchanged in count),
+    tools **98** (unchanged). The live click-through (load, fly, unload in the browser) is the human's Playwright pass,
+    outside the repo. **This completes the salvage run, engine and client** (bar the untuned window). **Next:** the
+    abandon action, the one losing-ground client slice left (a player control to give a system up); and the
+    establish / deploy pickers' scope fix — they offer stranded, carried and other systems' machines the engine
+    refuses — taken as its own task. Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -6621,11 +6694,13 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      is minted afresh (a new id) on unload. So a carried asset now has two representations: a kit good in `cargo`, and a
      machine by name. Rule whether kits should one day move to carry-by-name (it would end the kit-id churn).
   7. **No notice.** Neither the load nor the unload records an event (the kit's load / unload record none either); a client
-     can show "carrying — salvaging" from the vehicle row. Rule whether the salvage wants a pilot's notice.
+     can show "carrying — salvaging" from the vehicle row. Rule whether the salvage wants a pilot's notice. *(⤳ 29-10-26,
+     losing ground client slice 4: the laden heavy's manifest and card now name the machine; still no notice.)*
   8. **The live client shows a machine in transit as idle in the fallow system.** Its idle list reads
      `deployedToVentureId == null` and does not know `inTransitOnVehicleId` yet (stranded machines already show as idle —
      engine PR 1's item). Harmless — a fallow system offers no deploy, and the engine refuses any deploy of it — but the
-     client slice must read the new field.
+     client slice must read the new field. *(⤳ 29-10-26: FIXED — losing ground client slice 4: `myIdle` reads
+     `inTransitOnVehicleId`, so a carried machine leaves IDLE.)*
   9. **The operator removes.** `removeVehicle` on a laden heavy destroys the machine with it (its number recorded, never
      reissued); `removeAsset` of a carried machine clears the craft's manifest — chosen so both levers keep "refuse only an
      unknown id". Confirm.
@@ -6823,7 +6898,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   9. **Seen, not built (outside this slice):** (a) **a machine aboard a heavy** after the salvage load still lists in
      IDLE under the fallow system. The snapshot publishes `inTransitOnVehicleId` ("not idle", engine PR 2), but
      `myIdle` reads only `deployedToVentureId`. It now reads as an ordinary idle machine there (its flag cleared), not
-     as aboard. This is the salvage-run client's to render. (b) **The establish panels' asset pickers**
+     as aboard. This is the salvage-run client's to render. *(⤳ 29-10-26: FIXED — losing ground client slice 4: it
+     leaves IDLE while aboard, and the heavy's hold names it.)* (b) **The establish panels' asset pickers**
      (`__myIdleAssets`) list idle machines guild-wide, so a stranded machine is offered too. The engine refuses it by
      system (`asset.systemId !== site.systemId`), as it refuses any machine from another system — pre-existing. (c)
      **The claim-pending beacon** marks a fallow system where the guild's own stranded Prefecture kit lies (it reads
@@ -6879,6 +6955,65 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      host out of its "reach, lost (g1)" hash and re-pinning; its d353816 pins are unchanged. (c) The new galaxies live
      in `sim/tests/dark-array-script.js`, which uses only what `main` had at 1c28fe4, so the pins can be re-hashed
      there. (d) `client/game.html` is ~15,725 lines. The new client test is ~405 lines, the engine test ~195.
+- **Losing ground, client slice 4 (the salvage-run client) — items for a confirm or a ruling** — *surfaced 29-10-26 by
+  the build; each was built the way stated, and none is decided by the code beyond that. No number was chosen.*
+  1. **"The arc is complete" — not claimed.** The brief called this the last losing-ground client slice. This file (the
+     dashboard, 2.5's notes, client slices 1–3's "Next") still lists **the abandon action** — a player control to give a
+     system up — as a client slice to come, and the client has none (no control sends `abandonPrefecture`; it is sent
+     from the operator CLI, `tools/admin.js abandon-prefecture`). Recorded as remaining. Rule whether the abandon control is still wanted, or is dropped.
+  2. **The words — all drafts, for the human to tune at merge:** the row button "Salvage"; its disabled title "No empty,
+     idle heavy transport is berthed in this system"; the popup's eyebrow "Salvage Miner", section head "Stranded
+     Miner", commit "Salvage" / "Salvaging…"; the hold's "· locked"; the manifest row "Miner Asset" + the machine's id
+     (a Syndicate machine delivery's label, reused); the card's "Unload". Each lives once in `client/game.html` and is
+     pinned in `sim/tests/salvage-client.test.js` (the Salvage buttons also in `losing-ground-ops-client.test.js`), so
+     a tune is two or three edits, plus the quotes in `operations-hub.md` §5.
+  3. **Placement and the pick.** Salvage sits in the IDLE row where a kit's Deploy sits. Its pick is the **deploy
+     popup in a salvage mode**: the kit flow's own Carrier dropdown, as the brief asked ("mirror how the kit flow picks
+     a carrier"). Like the kit flow, it starts at "Select carrier" even when there is one carrier. The popup's art is
+     the heavy transport's portrait (`assets/units/heavytransport.jpg`), because no machine portrait exists. That is a
+     new-portrait need, logged here, not invented. Alternatives: preselect a sole carrier, skip the popup when there
+     is one, or the plain panel the Prefecture kit shows. Rule which.
+  4. **A reading beyond the brief: Dock steps aside on a laden heavy.** The engine refuses every transfer into or out
+     of a locked hold (engine PR 2 item 3), so Dock on a laden heavy's card could only ever be refused. It is hidden
+     while `carryingAssetId` is set, and comes back on the unload. Confirm.
+  5. **A reading beyond the brief: the kit's carrier list skips a heavy carrying a machine.** It filtered on an empty
+     `cargo` only. A machine fills the hold with no cargo, so once the client could load a machine, a stranded kit
+     beside the laden heavy would have offered that heavy in its Deploy / Ferry dropdown, and `loadKit` refuses it.
+     Fixed by the one shared list (`carriersFor` gained `carryingAssetId == null`); a heavy carrying no machine is
+     listed exactly as before. Confirm.
+  6. **"No heavy here" is a disabled button with a title.** The brief allowed "absent or disabled with the reason". A
+     disabled button tells the player salvage is possible and something is missing. The reason is a tooltip, which a
+     touch screen does not show. Alternatives: absent; or the reason as a line in the row. Rule which.
+  7. **Unload — where and how.** The brief said to mirror "the kit's standalone unload". The client has none: a kit is
+     unloaded only by a route's last stop (`{ type: 'unload' }`, unload mode / Return); no control sends `unloadKit`.
+     So Unload was placed on the laden heavy's IDLE TRANSPORTS card, in Dock's place, beside Dispatch: the card is where
+     an idle craft's acts live. It does not ask first. An unload is not undoable today: a machine in a held system is
+     not stranded, so `loadAsset` will not take it again until general redeploy exists. The player chooses where by
+     flying there. Rule whether Unload should confirm.
+  8. **The collapsed rows say nothing of the machine.** The machine shows in the expanded manifest (IN TRANSIT) and the
+     expanded card (IDLE TRANSPORTS). Neither collapsed row marks "salvaging". Rule whether a laden heavy's row head
+     should, e.g. "Heavy #01 · salvage".
+  9. **Seen, not built (outside this slice):** (a) **the Dispatch popup's Onboard Manifest** (`manifestHtml`) reads
+     "Hold empty · 0 / 6,000,000 cargo space" for a laden heavy. It prints 0 for any hold with no goods rather than
+     the published `used`. The player sees it on the salvage run's flight step, opening Dispatch from the laden card.
+     The same `carryingAssetId` read would name the machine there; a small follow-up, worth doing before the
+     Playwright pass. (b) **The establish / deploy pickers** (`__myIdleAssets`) still offer stranded and carried
+     machines, and machines in other systems, all of which the engine refuses. That scope fix is the next task, as the
+     brief said. (c) **The Dispatch planner** still offers a laden heavy stop actions (a dock) and a repeating lane; the
+     engine refuses both in its own words (engine PR 2 item 3), shown in the popup. (d) No salvage notice (engine PR 2
+     item 7): the card and the manifest are now the record. (e) The Dock editor's "Currently aboard" reads "Hold empty"
+     for a laden heavy too, but its Operations entry is now hidden on one (item 4).
+  10. **Seams — not decisions, recorded:** (a) two new shell bridges, both from the deploy popup:
+     `window.__carriersFor` (the carrier list, read by the IDLE row and its signature) and `window.__openSalvage`.
+     (b) The oracles include hand-built cases no play path reaches (the heavy holding a lane while berthed; a laden
+     heavy berthed at a bare hex, an Outpost, a rival's system), so each mirrored gate is seen to bite. (c) The guard
+     undoes this slice's changes by string and reads the carried machine's row out of the view, rather than leaving
+     hosts out. Each undo is a no-op on `main`'s html, so the guard runs there too. Its pins were hashed by this same
+     test on a `main` worktree at 367a3cf. (d) Slice 2's test now runs the deploy popup beside the hub. Its guard takes
+     views with the two ferry pointers out (`main`'s client read neither: zero references at 367a3cf); its pins are
+     unchanged. (e) `client/game.html` is ~15,950 lines (+~230). The new test is ~635 lines, about 45 of them the
+     pin table. Its galaxy is `sim/tests/salvage-script.js` (~80). (f) The brief expected the suite at sim 2,483 on
+     `main`; `main` at 367a3cf is 2,501 (2,483 was before client slice 3).
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

@@ -56,6 +56,9 @@ function cut(src, re, what) {
   return m;
 }
 const kitKindsSrc = cut(html, /<script id="kit-kinds">([\s\S]*?)<\/script>/, 'the kit-kinds script')[1];
+// ⤳ losing ground client slice 4: a stranded machine's IDLE row asks the deploy popup's carrier list
+// (window.__carriersFor) whether to offer Salvage, so the hub runs beside that popup's script, as on the page.
+const deployWireSrc = cut(html, /<script id="deploy-kit-wire">([\s\S]*?)<\/script>/, 'the deploy popup script')[1];
 // The Operations hub's whole script, without its IIFE wrapper — so its own functions and its state `O` land at the
 // sandbox's top level, to be called and read directly.
 const opsSrc = cut(html, /<script id="operations-tab-wire">\n\(function\(\)\{\n([\s\S]*?)\n\}\)\(\);\n<\/script>/, 'the Operations script')[1];
@@ -81,6 +84,9 @@ const TARGET_HEX = getSystem(TARGET).coords;
 //   stranded — g1 abandons TARGET: the miner and the kit there gain `stranded` IN PLACE — the same id, the same
 //              system, still idle — so main's signature (id@systemId) does not move;
 //   loaded   — the heavy loads the stranded miner (the salvage run's load): its flag goes, again in place.
+//   reclaimed — ⤳ losing ground client slice 4: from `stranded`, g1 re-plants TARGET instead. Its own stranded miner and
+//              kit are recovered, their flags cleared in place (same id, same system, still idle). Since slice 4 a
+//              loaded machine leaves IDLE (it is aboard), so this is the in-place clear left for main's signature to miss.
 function inPlace() {
   let s = S.planted();
   let homeMiner; let miner;
@@ -91,7 +97,9 @@ function inPlace() {
   const held = s;
   const stranded = P.accept(held, S.abandon());
   const loaded = P.accept(stranded, createLoadAssetAction({ guildId: 'g1', vehicleId: P.HEAVY, assetId: miner }));
-  return { held, stranded, loaded, homeMiner, miner, kit };
+  const { s: kitIn, kitId: flag } = P.grantPrefectureKit(stranded, 'g1', TARGET);
+  const reclaimed = P.accept(kitIn, P.plant('g1', flag, P.SLOT_A1));
+  return { held, stranded, loaded, reclaimed, homeMiner, miner, kit };
 }
 const IN_PLACE = inPlace();
 
@@ -165,7 +173,7 @@ function opsPage(snapshot, guildId, src = opsSrc) {
     return nodes[id];
   };
   const sandbox = {
-    document: { getElementById: node },
+    document: { getElementById: node, addEventListener() {} },
     window: {
       __player: () => ({ guildId }),
       __snapshot: () => current,
@@ -175,6 +183,7 @@ function opsPage(snapshot, guildId, src = opsSrc) {
     },
   };
   vm.runInNewContext(kitKindsSrc + src, sandbox);
+  vm.runInNewContext(deployWireSrc, sandbox);
   return {
     page: sandbox,
     open: () => sandbox.window.__opsOpen(),
@@ -213,6 +222,10 @@ const ordinaryRow = (id, kind) => `<div class="ops-idle-machine"><span class="mi
 const strandedRow = (id, kind, button = '') => `<div class="ops-idle-machine stranded"><span class="mid">${id}</span>`
   + `<span class="mkind">${kind}</span>${button}<span class="mstranded">${STRANDED_MARK}</span></div>`;
 const deployButton = (id) => `<button class="ops-idle-deploy" type="button" data-kit-deploy="${id}">Deploy</button>`;
+// ⤳ losing ground client slice 4: a stranded MACHINE's row carries Salvage — live when a heavy that could take it is
+// in its system (g1's heavy is berthed at TARGET here), disabled when none is (salvage-client.test.js proves the gate).
+const salvageButton = (id) => `<button class="ops-idle-deploy ops-idle-salvage" type="button" data-salvage="${id}">Salvage</button>`;
+const salvageNoHeavy = '<button class="ops-idle-deploy ops-idle-salvage" type="button" disabled title="No empty, idle heavy transport is berthed in this system">Salvage</button>';
 const HOME_NAME = getSystem(P.HOME.id).name;
 // idleGroups(idleHtml) -> { systemName: the html of that system's IDLE group }.
 function idleGroups(idleHtml) {
@@ -232,8 +245,9 @@ test('IDLE: a machine or kit left stranded is marked awaiting salvage, in the sy
   p.open();
   const groups = idleGroups(p.html('ops-idle-list'));
   assert.deepEqual(Object.keys(groups).sort(), [HOME_NAME, TARGET_NAME].sort());
-  // TARGET's group: both rows marked. The kit keeps its Deploy: a stranded kit loads as any kit does.
-  assert.ok(groups[TARGET_NAME].includes(strandedRow(miner, 'miner')), 'the stranded miner');
+  // TARGET's group: both rows marked. The kit keeps its Deploy: a stranded kit loads as any kit does. (⤳ slice 4: the
+  // miner now carries Salvage, live, as g1's heavy is berthed at TARGET.)
+  assert.ok(groups[TARGET_NAME].includes(strandedRow(miner, 'miner', salvageButton(miner))), 'the stranded miner');
   assert.ok(groups[TARGET_NAME].includes(strandedRow(kit, 'Outpost kit', deployButton(kit))), 'the stranded kit');
   assert.equal(count(groups[TARGET_NAME], STRANDED_MARK), 2);
   // HOME's group: main's row, unmarked.
@@ -250,7 +264,8 @@ test('IDLE reads the flag, never the ground: no flag means no marker in a fallow
   p.open();
   const groups = idleGroups(p.html('ops-idle-list'));
   assert.ok(groups[TARGET_NAME].includes(ordinaryRow(IN_PLACE.miner, 'miner')));
-  assert.ok(groups[HOME_NAME].includes(strandedRow(IN_PLACE.homeMiner, 'miner')));
+  // (⤳ slice 4: a flagged machine carries Salvage — disabled here, as no heavy is berthed at HOME.)
+  assert.ok(groups[HOME_NAME].includes(strandedRow(IN_PLACE.homeMiner, 'miner', salvageNoHeavy)));
 });
 
 // ---- 2. IDLE: the rebuild signature ------------------------------------------------------------------------
@@ -277,7 +292,8 @@ test('IDLE redraws when a machine gains or loses the flag in place, which main\'
   assert.equal(marks(), 2, 'the miner and the kit, marked on the poll after the abandon');
   p.poll(loaded);
   assert.equal(marks(), 1, 'the miner\'s marker gone on the poll after the load; the kit still stranded');
-  assert.ok(p.html('ops-idle-list').includes(ordinaryRow(IN_PLACE.miner, 'miner')));
+  // (⤳ slice 4: the loaded miner is aboard the heavy, so it has left IDLE altogether, not stayed on as an unmarked row.)
+  assert.equal(p.html('ops-idle-list').includes(IN_PLACE.miner), false);
   const writes = p.writes('ops-idle-list');
   p.poll(loaded);
   assert.equal(p.writes('ops-idle-list'), writes, 'the guard still guards: an unchanged poll rebuilds nothing');
@@ -291,10 +307,18 @@ test('IDLE redraws when a machine gains or loses the flag in place, which main\'
   m.open();
   m.poll(stranded);
   assert.equal(count(m.html('ops-idle-list'), STRANDED_MARK), 0, 'main\'s signature: the abandon never reaches IDLE');
+  // (⤳ slice 4: a load now moves any signature, as the miner leaves the list. The owner's re-plant clears both flags in
+  // place, keeping every id and system, so it stands in for the load: this slice's signature sees it, main's does not.)
+  const reclaimed = viewOf(IN_PLACE.reclaimed, 'g1');
+  assert.equal(mainSig(reclaimed), mainSig(stranded), 'premise: the re-plant keeps every idle row\'s id and system');
+  const r = opsPage(stranded, 'g1');
+  r.open();
+  r.poll(reclaimed);
+  assert.equal(count(r.html('ops-idle-list'), STRANDED_MARK), 0, 'the markers gone on the poll after the re-plant');
   const n = opsPage(stranded, 'g1', mainSrc);
   n.open();
-  n.poll(loaded);
-  assert.equal(count(n.html('ops-idle-list'), STRANDED_MARK), 2, 'main\'s signature: the salvaged miner keeps a stale marker');
+  n.poll(reclaimed);
+  assert.equal(count(n.html('ops-idle-list'), STRANDED_MARK), 2, 'main\'s signature: the recovered machines keep stale markers');
 });
 
 test('IDLE after the sweep: the swept machines leave the former owner\'s list and land, unmarked, in the planter\'s', () => {
@@ -432,6 +456,18 @@ const stripDark = (view) => {
   for (const row of view.deepScanArrays || []) delete row.dark;
   return view;
 };
+// ⤳ losing ground client slice 4: each view also has the asset ferry's two pointers taken out — a craft row's
+// `carryingAssetId` and an asset row's `inTransitOnVehicleId`. Engine PR 2 published both, but main's client read
+// neither, so it drew the same bytes with them or without. In "in place, loaded" the heavy carries the miner, and its
+// IDLE TRANSPORTS card is slice 4's change there (salvage-client.test.js proves it); with the pointers out, slice 4's
+// client draws main's card. The pins are unchanged.
+const stripCarry = (view) => {
+  for (const g of view.guilds || []) {
+    for (const v of g.vehicles || []) delete v.carryingAssetId;
+    for (const a of g.assets || []) delete a.inTransitOnVehicleId;
+  }
+  return view;
+};
 const AS_ON_MAIN = [
   { name: 'reach, before the loss (g1)', state: () => REACH.pre, guild: 'g1', changed: [],
     pin: 'd5ecb075c3bc34c77696919bf18fd9e33c2f3c86e1801b4a8ed9608e04da1c9b' },
@@ -457,7 +493,7 @@ const AS_ON_MAIN = [
 
 test('the rest of the Operations hub renders exactly as main rendered it — every host this slice leaves alone, in every state', () => {
   for (const c of AS_ON_MAIN) {
-    const p = opsPage(stripDark(viewOf(c.state(), c.guild)), c.guild);
+    const p = opsPage(stripCarry(stripDark(viewOf(c.state(), c.guild))), c.guild);
     p.open();
     const hub = p.hub();
     for (const id of c.changed) delete hub[id];
