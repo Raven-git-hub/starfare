@@ -388,6 +388,11 @@ boundary so the later hex-map swap doesn't touch it.
   stays live as machines deploy (leave) and ventures tear down (return); a signature guard preserves the
   reader's collapse state across polls; an all-deployed guild keeps a calm empty state. Read-only this
   slice — no Manage popup / deploy-from-hub (`operations-hub.md` §8), no same-system picker filter (2.2).
+  *(⤳ 29-10-26: the picker filter is BUILT — "The Establish picker's scope fix", 2.5 below. The Establish picker now
+  offers a machine only when the engine's asset-side establish gates would take it: not deployed, not aboard a
+  vehicle, and in the node's own system. That closes the §18 leak for all three cases: a machine in another held
+  system, one stranded in a system the guild lost, and one carried aboard a heavy that still names its re-held origin
+  system.)*
   CLIENT only — no engine/snapshot/sim change, determinism holds; the one served-page tripwire in
   `sim/tests/server.test.js` was updated in place to pin the live IDLE contract. Proven end-to-end in
   headless Chromium (fresh founding → one system group, 15/10 subgroups; deploy one miner → it drops out
@@ -5169,6 +5174,43 @@ boundary so the later hex-map swap doesn't touch it.
     system, lose it (by the one cause built, their own abandon), see every consequence, and salvage. **Left of losing
     ground:** the salvage window, blocked on its untuned rate (`phase-1-tuning.md`); and, separately, the establish /
     deploy pickers' scope fix (they offer machines the engine refuses), the human's next task. Checklist items below.
+    *(⤳ 29-10-26: the scope fix is BUILT — the next entry.)*
+  - **The Establish picker's scope fix — the picker mirrors the engine's asset-side establish gates (client only,
+    `client/game.html`) — ⤳ AS-BUILT 29-10-26.** Closes 2.1b's deferred "no same-system picker filter (2.2)" and the
+    scope fix losing ground left (slice 2's and slice 4's item 9b). The picker's reader, `window.__myIdleAssets`,
+    checked only the kind and "not deployed". So both pickers that read it — the generic Establish popup
+    (`fillAssets`) and the deuterium deploy popup (`fillDeutAssets`) — offered three kinds of machine the engine
+    refuses (§18). A machine in **another held system**, or **stranded** in a system the guild lost, is refused at the
+    same-system gate (`sim/actions.js`). A machine **carried** aboard a heavy keeps the `systemId` it was loaded from,
+    so after abandon → salvage-load → re-plant of that system a same-system filter alone would still offer it; the
+    engine refuses it at the aboard-a-vehicle gate. The reader is now `__myIdleAssets(kind, systemId)`: the kind,
+    `deployedToVentureId == null`, `inTransitOnVehicleId == null` and `systemId === systemId`. Each clause is a
+    published field of the row, the same fields `__myHoldingsIn` and Operations' `myIdle` already read, so nothing is
+    re-derived. Both callers pass the node's own system off the site `openEstablishFor` stamps (`S.site.systemId`,
+    `D.site.systemId`). There is no stranded clause: a stranded machine is only ever in an unheld system, which no held
+    node is in. **No engine, snapshot or design change; no new number.** An empty pool keeps the picker's existing
+    "— no idle … in inventory —" option. The hint under the deploy button now reads "No idle <kind> in this system."
+    in both popups (ruled 29-10-26, checklist item 1 below): `main`'s "every one you own is already deployed" (and the
+    deuterium popup's "No idle miners in your inventory.") is false once the pool is scoped, since the guild may have
+    one elsewhere, stranded, or aboard. **Tripwires.** The served-page guard in `sim/tests/server.test.js` now pins
+    each of the four clauses on its own inside the reader's body, and both callers' system argument.
+    `sim/tests/deploy-picker-scope-client.test.js` (7) runs the shell's reader, the manifest's slot row and node-row
+    click with the `openEstablishFor` they call, and the whole Establish script (both popups) in a `node:vm` sandbox,
+    over real per-guild snapshots of `abandon-script.js`'s galaxies, the position abandoned, and a variant with the
+    miner aboard (a heavy holds one machine, so this gives the deuterium popup a carried machine of its own). It covers
+    another held system (with the positive control), stranded, and carried. Then, in every held system of four views,
+    each machine and kit the guild owns is offered **exactly when the engine's own establish validate accepts it**,
+    and every one left out is refused at an asset-side gate (all four gates reached). The new hint words are pinned
+    directly, and "already deployed" is gone from the page. A guard pins what the two popups draw — site lines,
+    territory, options, empty pool and deploy button, before and after a pick — in ten views where `main`'s picker was
+    already right. The hint line is left out of it, since this slice changes its empty-pool words. It was hashed on a
+    `main` worktree at 0a3ccea and passes there; against `main`'s client the other five tests are red. **Checked to
+    fail**, one mutation at a time: the system clause
+    dropped → other-system, stranded, the engine check and the served-page guard red (carried stays green); the
+    not-aboard clause dropped → carried, the engine check and the served-page guard red (other-system and stranded
+    stay green); the generic caller passing no system → 7 red; the deuterium caller → 5; a hint reverted to the old
+    words → the wording test red; the territory copy or the deploy button's state changed → the guard red. Sim 2,534 →
+    **2,541** (the 7 new tests). Both checklist items it raised are ruled (below).
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -6965,7 +7007,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      as aboard. This is the salvage-run client's to render. *(⤳ 29-10-26: FIXED — losing ground client slice 4: it
      leaves IDLE while aboard, and the heavy's hold names it.)* (b) **The establish panels' asset pickers**
      (`__myIdleAssets`) list idle machines guild-wide, so a stranded machine is offered too. The engine refuses it by
-     system (`asset.systemId !== site.systemId`), as it refuses any machine from another system — pre-existing. (c)
+     system (`asset.systemId !== site.systemId`), as it refuses any machine from another system — pre-existing.
+     *(⤳ 29-10-26: FIXED — "The Establish picker's scope fix", 2.5: the pickers offer only the node's own system's
+     machines, and none aboard a heavy.)* (c)
      **The claim-pending beacon** marks a fallow system where the guild's own stranded Prefecture kit lies (it reads
      only the claims), which is true: the owner may re-plant it. Recorded. (d) **The map** is unchanged, by the brief:
      a fallow system renders unclaimed, and nothing marks "you used to hold this". Rule whether it should.
@@ -7063,7 +7107,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      The same `carryingAssetId` read would name the machine there; a small follow-up, worth doing before the
      Playwright pass. (b) **The establish / deploy pickers** (`__myIdleAssets`) still offer stranded and carried
      machines, and machines in other systems, all of which the engine refuses. That scope fix is the next task, as the
-     brief said. (c) **The Dispatch planner** still offers a laden heavy stop actions (a dock) and a repeating lane; the
+     brief said. *(⤳ 29-10-26: FIXED — "The Establish picker's scope fix", 2.5.)* (c) **The Dispatch planner** still offers a laden heavy stop actions (a dock) and a repeating lane; the
      engine refuses both in its own words (engine PR 2 item 3), shown in the popup. (d) No salvage notice (engine PR 2
      item 7): the card and the manifest are now the record. (e) The Dock editor's "Currently aboard" reads "Hold empty"
      for a laden heavy too, but its Operations entry is now hidden on one (item 4).
@@ -7134,6 +7178,27 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
      are its own buttons; (e) the guard reads nothing the slice added, its pins were hashed on a `main` worktree at
      a869f6b, and it passes there; (f) `client/game.html` is ~16,040 lines (+~85); the new test is ~495 lines and its
      galaxy, `sim/tests/abandon-script.js`, ~85 (built on `sweep-script.js` and `prefecture-fixtures.js`).
+- **The Establish picker's scope fix — items for a ruling or a confirm** — *surfaced 29-10-26 by the build. Nothing
+  was decided by the code beyond what is stated; no number was chosen.* *(⤳ 29-10-26: both ruled and CLOSED, below.)*
+  1. **The generic popup's empty-pool hint now claims too much.** With the picker scoped to the node's own system, an
+     empty pool no longer means the guild has no idle machine of that kind. It may have one in another held system,
+     stranded in a lost one, or aboard a heavy. The hint under the deploy button (`gate()`'s `deployHint`) still reads
+     "No idle factories in your inventory — every one you own is already deployed.", which is then untrue. The
+     deuterium popup's "No idle miners in your inventory." and both pickers' "— no idle … in inventory —" option are
+     vague, not wrong. Left as it was: the brief ruled out new empty-state words. Rule a wording, e.g. "No idle
+     factories in this system." (`client-wiring.md`'s "The Establish-Venture panel goes real", item 4, describes the
+     same hint.) **⤳ 29-10-26 — RULED, BUILT and CLOSED:** both empty-pool hints now read "… in this system." — the
+     generic popup's "No idle <kind> in this system." and the deuterium popup's "No idle miners in this system." The
+     dropdown placeholder labels "— no idle … in inventory —" stay as they are: terse empty-list labels, not factual
+     claims. The mild "inventory" vs "this system" difference between the two is accepted.
+  2. **A reading to confirm: a picker opened in an unheld system lists the machines there.** On a vacant site of a
+     system the guild does not hold — e.g. the fallow system its stranded machines lie in — the picker offers them:
+     they are in that system, idle and not aboard. The deploy stays disabled with "deploy requires holding it first
+     (§4)", as before, and the engine refuses on territory (gate 3) before any asset gate, so no deploy the engine
+     refuses is offered. Tested. Confirm, or rule that an unheld system's picker should be empty. **⤳ 29-10-26 —
+     CONFIRMED and CLOSED, left as it is:** the picker lists the machines physically in the system. The deploy
+     button's territory gate (§4 gate 3) refuses before any asset gate, so nothing the engine would refuse is offered.
+     That gate is the single owner of the hold check; the picker is not made to re-derive territory.
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

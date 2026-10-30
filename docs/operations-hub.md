@@ -224,7 +224,8 @@ recall any time, time to re-availability). ID + Type buttons → the transport-m
   10-factory subgroups; deploying one miner (`establishVenture`) drops it out of IDLE on the next poll
   (24 idle / 14 miners); tearing the venture down returns it (25 idle / 15 miners). **Deferred, not
   invented:** the Manage popup / deploy-from-hub (§8, future), the same-system deploy-picker filter
-  (2.2, design.md §4), and idle transports / build kits (their slices).
+  (2.2, design.md §4) *(⤳ 29-10-26: BUILT — `roadmap.md` 2.5, "The Establish picker's scope fix")*, and idle
+  transports / build kits (their slices).
 - **2.1 (build yard):** idle assets + the **Manage popup** + deploy; DEPLOYED / IDLE populate.
 - **2.3 (tolls):** toll gates active; toll-route management.
 - **2.2 b2a → 3c (guild craft + lanes in IN TRANSIT) — BUILT (19–24-09-26):** the guild's own in-flight

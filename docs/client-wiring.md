@@ -885,6 +885,11 @@ for a settlement slot. The label comes from `kind` and the condition from
 `Math.round(maintenanceCondition * 100)`: every figure is the engine's, and the browser
 **re-derives nothing** — least of all idle-vs-deployed, which `sim/snapshot.js` already answers
 (§7's display rule). Option shape is unchanged (`Miner · asset_… · 100%`).
+*(⤳ 29-10-26 — the picker's scope fix: the bridge is now `window.__myIdleAssets(kind, systemId)`. It also requires
+`inTransitOnVehicleId == null` (not aboard a heavy) and the row's `systemId` to be the node's own system, so it
+offers exactly the machines the engine's asset-side establish gates accept, and never one in another system, stranded
+in a lost one, or carried (§18). Both popups pass the system off the site `openEstablishFor` stamps. `roadmap.md` 2.5,
+"The Establish picker's scope fix".)*
 
 **2. The picked machine rides the deploy.** `establishVenture` now carries
 `assetId: S.asset.id`. `gate()` already required a picked asset; it now means something.
@@ -900,7 +905,10 @@ which was written before the gate existed.
 **4. The empty pool is the CLIENT's message.** The engine no longer has a "you have no idle
 miner" refusal — it speaks only about the id it was handed — so the panel owns it: a disabled
 `— no idle {miners|factories} in inventory —` option, the deploy button disabled, and a hint
-saying every machine of that kind is already deployed.
+saying every machine of that kind is already deployed. *(⤳ 29-10-26 — the picker's scope fix: once the
+pool is scoped to the node's own system, that hint is false (the guild may have one elsewhere, stranded,
+or aboard). Both popups' hints now read "No idle {miners|factories} in this system."; the option label
+is unchanged. `roadmap.md` 2.5, "The Establish picker's scope fix".)*
 
 **5. Every retired string.** `— your own claim.` · the Asset mocknote · the licence explainer
 note ending *"not the figure you will owe"* · the fee-graph `Indicative.` gnote · the label tail

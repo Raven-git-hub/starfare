@@ -446,12 +446,29 @@ test('GET / serves the REAL asset picker — the snapshot\'s idle inventory, and
     assert.ok(!html.includes(fake), `the mock asset id ${fake} must be gone`);
   }
 
-  // What replaces it: the player's OWN assets off the snapshot, filtered to idle by the
-  // ENGINE's own answer — the browser must not re-derive "is this one deployed?".
+  // What replaces it: the player's OWN assets off the snapshot, filtered by the ENGINE's
+  // own answers — the browser must not re-derive "is this one deployed?" or "is it aboard?".
   assert.match(html, /LIVE\.myAssets = \(me && me\.assets\) \|\| \[\]/);
-  assert.match(html, /window\.__myIdleAssets = function\(kind\)/);
-  assert.match(html, /a\.kind === kind && a\.deployedToVentureId == null/);
-  assert.match(html, /window\.__myIdleAssets \? window\.__myIdleAssets\(kind\) : \[\]/);
+  // The picker mirrors the engine's asset-side establish gates (sim/actions.js): every clause
+  // is pinned on its own inside the reader's body, so deleting ANY one of them reddens this —
+  // the system scope and the not-aboard clause above all, the two the reader once lacked (it
+  // offered a machine in another system, stranded in a lost one, or aboard a heavy).
+  const idle = html.match(/\nwindow\.__myIdleAssets = function\(kind, systemId\)\{\n[\s\S]*?\n\};\n/);
+  assert.ok(idle, 'window.__myIdleAssets(kind, systemId) is served — the picker reader takes the node\'s system');
+  for (const [clause, gate] of [
+    [/a\.kind === kind/, 'the wrong-kind gate'],
+    [/a\.deployedToVentureId == null/, 'the already-deployed gate'],
+    [/a\.inTransitOnVehicleId == null/, 'the aboard-a-vehicle gate (a carried machine keeps the system it was loaded from)'],
+    [/a\.systemId === systemId/, 'the same-system gate (an asset deploys only within its own system, §4)'],
+  ]) {
+    assert.match(idle[0], clause, `__myIdleAssets mirrors ${gate}`);
+  }
+  // …and both pickers hand it the node's own system: the generic Establish popup and the
+  // deuterium one, each from the site openEstablishFor stamped.
+  assert.match(html, /window\.__myIdleAssets \? window\.__myIdleAssets\(kind, systemId\) : \[\]/);
+  assert.match(html, /fillAssets\(site\.kind==='node' \? 'miner' : 'factory', S\.site\.systemId\);/);
+  assert.match(html, /window\.__myIdleAssets \? window\.__myIdleAssets\('miner', systemId\) : \[\]/);
+  assert.match(html, /fillDeutAssets\(D\.site\.systemId\);/);
   // …and the display is derived from the real fields, not stored beside them.
   assert.match(html, /Math\.round\(\(a\.maintenanceCondition \|\| 0\) \* 100\)/);
 

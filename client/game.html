@@ -7559,7 +7559,8 @@ function gate(){
   if(S.busy) return;                                   // the in-flight message stands
   hint.classList.remove('err');
   if(!held) hint.textContent='You don\u2019t hold this system \u2014 deploy requires holding it first (\u00a74).';
-  else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in your inventory \u2014 every one you own is already deployed.';
+  // The picker holds only this node's system's machines (§4): empty means none HERE, not none owned (§18).
+  else if(!POOL.length) hint.textContent='No idle '+kindPlural(kindFor(S.site))+' in this system.';
   else if(!S.asset) hint.textContent='Select an asset to continue.';
   else if(S.site && S.site.kind==='slot' && !isFuel && !isDock && S.tier!==2 && S.tier!==3) hint.textContent='Only Tier 2 refining and Tier 3 manufacture are built (§4).';
   else if(S.site && S.site.kind==='slot' && !isFuel && !isDock && !S.recipeId) hint.textContent='Pick a recipe to continue.';
@@ -8045,9 +8046,11 @@ function applySiteMode(){
   }
 }
 /* The asset picker — the guild's REAL inventory (design.md §4). Every option is an
-   IDLE machine of the kind this site takes, read off the snapshot through
-   `__myIdleAssets`; "idle" is the ENGINE's own answer (`deployedToVentureId == null`),
-   not a derivation repeated here. The chosen id is what `establishVenture` deploys.
+   IDLE machine of the kind this site takes, sitting in the site's own system and not
+   aboard a heavy, read off the snapshot through `__myIdleAssets(kind, systemId)` —
+   the engine's own establish gates on the published row, not a derivation repeated
+   here. So the picker never offers a machine the engine would refuse to deploy here
+   (§18). The chosen id is what `establishVenture` deploys.
 
    The EMPTY POOL is a real state and says so. The engine no longer has a "you have no
    idle miner" refusal — it speaks only about the id it was handed — so telling the
@@ -8060,8 +8063,8 @@ function conditionPct(a){ return Math.round((a.maintenanceCondition || 0) * 100)
 /* The rows the picker is currently offering, in the engine's own id order. Held so the
    change handler resolves a selection against exactly what was rendered. */
 var POOL = [];
-function fillAssets(kind){
-  var raw = (window.__myIdleAssets ? window.__myIdleAssets(kind) : []) || [];
+function fillAssets(kind, systemId){
+  var raw = (window.__myIdleAssets ? window.__myIdleAssets(kind, systemId) : []) || [];
   POOL = raw.map(function(a){
     return { id:a.id, kind:a.kind, label:kindLabel(a.kind), condition:conditionPct(a) };
   });
@@ -8105,7 +8108,8 @@ window.openEstablish = function(site){
   $('assetSel').value='';
   $('deployHint').classList.remove('err');
   $('estForm').style.display=''; $('estSuccess').classList.remove('show');
-  fillAssets(site.kind==='node' ? 'miner' : 'factory');
+  // The node's own system (openEstablishFor stamps it): a machine deploys only within its own system (§4).
+  fillAssets(site.kind==='node' ? 'miner' : 'factory', S.site.systemId);
   applySiteMode(); draw();
   $('est-overlay').classList.add('open');
 };
@@ -8198,12 +8202,13 @@ document.addEventListener('keydown', function(e){
    establishVenture alone. The illegal refinery is NOT reached here any more: it is the FUEL
    tier on the factory Establish popup (#est-overlay), the single entry point (§1.4).
    Idle assets are read off the snapshot through the SAME `window.__myIdleAssets` the
-   generic picker uses, so "idle" stays the engine's own answer. ======================= */
+   generic picker uses, scoped to the node's own system, so "idle" stays the engine's own
+   answer. ============================================================================== */
 var D = { site:null, asset:null, licensed:null, busy:false };
 var DPOOL = [];
 
-function fillDeutAssets(){
-  var raw = (window.__myIdleAssets ? window.__myIdleAssets('miner') : []) || [];
+function fillDeutAssets(systemId){
+  var raw = (window.__myIdleAssets ? window.__myIdleAssets('miner', systemId) : []) || [];
   DPOOL = raw.map(function(a){ return { id:a.id, kind:a.kind, label:'Miner', condition:Math.round((a.maintenanceCondition||0)*100) }; });
   var sel = $('deutAsset'); sel.innerHTML='';
   if(!DPOOL.length){
@@ -8248,7 +8253,7 @@ function deutDraw(){
   if(D.busy) return;                                    // the in-flight message stands
   hint.classList.remove('err','ok');
   if(!held) hint.textContent='You don’t hold this system — deploy requires holding it first (§4).';
-  else if(!DPOOL.length) hint.textContent='No idle miners in your inventory.';
+  else if(!DPOOL.length) hint.textContent='No idle miners in this system.';
   else if(!D.asset) hint.textContent='Select a mining asset.';
   else if(D.licensed===false) hint.textContent='Unlicensed — contraband, refine it yourself.';
   else hint.textContent='Licensed — output sold to the Syndicate each tick.';
@@ -8274,7 +8279,7 @@ window.openDeut = function(opts){
   $('deutSite').innerHTML = deutSiteLine(D.site);
   $('deutSegLic').classList.add('on');       // licensed default
   $('deutSegUn').classList.remove('on');
-  fillDeutAssets(); deutDraw();
+  fillDeutAssets(D.site.systemId); deutDraw();
   $('deut-overlay').classList.add('open');
 };
 function closeDeut(){ $('deut-overlay').classList.remove('open'); }
@@ -9071,11 +9076,17 @@ window.__tier3Contract = function(good){
   var t = LIVE.snap && LIVE.snap.tier3Contract;
   return (t && t[good]) || null;
 };
-// The player's own IDLE machines of one kind (§4) — what the establish panel offers in
-// its asset picker, and the list the chosen `assetId` is taken from. "Idle" is the
-// ENGINE's answer (`deployedToVentureId == null`), read, never re-derived here.
-window.__myIdleAssets = function(kind){
-  return LIVE.myAssets.filter(function(a){ return a.kind === kind && a.deployedToVentureId == null; });
+// The player's own machines of one kind that a node in ONE system can be established with (§4) — what the establish
+// panel offers in its asset picker, and the list the chosen `assetId` is taken from. It is the engine's own asset-side
+// establish gates (sim/actions.js), each read off a published field of the row, never re-derived here (§18): not
+// deployed (`deployedToVentureId`), not aboard a heavy (`inTransitOnVehicleId`), and sitting in the node's own system
+// (an asset deploys only within its own system). Both of the last two are needed: a machine aboard keeps the system it
+// was loaded from, so once that system is held again the system clause alone would offer it. A machine stranded in a
+// system the guild has lost sits in an unheld system, never a held node's, so the system clause leaves it out too.
+window.__myIdleAssets = function(kind, systemId){
+  return LIVE.myAssets.filter(function(a){
+    return a.kind === kind && a.systemId === systemId && a.deployedToVentureId == null && a.inTransitOnVehicleId == null;
+  });
 };
 // The player's idle Prefecture kits sitting in ONE system — what the planet manifest's Plant offer reads.
 window.__myIdleGroundKitsIn = function(systemId){
