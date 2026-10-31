@@ -536,8 +536,8 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
   plant is legal and sweeps; the forced-past-the-guard invariant → a claim that skipped the sweep; the abandon racing a
   plant → both accepted, the plant sweeping) and the salvage-race seam in `asset-ferry.test.js` (the machine in hand stays
   the salvager's; the one still stranded is swept).
-- **Not built:** the salvage window / timer (its rate is unset, `phase-1-tuning.md`; a stranded machine persists until
-  salvaged or swept), capture / takeover and the salvage waiver (the investment arc), general redeploy between held
+- **Not built:** the salvage window / timer (its rate is now RULED (`phase-1-tuning.md`: 3 days/asset pooled, cap 18 days,
+  fixed at stranding) but the timed lapse is not built, so a stranded machine persists until salvaged or swept), capture / takeover and the salvage waiver (the investment arc), general redeploy between held
   systems, the operator CLI's printout of a sweep (`plant-prefecture` prints the claim only), and the client (the two
   notices' words, the inherited machines' display). *(⤳ 28-10-26: the two notices' words are BUILT — losing ground
   client slice 1, the notices; `docs/event-log.md` §15's client AS-BUILT. The inherited machines already list as ordinary
