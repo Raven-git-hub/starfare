@@ -379,7 +379,7 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   (so a galaxy that never abandons is byte-identical — pinned against `main`'s hashes), copied by `createAsset` (a
   `createState` hand-in keeps it) and emitted on the guild's **own** asset rows in the snapshot (a rival's guild row
   carries no assets). It is the first mutation of an asset after its creation, hence its own tick. A stranded machine is
-  inspectable and persists; nothing lapses it in this slice (the timer's rate is unset, `phase-1-tuning.md`).
+  inspectable and persists; nothing lapses it in this slice (the timer's rate is unset, `phase-1-tuning.md`). *(⤳ 31-10-26: the window is BUILT — "AS-BUILT — the salvage window (engine)" at the end of this section; it keeps its own `evictedAtTick`, equal to the flag's `tick`.)*
 - **The invariant.** `checkStrandedAssets` (`sim/invariants.js`): the flag is exactly `{ tick }` with a whole tick in
   [0, now]; a stranded asset is idle; and it sits **only in a system nobody holds** — the new allowed state (an asset in a
   system its owner does not hold) is allowed only as long as nobody holds that system.
@@ -537,7 +537,9 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
   plant → both accepted, the plant sweeping) and the salvage-race seam in `asset-ferry.test.js` (the machine in hand stays
   the salvager's; the one still stranded is swept).
 - **Not built:** the salvage window / timer (its rate is now RULED (`phase-1-tuning.md`: 3 days/asset pooled, cap 18 days,
-  fixed at stranding) but the timed lapse is not built, so a stranded machine persists until salvaged or swept), capture / takeover and the salvage waiver (the investment arc), general redeploy between held
+  fixed at stranding) but the timed lapse is not built, so a stranded machine persists until salvaged or swept) *(⤳ 31-10-26:
+  the salvage window is BUILT, engine half — "AS-BUILT — the salvage window (engine)" at the end of this section; its
+  client countdown is the next slice)*, capture / takeover and the salvage waiver (the investment arc), general redeploy between held
   systems, the operator CLI's printout of a sweep (`plant-prefecture` prints the claim only), and the client (the two
   notices' words, the inherited machines' display). *(⤳ 28-10-26: the two notices' words are BUILT — losing ground
   client slice 1, the notices; `docs/event-log.md` §15's client AS-BUILT. The inherited machines already list as ordinary
@@ -569,6 +571,57 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
   and a guard pinning every slot row, row click, overlay and Plant confirm as `main` drew them at a869f6b.
 - **Not built:** a label on the slot's row (Plant has one; Abandon lives on the overlay), and a pre-check of the
   centre-bound gate (the engine refuses it, and the card shows why).
+
+**AS-BUILT — the salvage window (engine) (31-10-26; `sim/eviction.js`, `sim/actions.js` `plantKit`, `sim/tick.js` step 4,
+`sim/state.js`, `sim/events.js`, `sim/invariants.js` `checkSalvageWindows`, `sim/snapshot.js`; tripwires
+`sim/tests/salvage-window.test.js`).** The clock §19 #67 (SETTLED 19-10-26) put on the salvage, now that its rate is RULED
+(31-10-26, `phase-1-tuning.md`: `[FIRST-CUT]` 3 days per stranded asset, pooled per lost system, capped at 18 days, fixed
+at the stranding tick). **No new number:** the two ruled values have one home, `SALVAGE_WINDOW_TICKS_PER_ASSET = 4320` (3
+days × 1,440 ticks) and `SALVAGE_WINDOW_CAP_TICKS = 25920` (18 days), read only by `salvageWindowTicks(n) = min(n × 4320,
+25920)` — the cap is reached at 6 stranded assets and bites from the 7th.
+- **The record.** `evictSystem`, once it has stranded the guild's assets (step 2), opens ONE window for the lost system if
+  it stranded anything: `state.salvageWindows[systemId] = { ownerGuildId, evictedAtTick, deadlineTick }`, with
+  `deadlineTick = evictedAtTick + salvageWindowTicks(strandedAssetIds.length)` — the count at the eviction, machines and
+  kits alike; a machine aboard a heavy is not stranded, so not counted. The deadline is **absolute and stored**, never
+  re-derived: salvaging some out does not move it, and a later re-tune of the `[FIRST-CUT]` rate would not move a window
+  already open ("the deadline never moves"). That is also why the record keeps no strand count. `evictedAtTick` is the
+  record's §15.2 tick. Top-level beside `syndicateBuilds` (a galaxy schedule for a system, not one guild's inventory),
+  **omitted** until an eviction strands something and deleted again when its last record closes, so a galaxy that has
+  evicted nothing — or has re-claimed everything it lost — is byte-identical.
+- **Closed early by a claim.** `plantKit` calls `closeSalvageWindow(state, systemId)` right after the recover and the sweep:
+  the planter's own stranded assets are recovered, any other guild's are swept, so nothing is left for the deadline. The
+  plant is the only way a fallow system becomes held, so it is the one early-close site; the salvage run, the sweep and
+  the recovery are unchanged. A re-claim then a re-abandon therefore always opens a FRESH window from the new eviction —
+  no stale record, no stale deadline (tested, with a machine aboard a heavy across both: not counted, not destroyed).
+- **The lapse — tick step 4.** A deadline is a due-tick, and design.md §15.6 names step 4, *scheduled events*, as the
+  home for due-tick work; it already held the Syndicate build promotion, and now runs `lapseSalvageWindows(state,
+  thisTick)` after it. (Not the end-of-tick seam the Deep Scan Array's completions use: destroying an asset is not
+  observation.) Every window whose `deadlineTick <= thisTick` lapses, in **systemId order** (not the map's key order —
+  invariant 9): each asset still stranded in the system is destroyed through `deleteAsset`, in guild-then-asset order
+  (`strandedAssetsIn`), so a machine's number goes into its guild's `removedAssetHighWater` and is never reissued (§15.4)
+  and an emptied `assets` key goes; each guild that lost something gets ONE `salvage_window_lapsed` notice naming the system
+  and the destroyed ids (`docs/event-log.md` §16) — in play only the owner; and the window closes. Nothing left stranded
+  (all salvaged) → no notice, the record just closes. An eviction at tick T with a window of L lapses in the tick that
+  builds T + L: the assets are still there, and salvageable, at T + L − 1, and gone at T + L.
+- **The snapshot.** The owner's own guild row carries `salvageWindows: { [systemId]: { deadlineTick } }` for each of its
+  open windows (omit-when-empty), so the client's countdown reads `remaining = deadlineTick − tick` (the client subtracts,
+  §18; nothing is counted down in the engine). Only the deadline is published — not the owner field or the eviction tick.
+  A rival never sees it: its guild row is cut to `RIVAL_GUILD_FIELDS` (`sim/fog.js`), so the stranded-machine fog is
+  unchanged (tested: the rival's view hash did not move).
+- **The tripwires** (`checkSalvageWindows`, every tick and after every action): the map is absent or non-empty; each
+  record is well-formed (exactly the three keys, a real owner guild, a real system, `evictedAtTick` a whole tick in [0,
+  now], `deadlineTick` a whole tick after it); its system is **fallow** (a held system never carries one — a claim that
+  forgot to close it); it is **not overdue** (`deadlineTick > tick` — one still standing at its deadline is a lapse that
+  did not fire); and **every stranded asset sits under an open window** — the central rule: nothing is stranded without a
+  clock. With "not overdue", it is also what proves a lapse left nothing behind. Each was mutation-checked (roadmap).
+- **Byte-identical where it should be.** No golden of a galaxy that never evicts moved. The one pinned galaxy that strands
+  machines and is still inside its window (`asset-ferry.test.js`'s no-salvage golden) now carries the record: with exactly
+  that field stripped, its state and god's-eye / own hashes reproduce `main`'s pins byte for byte, and its rival view never
+  moved. The sweep's two never-sweeps goldens (an owner's re-claim, a rival's claim of an empty fallow system) are
+  unchanged — a closed window leaves no key.
+- **Not built:** the client — the Operations countdown on the "awaiting salvage" rows (it reads the published
+  `deadlineTick`; the next slice) and the `salvage_window_lapsed` card's words; the operator CLI's printout of a window
+  (`abandon-prefecture` prints the eviction only). Capture / takeover and the salvage waiver stay with the investment arc.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 
@@ -776,7 +829,7 @@ limbo coordinates, load the asset, haul it home — the deploy pipeline run back
 with the eviction / limbo slice, not this one.)* *(⤳ CORRECTED 17-10-26, `design.md` §19 #67: no limbo coordinates —
 an evicted machine is a **stranded** idle asset still keyed by its `systemId` (§4, "AS-BUILT — losing ground, engine
 PR 1"), and the pickup is the **salvage run**: a route ending in a load-on-arrival of one stranded machine per heavy hold,
-open only while the system is uncontrolled, bounded by a per-asset pooled timer whose rate is unset. The salvage run is
+open only while the system is uncontrolled, bounded by a per-asset pooled timer whose rate is unset *(⤳ rate RULED and the window BUILT 31-10-26 — §4, "AS-BUILT — the salvage window (engine)")*. The salvage run is
 the NEXT engine slice; this lane's shape (a heavy berthed at the asset's own system loads it) is what it extends. A
 stranded **kit** is already loadable today by the ordinary `loadKit`, which never asked whether its system is held.)* *(⤳ **BUILT 27-10-26** — the salvage run, as the manual load / dispatch / unload
 pair: "AS-BUILT — losing ground, engine PR 2" at the end of this section.)*
@@ -1176,7 +1229,7 @@ machine is carried BY NAME and keeps its id, so its existing `systemId` is what 
   moved between held systems) for its own slice. A stranded machine sits only in a system nobody holds
   (`checkStrandedAssets`), so the same gate keeps the pickup to fallow ground — §19 #67's "only while the system is fallow".
 - **No window yet.** Its rate is unset (`phase-1-tuning.md`), so nothing lapses: a stranded machine persists until it is
-  salvaged (or, once that slice exists, swept). The flag's `tick` stays the clock's start for the window slice.
+  salvaged (or, once that slice exists, swept). The flag's `tick` stays the clock's start for the window slice. *(⤳ 31-10-26: the window is BUILT — §4, "AS-BUILT — the salvage window (engine)": the clock starts at the eviction tick, stored on the window as `evictedAtTick`; a machine loaded aboard is no longer stranded, so the lapse cannot reach it.)*
 - **Manual, not on arrival.** §19 #67's "a route ending in a load-on-arrival" is the eventual automation (a waypoint action,
   as the kit's `{ type: 'unload' }` became); this slice ships the standalone pair beneath it, as `loadKit` / `unloadKit`
   shipped before theirs. A laden heavy's route carries no action at all — its hold is locked.

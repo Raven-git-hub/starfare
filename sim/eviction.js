@@ -29,9 +29,19 @@
 // system. If the claimant is the old owner, its plant simply RECOVERS its own machines (recoverStrandedAssets). If it
 // is a rival, the machines still lying there CHANGE HANDS to it (sweepStrandedAssets): re-minted under the new owner,
 // with both guilds told. Either way, nothing is left stranded in a held system.
+//
+// THE SALVAGE WINDOW (design.md §2 / §19 #67, SETTLED 19-10-26; its rate RULED 31-10-26, phase-1-tuning.md). The
+// salvage cannot wait for ever: an eviction opens ONE window per lost system, pooled over everything it stranded there,
+// and FIXED at the eviction tick. It lives in `state.salvageWindows`, keyed by system, as
+// `{ ownerGuildId, evictedAtTick, deadlineTick }` — omitted until the first eviction that strands something, and
+// deleted again when the last window closes, so a galaxy that has evicted nothing is byte-identical to one built before
+// this. A window closes one of two ways: a claim of the system (the plant calls closeSalvageWindow, right after the
+// recover and the sweep), or its deadline (lapseSalvageWindows, tick step 4), which DESTROYS whatever is still stranded.
 
 const { applyVentureClosure } = require('./licence.js');
-const { recordEvent, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT } = require('./events.js');
+const {
+  recordEvent, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
+} = require('./events.js');
 const { forfeitSystemPool } = require('./stock.js');
 const { getSystem } = require('./seed.js');
 const { createAsset } = require('./state.js');
@@ -49,6 +59,27 @@ const SYSTEM_LOST_CAUSES = Object.freeze(['abandoned']);
 // The cause the uprooted ventures' own `venture_closed` notices carry (docs/event-log.md §2): they were closed by
 // the eviction, not torn down by hand (`teardown`), forced by the Syndicate (`forced`) or removed by an operator.
 const EVICTED = 'evicted';
+
+// The salvage window's RATE and CAP — `[FIRST-CUT]`, RULED 31-10-26 (phase-1-tuning.md, the salvage-window bullet).
+// Not invented here: 3 days per stranded asset and an 18-day cap, at the ruled 1,440 ticks a day
+// (cycle-and-calendar.md). Their one home; salvageWindowTicks below is the only reader.
+const SALVAGE_WINDOW_TICKS_PER_ASSET = 4320; // 3 days × 1,440 ticks
+const SALVAGE_WINDOW_CAP_TICKS = 25920;      // 18 days × 1,440 ticks — reached at 6 assets, so it bites from the 7th
+
+// salvageWindowTicks(strandCount) -> how long a lost system's window stays open: 3 days for each asset stranded
+// there, capped at 18 days. Pooled — one length for the whole system, however the assets are later salvaged.
+function salvageWindowTicks(strandCount) {
+  return Math.min(strandCount * SALVAGE_WINDOW_TICKS_PER_ASSET, SALVAGE_WINDOW_CAP_TICKS);
+}
+
+// closeSalvageWindow(state, systemId) — MUTATES `state`: the system's window record goes, and the map with it once it
+// is empty (omit-when-empty, as `syndicateBuilds` and `prefectures` are). Called by the plant, whose claim ends the
+// window early, and by the lapse below. Closing a system with no window does nothing.
+function closeSalvageWindow(state, systemId) {
+  if (!state.salvageWindows) return;
+  delete state.salvageWindows[systemId];
+  if (Object.keys(state.salvageWindows).length === 0) delete state.salvageWindows;
+}
 
 // isStranded(asset) -> true iff the asset was left behind by an eviction and has not been recovered since.
 function isStranded(asset) {
@@ -207,6 +238,9 @@ function endLanesStoppingAt(state, systemId, tick) {
 //      the machines just freed and any already idle there, kits included ("everything the guild holds in that
 //      system", design.md §2) — is flagged `stranded = { tick }`. Each keeps its `systemId` and its condition. A
 //      machine aboard a heavy (in transit, the asset ferry) is not in the system and is not stranded.
+//      If anything was stranded, the system's SALVAGE WINDOW opens (the header above): its deadline is this tick plus
+//      salvageWindowTicks(how many were stranded), counted now, machines and kits alike, and never moved after. A
+//      machine aboard a heavy is not counted, since it was not stranded. Nothing stranded, no window.
 //   3. FORFEIT THE GOODS (§19 #67, candidate (a)). The guild's pool in that system is dropped whole — the system's
 //      key leaves `guild.stockpiles` (sim/stock.js `forfeitSystemPool`). Goods carry no conservation ledger, so this
 //      is a plain delete; Galactic Supply falls by exactly those goods once the caller refreshes its cache — the
@@ -254,6 +288,14 @@ function evictSystem(state, guild, prefecture, cause, tick) {
     a.stranded = { tick };
     strandedAssetIds.push(a.id);
   }
+  if (strandedAssetIds.length > 0) {
+    if (!state.salvageWindows) state.salvageWindows = {};
+    state.salvageWindows[systemId] = {
+      ownerGuildId: guild.id,
+      evictedAtTick: tick,
+      deadlineTick: tick + salvageWindowTicks(strandedAssetIds.length),
+    };
+  }
 
   // 3. Forfeit the goods.
   const goodsForfeit = forfeitSystemPool(guild, systemId);
@@ -283,7 +325,47 @@ function evictSystem(state, guild, prefecture, cause, tick) {
   return payload;
 }
 
+// --- THE LAPSE (design.md §2: "the clock lapsing → the un-salvaged machines are destroyed") ------------------------
+//
+// lapseSalvageWindows(state, tick) — MUTATES `state`. Tick step 4 (scheduled events, design.md §15.6) calls it with
+// the tick being built. Every window whose deadline has come (`deadlineTick <= tick`) lapses, in systemId order, so
+// two systems lapsing on one tick always resolve the same way (invariant 9; a plain object's key order is not used):
+//   1. every asset still stranded in the system is DESTROYED, in guild-then-asset order (strandedAssetsIn), through
+//      THE ONE deletion, `deleteAsset` (sim/assets.js), so a machine's number is recorded in its guild's
+//      `removedAssetHighWater` and never reissued (design.md §15.4); a guild's `assets` key goes if that was its last.
+//      What was salvaged before the deadline is safe: a machine loaded aboard a heavy is no longer stranded, and one
+//      already unloaded is in another system. A window that is open means the system is fallow (checkSalvageWindows,
+//      sim/invariants.js), so nothing here can touch a held system's assets.
+//   2. each guild that lost something is told, with ONE `salvage_window_lapsed` notice (docs/event-log.md §16) naming
+//      the system and the destroyed ids. In play that is only the window's owner — every claim sweeps or recovers what
+//      lies in a system, so only the last guild evicted from it can have assets stranded there — but the notice goes
+//      to whoever lost them, as the sweep's `assets_swept` does. If everything was salvaged, nobody is told.
+//   3. the window closes.
+function lapseSalvageWindows(state, tick) {
+  const windows = state.salvageWindows;
+  if (!windows) return;
+  for (const systemId of Object.keys(windows).sort(byId)) {
+    if (windows[systemId].deadlineTick > tick) continue;
+    const lostBy = new Map(); // guildId -> the ids it lost (insertion order = guild order)
+    for (const { guildId, assetId: id } of strandedAssetsIn(state, systemId)) {
+      const owner = state.guilds.find((g) => g.id === guildId);
+      deleteAsset(owner, id);
+      if (owner.assets.length === 0) delete owner.assets;
+      if (!lostBy.has(guildId)) lostBy.set(guildId, []);
+      lostBy.get(guildId).push(id);
+    }
+    const system = getSystem(systemId);
+    for (const [guildId, ids] of lostBy) {
+      recordEvent(state.guilds.find((g) => g.id === guildId), tick, SALVAGE_WINDOW_LAPSED, {
+        systemId, systemName: (system && system.name) || systemId, destroyedAssetIds: ids.sort(byId),
+      });
+    }
+    closeSalvageWindow(state, systemId);
+  }
+}
+
 module.exports = {
-  SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, isStranded, strandedAssetsIn, recoverStrandedAssets,
-  sweepStrandedAssets, evictSystem,
+  SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, SALVAGE_WINDOW_TICKS_PER_ASSET, SALVAGE_WINDOW_CAP_TICKS,
+  isStranded, strandedAssetsIn, recoverStrandedAssets, sweepStrandedAssets, evictSystem,
+  salvageWindowTicks, closeSalvageWindow, lapseSalvageWindows,
 };

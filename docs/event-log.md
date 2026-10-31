@@ -884,3 +884,42 @@ recorded here.
   checklist. Tripwires: §14's.
 
 
+
+
+## 16. The `salvage_window_lapsed` notice — losing ground, the salvage window (engine half 31-10-26)
+
+**What it records.** A lost system's **salvage window ran out** while some of the guild's assets were still stranded
+there, and they were **destroyed** (`design.md` §2 / §19 #67, SETTLED 19-10-26 — "the clock lapsing → the un-salvaged
+machines are destroyed"; the rate RULED 31-10-26, `phase-1-tuning.md`; `docs/territory-model.md` §4 "AS-BUILT — the
+salvage window (engine)"). Discrete and unrecoverable — the rows are gone — so it is an EVENT, not a standing condition
+(§0). ONE writer: `lapseSalvageWindows` (`sim/eviction.js`), run in tick step 4 (scheduled events, `design.md` §15.6) on
+the tick that reaches the window's `deadlineTick`; the notice's `tick` is that deadline. Passive and informational — no
+action-item, no decision. Born unread.
+
+**Who gets it.** ONE per guild that lost something in the system, written in guild order (invariant 9). In play that is
+only the window's owner — the guild evicted from the system — because every claim recovers or sweeps whatever lies in a
+system, so no other guild's assets can be stranded there; the hand-built multi-owner case (a test) gets one each, as the
+sweep's `assets_swept` does (§15). **A lapse that finds nothing writes nothing:** if every stranded asset was salvaged
+before the deadline, the window closes silently. A window closed early by a claim never lapses at all (§15's notices
+cover the sweep).
+
+**The payload, self-contained** (the destroyed rows no longer exist when the player reads it):
+- `systemId`, `systemName` — the lost system, its seed name (falling back to its id, as the other notices resolve
+  names);
+- `destroyedAssetIds` — the ids destroyed, sorted: machines and kits alike (a stranded kit is governed by the same window,
+  §19 #67). Each machine's number is recorded in the guild's `removedAssetHighWater` (`deleteAsset`), so none is reissued;
+  a kit numbers from its own serial, which never goes back.
+Ids, not counts, as `system_lost` lists `strandedAssetIds` and `assets_swept` lists `sweptAssetIds`. (The type string,
+the payload names and the ids-not-counts choice are on the roadmap decision checklist.)
+
+**The surface — today.** No new snapshot field for the notice: `guilds[].events` carries the row with its `whenDay`,
+`attention.notices` counts it while unread, and the per-guild view shows a guild only its own (`sim/fog.js` drops a
+rival's `events`). The deadline before the lapse is published separately, on the owner's guild row
+(`salvageWindows: { [systemId]: { deadlineTick } }`, `docs/territory-model.md` §4). **Not built: the client** — the inbox
+row, the card and its voice. Until it lands the live client's notice renderer treats a type it does not know as a licence
+lapse, so the row would read "Licence lapsed — …" — the gap every engine-first notice has had (`system_lost` and the
+sweep's two included).
+
+**A NO-OP elsewhere.** A galaxy whose windows never lapse on anything writes no such notice, so every log, snapshot and
+golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts twelve types; the notice
+itself is pinned by `sim/tests/salvage-window.test.js`.

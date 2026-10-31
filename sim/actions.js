@@ -57,7 +57,9 @@ const {
   reveal, revealSystem, revealSystemArchetypes, revealPlanetSurface, knowsPlanet, knowsSlot,
 } = require('./exploration.js');
 const { recordEvent, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, OUTPOST_PACKED } = require('./events.js');
-const { evictSystem, recoverStrandedAssets, sweepStrandedAssets, isStranded } = require('./eviction.js');
+const {
+  evictSystem, recoverStrandedAssets, sweepStrandedAssets, closeSalvageWindow, isStranded,
+} = require('./eviction.js');
 const { holdLockedReason, assetAboard, assetIntoSystem } = require('./ferry.js');
 const {
   nearestWaystation, arrivalTickFor, hexDistance, legHexAtTick, hexStepToward, legTicks, legFuelBurn,
@@ -2358,6 +2360,9 @@ function kitIntoInventory(guild, craft, check, tick) {
 //   6. (losing ground, engine PR 4 — THE SWEEP) ANOTHER guild's stranded machines still lying in the system change
 //      hands to the planter: each is retired from its former owner and re-minted as the planter's own idle asset,
 //      and both sides get a notice (sim/eviction.js sweepStrandedAssets). A galaxy with none touches nothing.
+//   7. (losing ground — the salvage window) the system's salvage window, if one is open, CLOSES: the claim has ended
+//      it early, and nothing is left stranded there for its deadline to destroy. The plant is the only way a fallow
+//      system becomes held again, so this is the one place a window is cleared before it lapses.
 // Nothing priced moves: a kit is never a good on the market or in Galactic Supply, and neither is a flag or a
 // machine changing hands, so no credits, fuel, goods or supply change and the supply cache needs no refresh. The
 // tick is passed in, as deployKit takes it.
@@ -2388,6 +2393,7 @@ function plantKit(state, guild, assetId, site, tick) {
   state.prefectures.push(prefecture);
   recoverStrandedAssets(guild, site.systemId);
   sweepStrandedAssets(state, guild, prefecture, tick);
+  closeSalvageWindow(state, site.systemId);
   return prefecture;
 }
 

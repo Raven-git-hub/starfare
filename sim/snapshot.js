@@ -758,6 +758,8 @@ function computeAttention(state) {
 //                                                                   //   salvage (§19 #67); omit-when-absent
 //                             inTransitOnVehicleId? } ],           //   aboard that craft (the asset ferry —
 //                                                                   //   the third state); omit-when-absent
+//                 salvageWindows?: { systemId: { deadlineTick } }, // its lost systems' open salvage windows —
+//                                                                   //   the tick each lapses; omit-when-empty
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
 //                               maintenanceCondition, status,       //   idle -> location; inTransit -> trip
 //                               cargo, capacity, used,              //   hold + space figures (2.2 Outpost Mgr)
@@ -880,6 +882,17 @@ function orderSnapshot(order) {
     haulerTier: haulerTierForSpace(totalSpace),
     overCap: totalSpace > HEAVY_HOLD,
   };
+}
+
+// salvageWindowsFor(state, guildId) -> `{ [systemId]: { deadlineTick } }` for each open salvage window the guild owns
+// (sim/eviction.js — one per system it lost that still has something, or had something, stranded), inserted in
+// systemId order so the snapshot's bytes never follow the state map's key order (invariant 9); or null when it owns
+// none, so the caller omits the field. Only the deadline is published: it is all the countdown needs.
+function salvageWindowsFor(state, guildId) {
+  const windows = state.salvageWindows || {};
+  const own = Object.keys(windows).sort().filter((systemId) => windows[systemId].ownerGuildId === guildId);
+  if (own.length === 0) return null;
+  return Object.fromEntries(own.map((systemId) => [systemId, { deadlineTick: windows[systemId].deadlineTick }]));
 }
 
 // deployRangeFor(state, guildId) -> where the guild may legally deploy, lane-keyed, or null when it holds no
@@ -1307,6 +1320,8 @@ function buildGodsEyeSnapshot(state) {
     // The legal deploy range (deploy slice 3; the deepScan lane, 2.5 slice 14b), computed once so the
     // omit-when-empty test and the field read one value. null when no lane has anything to paint.
     const deployRange = deployRangeFor(state, g.id);
+    // The guild's open salvage windows (losing ground), read once so the omit-when-empty test and the field agree.
+    const salvageWindows = salvageWindowsFor(state, g.id);
     // This guild's own Outposts, sorted by id (invariant 9), for `outpostFuelCost`. Outposts are
     // SHARED (state.outposts), so the owner is picked out here.
     const ownOutposts = (state.outposts || [])
@@ -1626,6 +1641,14 @@ function buildGodsEyeSnapshot(state) {
         ...(a.stranded === undefined ? {} : { stranded: { ...a.stranded } }),
         ...(carriedBy.has(a.id) ? { inTransitOnVehicleId: carriedBy.get(a.id) } : {}),
       })).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // salvageWindows (losing ground — the salvage window, design.md §2 / §19 #67): for each system this guild LOST
+      // whose window is still open, the absolute tick it lapses — `{ [systemId]: { deadlineTick } }` — so the client
+      // can show the countdown on the stranded rows it groups by system (remaining = deadlineTick − tick; the client
+      // subtracts, §18 — nothing is counted down here). The engine's record, echoed: the window's owner and eviction
+      // tick are not published. PRESENT ONLY when the guild has an open window, so a galaxy that has evicted nothing is
+      // byte-identical. A rival never sees it: a rival's guild row is cut to RIVAL_GUILD_FIELDS (sim/fog.js), so the
+      // stranded-machine fog is unchanged.
+      ...(salvageWindows ? { salvageWindows } : {}),
       // vehicles: the guild's guild-transport inventory (design.md §15.4), one row per owned
       // craft — the vehicle mirror of the `assets` rows above. An IDLE craft carries its `location`
       // (the landmark ref { landmarkKind, landmarkId } or bare hex { q, r } — enough for a later

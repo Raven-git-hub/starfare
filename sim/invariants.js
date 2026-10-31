@@ -29,7 +29,9 @@
 //                           exploration-model.md §7; absent when empty) }]
 //   state.claims?    : [{ claimId, ownerGuildId, landmarkId, landmarkKind, claimedAtTick }]
 //                          // SHARED territory rows; reference real seed landmarks
-//   state.reserve    : { reserveLevel, fuelPrice, avgDraw } // SHARED fuel reserve;
+//   state.salvageWindows? : { [systemId]: { ownerGuildId, evictedAtTick, deadlineTick } }
+//                          // one per lost system whose salvage window is open; absent when none
+//   state.reserve   : { reserveLevel, fuelPrice, avgDraw } // SHARED fuel reserve;
 //                          // fuelPrice is the ONE market price of deuterium_fuel and
 //                          // avgDraw the trailing demand average the controller steers
 //                          // against — both sanctioned floats (§15.2), checked as such
@@ -2533,6 +2535,65 @@ function checkStrandedAssets(state) {
   return out;
 }
 
+// Salvage windows (losing ground — design.md §2 / §19 #67; the rate ruled 31-10-26, phase-1-tuning.md;
+// sim/eviction.js). An eviction that strands anything opens one window for the lost system,
+// `state.salvageWindows[systemId] = { ownerGuildId, evictedAtTick, deadlineTick }`; the plant closes it early and the
+// tick-step-4 lapse closes it at its deadline, destroying what is still stranded. Asserted every tick and after every
+// action:
+//   - OMIT-WHEN-EMPTY: the map is absent, or holds at least one record (an empty `{}` would make a galaxy whose last
+//     window closed hash differently from one that never had one).
+//   - WELL-FORMED: exactly those three keys; the owner is a real guild; the system is a real seed system;
+//     `evictedAtTick` is a whole tick in [0, now] (§15.2); `deadlineTick` is a whole tick after it.
+//   - ONLY ON A FALLOW SYSTEM: nobody holds the system. Every claim closes the window (the plant), so a held system
+//     carrying one is a claim that forgot to.
+//   - NOT OVERDUE: `deadlineTick` is still ahead of the tick. The lapse runs in the tick that reaches the deadline, so a
+//     window still standing at or past it is a lapse that did not fire.
+//   - EVERY STRANDED ASSET HAS ONE: an asset flagged `stranded` sits in a system with an open window. Nothing can be
+//     left stranded without a clock on it. With NOT OVERDUE, this is also what proves a lapse left nothing behind: an
+//     asset still stranded after its window closed has no window.
+// A pure read. A galaxy that has evicted nothing has no map and no stranded asset, and is skipped.
+function checkSalvageWindows(state) {
+  const out = [];
+  const windows = state.salvageWindows;
+  if (windows !== undefined) {
+    const isRecord = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+    if (!isRecord(windows) || Object.keys(windows).length === 0) {
+      out.push({ rule: 'salvage-windows-omitted-when-empty (invariant 9)', where: 'salvageWindows', detail: { salvageWindows: windows } });
+    } else {
+      for (const systemId of Object.keys(windows).sort()) {
+        const w = windows[systemId];
+        const where = `salvageWindows.${systemId}`;
+        const wellFormed = isRecord(w)
+          && Object.keys(w).sort().join() === 'deadlineTick,evictedAtTick,ownerGuildId'
+          && (state.guilds || []).some((g) => g.id === w.ownerGuildId)
+          && !!getSystem(systemId)
+          && Number.isInteger(w.evictedAtTick) && w.evictedAtTick >= 0 && w.evictedAtTick <= state.tick
+          && Number.isInteger(w.deadlineTick) && w.deadlineTick > w.evictedAtTick;
+        if (!wellFormed) {
+          out.push({ rule: 'salvage-window-well-formed (sim/eviction.js)', where, detail: { window: w, tick: state.tick } });
+          continue; // the two checks below read its fields
+        }
+        const holder = systemHolder(state, systemId);
+        if (holder !== null) {
+          out.push({ rule: 'salvage-window-only-on-a-fallow-system (design.md §19 #67)', where, detail: { systemId, heldBy: holder } });
+        }
+        if (w.deadlineTick <= state.tick) {
+          out.push({ rule: 'salvage-window-lapses-on-its-deadline (sim/eviction.js)', where, detail: { deadlineTick: w.deadlineTick, tick: state.tick } });
+        }
+      }
+    }
+  }
+  for (const g of state.guilds || []) {
+    for (const a of g.assets || []) {
+      if (a.stranded === undefined) continue;
+      if (!windows || !Object.prototype.hasOwnProperty.call(windows, a.systemId)) {
+        out.push({ rule: 'stranded-asset-has-a-salvage-window (design.md §19 #67)', where: `guild:${g.id}.asset:${a.id}.stranded`, detail: { assetId: a.id, systemId: a.systemId } });
+      }
+    }
+  }
+  return out;
+}
+
 // Carried assets — the cross-system asset ferry (losing ground, engine PR 2; design.md §4, §19 #67; sim/ferry.js).
 // A heavy that has loaded a machine names it in `carryingAssetId`, and the machine's state is the derived third one,
 // IN TRANSIT. `loadAsset` / `unloadAsset` keep the rules below by construction; this asserts them every tick:
@@ -2903,6 +2964,7 @@ function checkInvariants(state, tick) {
     ...checkDeepScanArrayIntegrity(state),
     ...checkPrefectureIntegrity(state),
     ...checkStrandedAssets(state),
+    ...checkSalvageWindows(state),
     ...checkCarriedAssets(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),

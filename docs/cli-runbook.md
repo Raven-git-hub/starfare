@@ -332,7 +332,7 @@ with the engine's reason: a machine that is not stranded (`asset_seat_demo_miner
 stranded"; moving a machine between held systems is not built); an unload while the heavy carries nothing; an unload still
 berthed at the fallow `sys_0936` ("does not hold system"); a second machine onto a laden heavy ("the hold is locked"). While
 laden, the heavy also refuses `transfer-cargo`, `load-kit`, any route action and a repeating lane. There is no salvage
-window yet — its rate is unset — so a stranded machine waits until it is salvaged. *(Run live 27-10-26 against a fresh
+window yet — its rate is unset — so a stranded machine waits until it is salvaged. *(⤳ 31-10-26: the salvage window is BUILT, engine half — an abandon that strands anything now opens a window of 3 days per stranded asset (18 at most), and at its deadline whatever is still stranded is destroyed; the operator CLI does not print the deadline yet (decision checklist). `docs/territory-model.md` §4, "AS-BUILT — the salvage window (engine)". Not re-run live.)* *(Run live 27-10-26 against a fresh
 `seat-demo --seed 42` continuing from the abandon above, and the salvaged factory survived a server restart with
 persistence on.)* *(⤳ 29-10-26: a player can now run the same salvage from the client — Salvage on the stranded machine's
 Operations → IDLE row, then the laden heavy's Dispatch, then its Unload (losing ground client slice 4;

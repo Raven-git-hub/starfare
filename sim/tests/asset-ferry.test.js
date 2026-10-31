@@ -426,6 +426,10 @@ test('systemId MOVES ONLY THROUGH THE FERRY — the engine writes `.systemId =` 
 // (the eviction) and flies its heavy home past them, but never salvages. The state hash and all three views must not
 // move by a byte — the carry field, the asset stamp and the snapshot's in-transit surfacing are all omit-when-absent,
 // and no un-ferried asset's systemId is touched.
+// (⤳ 31-10-26, the salvage window: this galaxy's eviction now OPENS a window — still open at tick 930 — so the state
+// carries `salvageWindows` and g1's own row carries its deadline. The pins are kept as they were: the test strips
+// exactly that field and must reproduce them byte for byte, and pins the field itself beside them. The rival's view
+// is unstripped — the window is fogged from it, so it never moved.)
 const GOLDEN_NO_SALVAGE = {
   tick: 930,
   state: 'ffa1f9559d2a4b0814f17e27ab81e77903dda5bcfc98be0a17607965f791f166',
@@ -434,14 +438,22 @@ const GOLDEN_NO_SALVAGE = {
   rival: '729582374e4d9dc30c8479b03168438f9b4f8b5af3963ace977063c14da0bd5e',
 };
 
-test('BYTE-IDENTICAL: a galaxy that strands machines but never salvages serializes exactly as it did before this slice (state and every view)', () => {
+test('BYTE-IDENTICAL: a galaxy that strands machines but never salvages serializes exactly as it did before this slice (state and every view) — bar the salvage window, which is the only delta', () => {
   let { s } = strandedGalaxy();
+  const evictedAtTick = s.tick;
   s = accept(s, createDispatchRouteWithActionsAction({ guildId: 'g1', vehicleId: HEAVY, waypoints: [{ anchor: AT_HOME }] }));
   s = tickUntil(s, (x) => heavyOf(x).status === 'idle');
   s = ticks(s, 20);
   const sha = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
+  // The one delta: the window the eviction opened over its stranded machines.
+  const stranded = (s.guilds.find((g) => g.id === 'g1').assets || []).filter((a) => a.stranded).length;
+  assert.deepEqual(s.salvageWindows, {
+    [TARGET]: { ownerGuildId: 'g1', evictedAtTick, deadlineTick: evictedAtTick + stranded * 4320 },
+  });
+  const bare = structuredClone(s);
+  delete bare.salvageWindows;
   assert.deepEqual({
-    tick: s.tick, state: hashState(s), god: sha(buildSnapshot(s)), own: sha(buildSnapshot(s, 'g1')), rival: sha(buildSnapshot(s, 'g2')),
+    tick: s.tick, state: hashState(bare), god: sha(buildSnapshot(bare)), own: sha(buildSnapshot(bare, 'g1')), rival: sha(buildSnapshot(s, 'g2')),
   }, GOLDEN_NO_SALVAGE);
 });
 
