@@ -304,7 +304,10 @@ test('THE TRIPWIRES BITE — a claim that left one stranded machine behind is re
   // A sweep that missed one: g1's miner still lying there, flagged, in what is now g2's system.
   const missed = structuredClone(s);
   guildOf(missed, 'g1').assets = [{ id: 'asset_g1_miner_09', kind: 'miner', systemId: TARGET, maintenanceCondition: 1, stranded: { tick: s.tick } }];
-  assert.deepEqual(rules(missed), ['stranded-asset-only-in-an-unclaimed-system (design.md §19 #67)']);
+  // (Since the salvage window, 31-10-26, it is also a stranded machine with no window over it — the claim closed it.)
+  assert.deepEqual(rules(missed), [
+    'stranded-asset-only-in-an-unclaimed-system (design.md §19 #67)', 'stranded-asset-has-a-salvage-window (design.md §19 #67)',
+  ]);
   // A sweep that MOVED the row instead of re-minting: g2 holds a machine whose id still names g1.
   const moved = structuredClone(s);
   guildOf(moved, 'g2').assets.find((a) => a.id === 'asset_g2_miner_02').id = miner;

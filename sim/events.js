@@ -28,10 +28,12 @@
 // `evictSystem`, docs/event-log.md §14) writes `system_lost` when a guild's Prefecture is destroyed and
 // its system goes fallow; and the sweep (sim/eviction.js `sweepStrandedAssets`, docs/event-log.md §15) writes
 // `assets_inherited` to a guild whose plant took a fallow system's stranded machines and `assets_swept` to each
-// guild that lost them. The storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes
-// nothing — an accept is a re-lock, not a discrete loss.
+// guild that lost them. The salvage window's lapse (sim/eviction.js `lapseSalvageWindows`, docs/event-log.md §16)
+// writes `salvage_window_lapsed` to a guild whose stranded assets were destroyed when its window ran out. The
+// storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes nothing — an accept is a
+// re-lock, not a discrete loss.
 
-// --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13, §14, §15) ----
+// --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13, §14, §15, §16) ----
 //
 // The notice types the engine can write, ONE source of truth for "what a notice type is",
 // used by the writers and by the checkEventLog invariant (sim/invariants.js). Kept as named
@@ -55,10 +57,12 @@ const SYSTEM_LOST = 'system_lost';
 const ASSETS_INHERITED = 'assets_inherited';
 // the sweep, the other side: a guild's stranded machines were taken by a new holder's claim of their system
 const ASSETS_SWEPT = 'assets_swept';
+// the salvage window ran out: the assets a guild still had stranded in its lost system were destroyed
+const SALVAGE_WINDOW_LAPSED = 'salvage_window_lapsed';
 
 const EVENT_TYPES = Object.freeze([
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
-  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT,
+  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
 ]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
@@ -145,7 +149,8 @@ function cloneEventPayload(payload) {
 
 module.exports = {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
-  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, EVENT_TYPES, isEventType,
+  OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
+  EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
 };

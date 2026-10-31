@@ -1329,6 +1329,23 @@ function createState(scenario) {
     ...(Array.isArray(scenario.syndicateBuilds) && scenario.syndicateBuilds.length
       ? { syndicateBuilds: cloneSyndicateBuilds(scenario.syndicateBuilds) }
       : {}),
+    // salvageWindows: one record per LOST system whose salvage window is still open (losing ground — design.md §2 /
+    // §19 #67; the rate ruled 31-10-26, phase-1-tuning.md; sim/eviction.js) — `{ [systemId]: { ownerGuildId,
+    // evictedAtTick, deadlineTick } }`. Top-level beside `syndicateBuilds`, because the window is a galaxy-level
+    // schedule for a system, not one guild's inventory: it governs every asset stranded there. OMITTED when there is
+    // none — exactly like `removedAssetHighWater` on a guild and `syndicateBuilds` above, and for the same reason:
+    // `evictSystem` is its only writer and creates it lazily, and the plant and the lapse delete it once its last
+    // record goes, so a galaxy that has evicted nothing carries no key and serializes byte-identically to pre-slice
+    // (invariant 9). A scenario or a restored save that HANDS ONE IN keeps it, copied record by record so a caller's
+    // object can never alias into engine state. `deadlineTick` is ABSOLUTE, so a save reloaded mid-window lapses on
+    // the right tick, like a shipment's `arrivalTick`.
+    ...(scenario.salvageWindows && Object.keys(scenario.salvageWindows).length
+      ? {
+          salvageWindows: Object.fromEntries(
+            Object.entries(scenario.salvageWindows).map(([systemId, w]) => [systemId, { ...w }]),
+          ),
+        }
+      : {}),
     // prices: the Syndicate value per non-fuel good (docs/licence-and-price-system.md
     // Part 1; sim/prices.js owns the shape and the formula). Seeded here at every
     // good's [FIRST-CUT] base price so a fresh galaxy already posts a value, and

@@ -62,6 +62,7 @@ const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require(
 const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
 const { stepScanCompletions } = require('./deep-scan-arrays.js');
+const { lapseSalvageWindows } = require('./eviction.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
 // `advanceRoute` (dispatch the next leg, or reach the lap boundary: end the run, or start a repeating
@@ -1138,8 +1139,19 @@ function stepSyndicateBuilds(state) {
 // immediately BEFORE step 5 arrivals, so a build finishing and its delivery resolve in one
 // deterministic pass. The eight-step order is UNCHANGED — step 4 already existed as the named
 // home for due-tick work; it simply gained its first occupant.
+//
+// Its SECOND occupant (losing ground — the salvage window, design.md §2 / §19 #67): a lost
+// system's salvage window whose absolute `deadlineTick` has come lapses, destroying whatever is
+// still stranded there (sim/eviction.js lapseSalvageWindows). A deadline is a due-tick, so this is
+// the step §15.6 names for it. Unlike the Deep Scan Array's scan completions it is not left to the
+// end of the tick: destroying an asset is not observation. It runs after the builds (the two touch
+// nothing in common). Same `thisTick = state.tick + 1` convention as every step: an eviction at
+// tick T with a window of L ticks lapses in the tick that builds T + L, so the assets are still
+// there (and salvageable) at T + L − 1 and gone at T + L.
 function stepScheduledEvents(state, _actions) {
-  return stepSyndicateBuilds(state);
+  stepSyndicateBuilds(state);
+  lapseSalvageWindows(state, state.tick + 1);
+  return state;
 }
 
 // landOutpostDelivery(state, guild, ship, thisTick) — land ONE Syndicate goods delivery bound for a
