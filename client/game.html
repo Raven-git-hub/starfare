@@ -11594,8 +11594,23 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '<span class="mid">' + esc(a.id) + '</span>'
       +   '<span class="mkind">' + esc(kit ? kit.label : a.kind) + '</span>'
       +   deploy
-      +   (a.stranded ? '<span class="mstranded">Stranded · awaiting salvage</span>' : '')
+      +   (a.stranded ? '<span class="mstranded">' + strandedMark(a) + '</span>' : '')
       + '</div>';
+  }
+
+  // (The salvage window, client.) strandedMark(a) -> a stranded row's state line. A lost system's salvage runs on a clock
+  // (design.md §19 #67): the owner's own guild row publishes `salvageWindows: { [systemId]: { deadlineTick } }` for each
+  // system it lost whose window is still open (territory-model.md §4). When the row's system has one, the line ends on
+  // the time left: the published deadline less the published tick, formatted as every other ETA here. So the client
+  // counts nothing down and stores nothing (§18); it is worked out afresh on every render, as a craft's ETA is. The
+  // window is pooled, one deadline per lost system, so every stranded row in that system shows the same time: they do
+  // all close together. With no window published for the system, the line reads as it did before the window existed,
+  // because the client never makes a deadline up.
+  function strandedMark(a){
+    var s = snap(), me = meGuild();
+    var w = me && me.salvageWindows && me.salvageWindows[a.systemId];
+    var known = !!s && typeof s.tick === 'number' && !!w && typeof w.deadlineTick === 'number';
+    return 'Stranded · awaiting salvage' + (known ? ' · ' + fmtETA(w.deadlineTick - s.tick) + ' left' : '');
   }
 
   // ---- (losing ground client slice 4) SALVAGE: the pickup of a stranded machine (territory-model.md §5) ------------
@@ -11657,8 +11672,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // (Losing ground client slice 4.) A loaded machine now leaves the list (myIdle), which moves the signature by
   // itself. What does not move it is a heavy arriving in, or leaving, a fallow system: the stranded machines there
   // keep their id, system and flag, but their Salvage turns live or dead. So whether it is live is in it too.
+  // (The salvage window, client.) A stranded row's line now ends on its countdown, which moves as ticks pass while
+  // nothing else about the row does. So the signature carries the line's own words (strandedMark), not just the flag,
+  // and the tree is redrawn when those words change: hourly while more than a day is left, every tick in the last day.
   function idleSignature(idle){
-    return idle.map(function(a){ return a.id + '@' + a.systemId + (a.stranded ? ':stranded' : '') + (salvageable(a) ? '+salvage' : ''); }).sort().join('|');
+    return idle.map(function(a){ return a.id + '@' + a.systemId + (a.stranded ? ':' + strandedMark(a) : '') + (salvageable(a) ? '+salvage' : ''); }).sort().join('|');
   }
 
   // Rebuild the tree only when the idle set (id + where each sits + stranded) changes, so a poll never

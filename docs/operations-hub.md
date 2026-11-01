@@ -113,7 +113,10 @@ include stranded rows; no day is shown (the client may not turn a tick into a da
 (roadmap checklist). Proved by `sim/tests/losing-ground-ops-client.test.js`. *(⤳ 29-10-26: BUILT — losing ground client
 slice 4, below. A loaded machine now leaves IDLE, so the salvage load is no longer an in-place clear of the flag; the
 owner's re-plant, which recovers its stranded machines in place, still is, and the signature's stranded term is for
-that and for the eviction.)*
+that and for the eviction.)* *(⤳ 01-11-26: the line now ends on the time left on its system's salvage window when the
+owner's row publishes one — "Stranded · awaiting salvage · 9d 00h left", a duration as every ETA here is, still no day —
+and the signature's stranded term is now the line's words: `territory-model.md` §4, "AS-BUILT — the salvage window
+(client)".)*
 
 **AS-BUILT 29-10-26 — the salvage run, from the client (losing ground client slice 4; `client/game.html` only).** The
 engine's salvage run (`territory-model.md` §5 — `loadAsset` in the fallow system, an ordinary dispatch, `unloadAsset` at a
