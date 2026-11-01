@@ -419,6 +419,8 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   slice 2, the read-state: Operations → IDLE marks a stranded machine or kit "Stranded · awaiting salvage" on its row, in
   the group of the system it was lost in, read off the `stranded` flag alone (`docs/operations-hub.md` §5's AS-BUILT
   28-10-26). The salvage UI is still to come; the map is unchanged (a fallow system already renders unclaimed).)*
+  *(⤳ 01-11-26: the map now marks a lost system while something of the player's still lies stranded there, its
+  salvage window running — §4's "AS-BUILT — the salvage map marker (client)".)*
   *(⤳ 29-10-26: the salvage UI is BUILT — losing ground client slice 4; §5's "AS-BUILT — losing ground client slice 4".
   The abandon control — a player button to give a system up — is still to come.)* *(⤳ 29-10-26: the abandon control is
   BUILT — losing ground client slice 5; "AS-BUILT — losing ground client slice 5" at the end of this section. **The
@@ -653,6 +655,59 @@ snapshot or fog change; no new number.
   own lapse — "1m left" on the tick before the deadline, the row and the window gone on it. A guard pins every Operations
   host as `main` drew it at 2338b51.
 - **Not built:** the `salvage_window_lapsed` card's words; any surface but Operations (the galaxy map shows no window).
+  *(⤳ 01-11-26: the galaxy map marks it — the next note.)*
+
+**AS-BUILT — the salvage map marker (client) (01-11-26; `client/game.html` only; tripwires
+`sim/tests/salvage-marker-client.test.js`).** The galaxy map now marks each system the player lost where a machine or kit
+of theirs still lies stranded, with its salvage window running. It answers the roadmap checklist's "a fallow system
+renders unclaimed, and nothing marks 'you used to hold this' — rule whether it should" (losing ground client slice 2,
+item 9(d)) for the case that matters: a lost system with recoverable value still in it, on a clock. The broader "mark
+every system you ever held" is not raised and not needed: once nothing of the player's is left there, nothing is marked.
+No engine, snapshot or fog change; no new game number. It reads the two fields the window's engine half and client
+countdown already read: the owner's `salvageWindows[systemId].deadlineTick` and the `stranded` asset rows.
+- **The data.** One pure shell selector, `salvageOnMap(assets, windows, systems)` (`window.__salvageOnMap()`), modelled
+  on the claim-pending beacon's `pendingPrefectures` and re-read every frame. It returns `[ { systemId, q, r, deadlineTick
+  } ]`: one row per system where the guild's own asset rows carry `stranded` (machines and kits alike, the flag read as
+  sent), at the system's centre hex, with that system's published deadline. **It keys off stranded assets present,
+  not off the window**: a window whose assets have all been salvaged stands until its deadline (the engine half's
+  checklist item 3), with nothing left in it, so it is not marked. That is the rule Operations' rows and the engine's
+  silent empty lapse already follow. Two or more stranded in one system give one row: the window is pooled. A
+  system with no numeric deadline published (a snapshot from before the window, or a malformed record) still gets
+  its row, with `deadlineTick: null`, and its tag shows no time, as `strandedMark` shows none. A deadline is never
+  made up. Own-only by construction: a rival's guild row carries neither its assets nor its windows (`sim/fog.js`).
+- **The glyph.** At every zoom, and sized as the beacon is (never under 14px on screen; zoomed in, just inside the
+  centre hex), a **clock dial** lies flat in the map's tilt round the system's centre: twelve amber segments that go out
+  one by one, clockwise from twelve o'clock, until one is left, then relight. It is drawn in the awaiting-salvage amber
+  (`COLOR_RGB.salvage` = Operations' `--ops-amber2`, the colour of a stranded row's line), over a dark under-stroke.
+  It is deliberately unlike the claim-pending beacon: a system you are losing must not look like one you can claim.
+  So it is amber where the beacon is the player teal, and a fixed dial whose ticks go out where the beacon's rings
+  flow in. **The dial is look, not a gauge**: it runs down in the same 6 seconds on every system, whatever time is
+  left. The share of a window still to run would need the window's length, which the snapshot does not publish and
+  the client may not work out (design.md §18). Every constant is look: the period, the twelve segments, and the 14px floor.
+- **The tag.** From `WAYSTATION_LABEL_ZOOM` (1.5×) up, the map's deliberate clutter control, a down-left tag modelled on
+  the beacon's: **`<SYSTEM>` / AWAITING SALVAGE / `9d 00h left`** (draft words — Operations' own, `strandedMark`) in
+  the amber. The time is `fmtETA(deadlineTick − tick)`, the published deadline less the snapshot's own tick: the
+  subtraction the craft tags' ETAs already do, worked out every frame and stored nowhere (design.md §18). It takes its
+  own line because "AWAITING SALVAGE · 18d 00h" (the longest window) is 26 characters, wider than `drawLabelBox`'s
+  fixed 150px box at 10px monospace; a craft tag's ETA has its own line too. With no deadline or no tick there is
+  no time line.
+- **What it is not.** It is not territory (`computeTerritoryMap` never sees it). It has no click target and no hover:
+  the map reveals detail by zoom, and the exact figure is also one click into the system → Operations. There is no
+  notice. The claim-pending beacon, the array tags, the waystation labels, the control colours and the click /
+  selection behaviour are unchanged.
+- **Both markers on one system.** A spare Prefecture kit stranded in the lost system is also a kit waiting in an
+  unclaimed system, so the beacon marks it too (recorded at client slice 2, item 9(c)). The two glyphs share the hex:
+  the beacon's rings start at the dial (the same rim) and flow in. The two tags hang down-left from the same point, and
+  the salvage tag is drawn second, so the one on a clock is on top (roadmap checklist).
+- **Proved** by `sim/tests/salvage-marker-client.test.js` (13). It runs the shell's selector, and the map's own marker
+  and tag passes on a stub canvas, over real per-guild snapshots of `salvage-script.js`, `sweep-script.js` and
+  `abandon-script.js`. The rows match the engine's own state in every galaxy. They are deduped, and kits count. A
+  salvaged-out window marks nothing. Re-claim, sweep and the lapse each drop the row on the next poll. The rows are
+  own-only, both ways round. Poll by poll the deadline stays the published absolute tick while the time left falls.
+  Nothing is made up. The frame draws a dial at every zoom and a tag only from 1.5×, amber, down-left. The dial runs
+  down and is never teal. Every check was mutation-tested (roadmap). The canvas pixels are not unit-tested. A
+  headless look against a live server showed the dial running down and the tag at 1.6×, with zero console errors.
+  The human's Playwright pass is the record.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

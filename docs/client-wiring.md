@@ -1538,3 +1538,20 @@ The full as-built is `docs/territory-model.md` §4, "AS-BUILT — client PR C"; 
   after the plant (the solid claim fill replaces it) or after a rival takes the system. A click on the hex opens the
   system as before. A kit in a held system (home, or a rival's) or still aboard a heavy shows nothing.
 - **Proved** headless against a live server — 36 checks, zero console errors (`docs/roadmap.md`, 2.5).
+
+## Revision — the salvage map marker *(01-11-26, roadmap 2.5, losing ground — the salvage window, client-only)*
+
+The full as-built is `docs/territory-model.md` §4, "AS-BUILT — the salvage map marker (client)"; this is the client's view of it.
+
+- **No new snapshot read.** The marker reads what Operations' countdown already reads: the guild's own `assets` (the
+  `stranded` flag) and its own row's `salvageWindows[systemId].deadlineTick`, plus the board's system coords. One pure
+  shell selector, `salvageOnMap` (`window.__salvageOnMap()`), modelled on the beacon's `pendingPrefectures`, turns them
+  into one row per system where something of the guild's lies stranded. The map pass draws the rows and decides nothing
+  else. Own only, by construction.
+- **What the player sees:** on the galaxy map, at every zoom, an amber clock dial round the centre hex of each system
+  they lost where a machine or kit of theirs still lies stranded. Its twelve segments go out clockwise and relight; it
+  is look, not a gauge. From the label zoom up there is a down-left tag, `<SYSTEM> / AWAITING SALVAGE / 9d 00h left`,
+  with the time being the published deadline less the snapshot's tick. The marker goes on the next poll after the
+  last stranded asset there is salvaged, recovered, swept or destroyed. There is no click target, and a click on the
+  hex opens the system as before.
+- **Proved** by `sim/tests/salvage-marker-client.test.js` (13); the canvas pixels are the human's Playwright pass.

@@ -4923,7 +4923,7 @@ select.field{appearance:none; cursor:pointer;}
 
   // `broken` (automation 2b) is the planner's flag red — the same #C2603A the popup's --red and the
   // dead-leg row use — for a route stop whose action can no longer run (the plan draw pass).
-  const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200], broken: [194,96,58] };
+  const COLOR_RGB = { system: [111,183,232], outpost: [232,185,58], citadel: [242,206,93], player: [67,217,200], broken: [194,96,58], salvage: [227,192,74] };
   function col(key, a) { const c = COLOR_RGB[key]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
   function rgbaFrom(rgb, a) { return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`; }
 
@@ -5053,6 +5053,53 @@ select.field{appearance:none; cursor:pointer;}
     ctx.restore();
   }
 
+  // The salvage marker (losing ground; docs/territory-model.md §4, "AS-BUILT — the salvage map marker"): on a system the
+  // player lost where a machine or kit of theirs still lies stranded, its salvage window running, a clock dial round the
+  // centre hex. Twelve segments, as a clock face has; they go out one by one, clockwise from twelve o'clock, until one
+  // is left, then the dial relights. A clock running out. It is drawn in the awaiting-salvage amber (COLOR_RGB.salvage,
+  // Operations' --ops-amber2, the colour of a stranded row's line), so the map and the hub read as one.
+  // It must not look like the claim-pending beacon: a system you are losing is not one you can claim. So it is amber,
+  // not the player teal, and a dial that stays put while its ticks go out, not rings flowing in.
+  // The dial is LOOK, not a gauge. It runs down in the same period on every system, however much time is left. Showing
+  // the share of a window still to run would need the window's length, which the snapshot does not publish and the
+  // client must not work out (design.md §18). The time left is the tag's, below. Every constant here is look, not a
+  // game number: how long one run-down takes, how many segments, and the dial's smallest size on screen.
+  const SALVAGE_DIAL_PERIOD_MS = 6000;
+  const SALVAGE_DIAL_SEGMENTS = 12;
+  const SALVAGE_DIAL_MIN_RIM_PX = 14;
+  // salvageDial(now) -> [ { from, to, lit } ], one per segment, in clockwise order from twelve o'clock. `from` and `to`
+  // are canvas angles in radians: -PI/2 points up, and angles grow clockwise on screen. Each segment leaves a small
+  // gap at both ends, so the twelve read as separate ticks. At the start of a period all twelve are lit. Each
+  // twelfth of the period puts one more out, the first segment first, until only the last is lit.
+  function salvageDial(now) {
+    const span = (2 * Math.PI) / SALVAGE_DIAL_SEGMENTS;
+    const out = Math.floor(((now / SALVAGE_DIAL_PERIOD_MS) % 1) * SALVAGE_DIAL_SEGMENTS);   // 0 .. SEGMENTS - 1
+    const segments = [];
+    for (let i = 0; i < SALVAGE_DIAL_SEGMENTS; i++) {
+      const start = -Math.PI / 2 + i * span;
+      segments.push({ from: start + span * 0.15, to: start + span * 0.85, lit: i >= out });
+    }
+    return segments;
+  }
+  function drawSalvageDial(scr, rim, now) {
+    ctx.save();
+    ctx.translate(scr.x, scr.y);
+    ctx.scale(1, SQUASH);   // lie flat in the map's tilted plane, as the beacon's rings do
+    salvageDial(now).forEach((seg) => {
+      ctx.beginPath();
+      ctx.arc(0, 0, rim, seg.from, seg.to);
+      // A dark under-stroke first, so the amber still reads where it crosses a painted territory hex. Look only.
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(4,8,16,0.6)';
+      ctx.stroke();
+      // An unlit segment stays faintly drawn, so the whole dial is always there to see.
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = col('salvage', seg.lit ? 0.95 : 0.25);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   // diagonal-line label, ported from galaxy-map-hex.html's drawLabelBox
   function drawLabelBox(p, lines, colorKey, downLeft) {
     // `downLeft` flips the diagonal to the OPPOSITE quadrant for the transport tag,
@@ -5131,6 +5178,18 @@ select.field{appearance:none; cursor:pointer;}
     if (d > 0) return d + 'd ' + (h < 10 ? '0' : '') + h + 'h';
     if (h > 0) return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
     return m + 'm';
+  }
+
+  // salvageMapTag(name, deadlineTick, nowTick) -> the salvage marker's tag lines: the system's name, AWAITING SALVAGE,
+  // and the time left on its window, "9d 00h left". These are Operations' words for a stranded row (strandedMark).
+  // The time is the published deadline less the snapshot's tick, worked out on every frame and stored nowhere (§18),
+  // as a craft tag's ETA is. It takes its own line, as a craft tag's ETA does: "AWAITING SALVAGE · 18d 00h" on one
+  // line would run past the box drawLabelBox draws. With either tick unknown there is no time line at all, because a
+  // deadline is never made up.
+  function salvageMapTag(name, deadlineTick, nowTick) {
+    const lines = [String(name).toUpperCase(), 'AWAITING SALVAGE'];
+    if (typeof deadlineTick === 'number' && typeof nowTick === 'number') lines.push(fmtETA(deadlineTick - nowTick) + ' left');
+    return lines;
   }
 
   function resize() {
@@ -5478,6 +5537,26 @@ select.field{appearance:none; cursor:pointer;}
         const scr = worldToScreen(p.x, p.y);
         if (scr.x < -rim || scr.x > window.innerWidth + rim || scr.y < -rim || scr.y > window.innerHeight + rim) return;
         drawClaimBeacon(scr, rim, now);
+      });
+    }
+
+    // the salvage marker (losing ground; docs/territory-model.md §4, "AS-BUILT — the salvage map marker"). It goes on
+    // each system the player lost where a machine or kit of theirs still lies stranded, its salvage window running.
+    // Drawn at EVERY zoom and sized as the beacon is, so the whole-galaxy view shows at a glance where recoverable
+    // value is sitting. The rows are the shell's salvageOnMap, re-read every frame. They are the player's OWN stranded
+    // assets, one row per system. A system's row is gone from the next snapshot after its last stranded asset leaves:
+    // salvaged, recovered by a re-plant, swept by a rival's claim, or destroyed when the window lapses. Where a
+    // stranded Prefecture kit also lights the beacon, the two share the hex: the beacon's rings start at the dial (the
+    // same rim) and flow in. A MARKER ONLY: it is not territory and adds no click target.
+    const salvageRows = (window.__salvageOnMap && window.__salvageOnMap()) || [];
+    if (salvageRows.length) {
+      const now = performance.now();
+      const rim = Math.max(SALVAGE_DIAL_MIN_RIM_PX, galaxy.galaxyParams.hexSize * zoom * 0.85);
+      salvageRows.forEach((row) => {
+        const p = hexToPixel(row.q, row.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -rim || scr.x > window.innerWidth + rim || scr.y < -rim || scr.y > window.innerHeight + rim) return;
+        drawSalvageDial(scr, rim, now);
       });
     }
 
@@ -5879,6 +5958,26 @@ select.field{appearance:none; cursor:pointer;}
         const scr = worldToScreen(p.x, p.y);
         if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
         drawLabelBox(scr, [sys.name.toUpperCase(), 'CLAIM PENDING'], 'player', true);
+      });
+    }
+
+    // The salvage marker's tag, at the same threshold: the system's name, AWAITING SALVAGE, and the time left on its
+    // window (salvageMapTag). The time is the row's published deadline less the snapshot's own tick, the tick the
+    // craft tags difference against. With no snapshot tick, or no deadline published for the system, the tag has no
+    // time line: nothing is made up. It hangs DOWN-LEFT for the beacon's reason: a lost system usually sits next to
+    // ground the player still holds, whose own tags hang up-right. It is drawn after the beacon's tag, so where a
+    // stranded Prefecture kit gives a system both, the one on a clock is on top. No click target, as the beacon's
+    // tag has none.
+    if (zoom >= WAYSTATION_LABEL_ZOOM) {
+      const snapNow = window.__snapshot ? window.__snapshot() : null;
+      const nowTick = (snapNow && typeof snapNow.tick === 'number') ? snapNow.tick : null;
+      salvageRows.forEach((row) => {
+        const sys = systemById.get(row.systemId);
+        if (!sys) return;
+        const p = hexToPixel(row.q, row.r, galaxy.galaxyParams.hexSize);
+        const scr = worldToScreen(p.x, p.y);
+        if (scr.x < -150 || scr.x > window.innerWidth+150 || scr.y < -150 || scr.y > window.innerHeight+150) return;
+        drawLabelBox(scr, salvageMapTag(sys.name, row.deadlineTick, nowTick), 'salvage', true);
       });
     }
 
@@ -9128,6 +9227,40 @@ function pendingPrefectures(kits, systemClaims, systems){
 // when a kit lands idle in an unclaimed system, and is gone the moment the kit is planted or the system is taken.
 window.__pendingPrefectures = function(){
   return pendingPrefectures(myIdleGroundKits(), LIVE.systemClaims, (GAME.galaxy && GAME.galaxy.systems) || []);
+};
+// salvageOnMap(assets, windows, systems) -> [ { systemId, q, r, deadlineTick } ]: the systems where an asset of the
+// guild's lies STRANDED, awaiting salvage, with its system's salvage window — what the map's salvage marker draws
+// (losing ground; docs/territory-model.md §4, "AS-BUILT — the salvage map marker"). One row per system, however many
+// assets lie there: the window is pooled, one deadline per lost system. `q, r` is the system's centre hex. A pure read
+// of what it is handed, so a test can call it directly:
+//   assets  — the guild's OWN asset rows (LIVE.myAssets). A row is in play when it carries the engine's `stranded`
+//             flag, machine or kit alike, read as sent. The salvage load clears the flag, so a machine aboard a heavy
+//             is not in play.
+//   windows — the guild's own `salvageWindows: { systemId: { deadlineTick } }`. It never decides which systems are
+//             marked: a window whose assets have all been salvaged stands until its deadline, with nothing left in
+//             it to mark. It only supplies the deadline. A system with no numeric deadline published gets
+//             `deadlineTick: null`, and the tag shows no time, as Operations' stranded line does (strandedMark).
+//   systems — the board's systems, for the centre hex. A system missing from it has nothing to draw on.
+// Own-only by construction: a rival's guild row carries neither its assets nor its windows (sim/fog.js).
+function salvageOnMap(assets, windows, systems){
+  var rows = [], seen = {};
+  assets.forEach(function(a){
+    var id = a.systemId;
+    if (!a.stranded || seen[id]) return;
+    var sys = systems.filter(function(s){ return s.id === id; })[0];
+    if (!sys) return;
+    seen[id] = true;
+    var w = windows[id];
+    rows.push({ systemId: id, q: sys.coords.q, r: sys.coords.r,
+                deadlineTick: (w && typeof w.deadlineTick === 'number') ? w.deadlineTick : null });
+  });
+  return rows;
+}
+// The map reads this every frame, off the latest snapshot, keeping nothing by hand: the guild's own row is found in
+// LIVE.snap afresh each time, as LIVE.myAssets was read from it.
+window.__salvageOnMap = function(){
+  var me = ((LIVE.snap && LIVE.snap.guilds) || []).filter(function(g){ return g.id === GAME.guildId; })[0];
+  return salvageOnMap(LIVE.myAssets, (me && me.salvageWindows) || {}, (GAME.galaxy && GAME.galaxy.systems) || []);
 };
 
 function systemById(id){
