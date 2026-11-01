@@ -539,7 +539,8 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
 - **Not built:** the salvage window / timer (its rate is now RULED (`phase-1-tuning.md`: 3 days/asset pooled, cap 18 days,
   fixed at stranding) but the timed lapse is not built, so a stranded machine persists until salvaged or swept) *(⤳ 31-10-26:
   the salvage window is BUILT, engine half — "AS-BUILT — the salvage window (engine)" at the end of this section; its
-  client countdown is the next slice)*, capture / takeover and the salvage waiver (the investment arc), general redeploy between held
+  client countdown is the next slice)* *(⤳ 01-11-26: and the countdown is BUILT — "AS-BUILT — the salvage window
+  (client)", this section's last note)*, capture / takeover and the salvage waiver (the investment arc), general redeploy between held
   systems, the operator CLI's printout of a sweep (`plant-prefecture` prints the claim only), and the client (the two
   notices' words, the inherited machines' display). *(⤳ 28-10-26: the two notices' words are BUILT — losing ground
   client slice 1, the notices; `docs/event-log.md` §15's client AS-BUILT. The inherited machines already list as ordinary
@@ -622,6 +623,36 @@ days × 1,440 ticks) and `SALVAGE_WINDOW_CAP_TICKS = 25920` (18 days), read only
 - **Not built:** the client — the Operations countdown on the "awaiting salvage" rows (it reads the published
   `deadlineTick`; the next slice) and the `salvage_window_lapsed` card's words; the operator CLI's printout of a window
   (`abandon-prefecture` prints the eviction only). Capture / takeover and the salvage waiver stay with the investment arc.
+  *(⤳ 01-11-26: the countdown is BUILT — the next note. The card's words and the CLI printout are still to come.)*
+
+**AS-BUILT — the salvage window (client) (01-11-26; `client/game.html` only; tripwires
+`sim/tests/salvage-window-client.test.js`).** The countdown the engine half published its deadline for, on Operations'
+stranded rows. It completes the salvage window end to end, and with it losing ground's client, bar capture. No engine,
+snapshot or fog change; no new number.
+- **The line.** A stranded row's amber state line, "Stranded · awaiting salvage" (`operations-hub.md` §5), now ends on the
+  time left on its system's window whenever the owner's own row publishes one: **"Stranded · awaiting salvage · 9d 00h
+  left"** (draft words). The time is `fmtETA(salvageWindows[a.systemId].deadlineTick − tick)`: the published deadline
+  less the snapshot's own tick, in the format of every other ETA in Operations. That is the subtraction the snapshot
+  contract above names (`remaining = deadlineTick − tick`), done on every render and stored nowhere (design.md §18), as
+  the craft and scan ETAs are. It is a duration, not a calendar day, so the row still shows no day. One helper,
+  `strandedMark(a)`, writes the line, reading the own guild row and the snapshot itself.
+- **Pooled, so per row.** The window is one deadline per lost system, so every stranded row there, machines and kits
+  alike, shows the same time: they do all close together. The IDLE grouping is unchanged; the time is not hoisted to the
+  system's header.
+- **Nothing made up.** With no window published for the row's system (the field absent, as in a snapshot from before the
+  window, or a record without a numeric deadline) the line reads exactly as before. A window lends nothing to another
+  system's row. A window whose stranded rows are all gone (everything salvaged before the deadline, the engine half's
+  checklist item 3) has no row to hang on, so nothing shows it. A deadline at or behind the tick never reaches a
+  snapshot (the lapse closes the window on that tick), and would read "0m", never a negative time.
+- **The redraw.** IDLE is rebuilt only when its signature moves, and the countdown moves as the ticks pass while nothing
+  else about the row does. So the signature's stranded term is now the line's own words: IDLE redraws when they change,
+  hourly while more than a day is left and every tick in the last day.
+- **Proved** by `sim/tests/salvage-window-client.test.js` (7), on real per-guild snapshots: the published deadline less
+  the tick, poll by poll (9d 00h → 8d 16h → 8d 09h), the deadline never moving; pooled (12d 00h on two factories, a
+  miner and a kit); the redraw, with `main`'s flag-only signature term frozen; nothing made up; and against the engine's
+  own lapse — "1m left" on the tick before the deadline, the row and the window gone on it. A guard pins every Operations
+  host as `main` drew it at 2338b51.
+- **Not built:** the `salvage_window_lapsed` card's words; any surface but Operations (the galaxy map shows no window).
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

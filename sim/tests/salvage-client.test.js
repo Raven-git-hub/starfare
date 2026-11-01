@@ -67,6 +67,14 @@ const HOME_NAME = getSystem(HOME.id).name;
 
 const viewOf = (s, guildId) => JSON.parse(JSON.stringify(buildSnapshot(s, guildId)));
 const meOf = (snap, guildId) => snap.guilds.find((g) => g.id === guildId);
+// ⤳ the salvage window, client: the view without the owner's `salvageWindows` — what main's engine sent before the
+// window existed. With no window published, a stranded row reads exactly as it did then (salvage-window-client.test.js
+// proves it), so a test reads views this way to keep the countdown out of what it checks.
+const noWindow = (s, guildId) => {
+  const v = viewOf(s, guildId);
+  delete meOf(v, guildId).salvageWindows;
+  return v;
+};
 const sha = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const fmt = (n) => Number(n).toLocaleString('en-US');
 const count = (s, sub) => s.split(sub).length - 1;
@@ -86,9 +94,11 @@ const OPS_HOSTS = ['ops-lane-notices', 'ops-transit-list', 'ops-deployed-list', 
 // the popup attached, and setting an element's html makes the elements it names new, as the browser does (a fresh
 // <select> has no value). `world.s` is the galaxy the action path writes to: __sendAction validates and applies an
 // action there, and __refreshNow re-reads it and redraws the hub. `poll(s)` is the shell's next poll on `s`.
-function page(state, { guildId = 'g1', ops = opsSrc, wire = deployWireSrc } = {}) {
+// ⤳ the salvage window, client: `view` is how the page's snapshot is made from a galaxy (viewOf unless a test says
+// otherwise), so a test can read every view without the salvage window (noWindow, below).
+function page(state, { guildId = 'g1', ops = opsSrc, wire = deployWireSrc, view = viewOf } = {}) {
   const world = { s: state };
-  let current = viewOf(state, guildId);
+  let current = view(state, guildId);
   const nodes = {};
   const writes = {};
   const sent = [];
@@ -128,7 +138,7 @@ function page(state, { guildId = 'g1', ops = opsSrc, wire = deployWireSrc } = {}
         world.s = P.accept(world.s, a);
         return Promise.resolve({ accepted: true });
       },
-      __refreshNow() { current = viewOf(world.s, guildId); sandbox.window.__opsRefresh(); return Promise.resolve(); },
+      __refreshNow() { current = view(world.s, guildId); sandbox.window.__opsRefresh(); return Promise.resolve(); },
     },
   };
   vm.runInNewContext(kitKindsSrc + ops, sandbox);
@@ -148,7 +158,7 @@ function page(state, { guildId = 'g1', ops = opsSrc, wire = deployWireSrc } = {}
   return {
     w: sandbox.window, page: sandbox, world, sent, $: node, press,
     open: () => sandbox.window.__opsOpen(),
-    poll: (s) => { world.s = s; current = viewOf(s, guildId); sandbox.window.__opsRefresh(); },
+    poll: (s) => { world.s = s; current = view(s, guildId); sandbox.window.__opsRefresh(); },
     view: () => current,
     html: html_,
     writes: (id) => writes[id] || 0,
@@ -161,8 +171,10 @@ function page(state, { guildId = 'g1', ops = opsSrc, wire = deployWireSrc } = {}
 // ---- what this slice draws --------------------------------------------------------------------------------
 
 const ordinaryRow = (id, kind) => `<div class="ops-idle-machine"><span class="mid">${id}</span><span class="mkind">${kind}</span></div>`;
-const strandedRow = (id, kind, button) => `<div class="ops-idle-machine stranded"><span class="mid">${id}</span>`
-  + `<span class="mkind">${kind}</span>${button}<span class="mstranded">${STRANDED_MARK}</span></div>`;
+// ⤳ the salvage window, client: when the owner's row publishes a window for the row's system, the marker ends on the
+// time left on it (`left`, e.g. '9d 00h left'); salvage-window-client.test.js proves the countdown.
+const strandedRow = (id, kind, button, left = '') => `<div class="ops-idle-machine stranded"><span class="mid">${id}</span>`
+  + `<span class="mkind">${kind}</span>${button}<span class="mstranded">${STRANDED_MARK}${left ? ` · ${left}` : ''}</span></div>`;
 const SALVAGE = (id) => `<button class="ops-idle-deploy ops-idle-salvage" type="button" data-salvage="${id}">Salvage</button>`;
 const SALVAGE_NONE = `<button class="ops-idle-deploy ops-idle-salvage" type="button" disabled title="${NO_HEAVY}">Salvage</button>`;
 const DEPLOY = (id) => `<button class="ops-idle-deploy" type="button" data-kit-deploy="${id}">Deploy</button>`;
@@ -186,9 +198,11 @@ test('IDLE: a stranded miner and factory each offer Salvage while a heavy that c
   const p = page(W.stranded);
   p.open();
   const groups = idleGroups(p.html('ops-idle-list'));
-  assert.ok(groups[TARGET_NAME].includes(strandedRow(W.miner, 'miner', SALVAGE(W.miner))), 'the stranded miner');
-  assert.ok(groups[TARGET_NAME].includes(strandedRow(W.factory, 'factory', SALVAGE(W.factory))), 'the stranded factory');
-  assert.ok(groups[TARGET_NAME].includes(strandedRow(W.kit, 'Outpost kit', DEPLOY(W.kit))), 'the stranded kit: its own Deploy, no Salvage');
+  // (⤳ the salvage window, client: each row also reads the time left on TARGET's window — three assets stranded, 3 × 3
+  // days, and this is the eviction's own tick.)
+  assert.ok(groups[TARGET_NAME].includes(strandedRow(W.miner, 'miner', SALVAGE(W.miner), '9d 00h left')), 'the stranded miner');
+  assert.ok(groups[TARGET_NAME].includes(strandedRow(W.factory, 'factory', SALVAGE(W.factory), '9d 00h left')), 'the stranded factory');
+  assert.ok(groups[TARGET_NAME].includes(strandedRow(W.kit, 'Outpost kit', DEPLOY(W.kit), '9d 00h left')), 'the stranded kit: its own Deploy, no Salvage');
   assert.ok(groups[HOME_NAME].includes(ordinaryRow(W.homeMiner, 'miner')), 'the home miner, as main drew it');
   assert.equal(count(p.html('ops-idle-list'), 'ops-idle-salvage'), 2);
   // Before the loss nothing is stranded, so nothing offers Salvage.
@@ -322,7 +336,7 @@ test('the salvage popup opens for a stranded machine only — not an ordinary on
   // A disabled Salvage carries no id, so a click on it opens nothing.
   const p = page(W.loaded);
   p.open();
-  assert.ok(p.html('ops-idle-list').includes(strandedRow(W.factory, 'factory', SALVAGE_NONE)), 'the factory, with no carrier');
+  assert.ok(p.html('ops-idle-list').includes(strandedRow(W.factory, 'factory', SALVAGE_NONE, '9d 00h left')), 'the factory, with no carrier');
   p.page.window.__openSalvage = () => assert.fail('a disabled Salvage must not open the popup');
   p.$('tp-ops').on.click({ target: { closest: (sel) => (sel === '.ops-idle-salvage' ? { getAttribute: () => null } : null) } });
 });
@@ -366,7 +380,12 @@ test('IDLE: a heavy arriving in the fallow system makes Salvage live with nothin
   const [unloaded, returned] = [viewOf(W.unloaded, 'g1'), viewOf(W.returned, 'g1')];
   const factoryRow = (v) => JSON.stringify(meOf(v, 'g1').assets.find((a) => a.id === W.factory));
   assert.equal(factoryRow(returned), factoryRow(unloaded), 'premise: the factory\'s own row is unchanged');
-  const p = page(W.unloaded);
+  // ⤳ the salvage window, client: the row's countdown moves too between these two polls (8d 16h left → 8d 09h left),
+  // and the signature carries it, which would redraw the list by itself and hide the salvage term. So this test reads
+  // the views without the window, leaving the salvage term the only thing that can move the signature.
+  assert.notEqual(meOf(unloaded, 'g1').salvageWindows[TARGET].deadlineTick - unloaded.tick,
+    meOf(returned, 'g1').salvageWindows[TARGET].deadlineTick - returned.tick, 'premise: time passes between the polls');
+  const p = page(W.unloaded, { view: noWindow });
   p.open();
   assert.ok(p.html('ops-idle-list').includes(strandedRow(W.factory, 'factory', SALVAGE_NONE)));
   p.poll(W.returned);
@@ -378,7 +397,7 @@ test('IDLE: a heavy arriving in the fallow system makes Salvage live with nothin
   // Without the salvage term the list never redraws, and the dead button stays dead.
   const term = " + (salvageable(a) ? '+salvage' : '')";
   assert.ok(opsSrc.includes(term), 'the term this test removes is there');
-  const m = page(W.unloaded, { ops: opsSrc.replace(term, '') });
+  const m = page(W.unloaded, { ops: opsSrc.replace(term, ''), view: noWindow });
   m.open();
   m.poll(W.returned);
   assert.ok(m.html('ops-idle-list').includes(strandedRow(W.factory, 'factory', SALVAGE_NONE)), 'stale');
@@ -554,7 +573,10 @@ function hubAsMain(state, guildId) {
     hub['ops-transit-list'] = toMain.transit(hub['ops-transit-list'], laden, kind);
     hub['ops-tp-list'] = toMain.tp(hub['ops-tp-list'], laden, kind);
   }
-  const without = viewOf(state, guildId);
+  // ⤳ the salvage window, client: IDLE is read without the owner's `salvageWindows` too. Engine PR #204 published it
+  // after 367a3cf, and main's client never read it, so it drew the same bytes with it or without; this slice's
+  // countdown is undone by leaving it out (salvage-window-client.test.js proves that is exactly the change).
+  const without = noWindow(state, guildId);
   meOf(without, guildId).assets = (meOf(without, guildId).assets || []).filter((a) => a.inTransitOnVehicleId == null);
   const q = page(state, { guildId });
   q.page.window.__snapshot = () => without;

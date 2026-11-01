@@ -218,9 +218,11 @@ function noticePage(snapshot, guildId) {
 
 // One IDLE row as machineHtml draws it: main's row, byte for byte, for an ordinary machine (a kit's ends on its Deploy
 // button); a stranded one adds the marker as its last line, under the id, the kind and any button.
+// ⤳ the salvage window, client: when the owner's row publishes a window for the row's system, the marker ends on the
+// time left on it (`left`, e.g. '6d 00h left'); salvage-window-client.test.js proves the countdown.
 const ordinaryRow = (id, kind) => `<div class="ops-idle-machine"><span class="mid">${id}</span><span class="mkind">${kind}</span></div>`;
-const strandedRow = (id, kind, button = '') => `<div class="ops-idle-machine stranded"><span class="mid">${id}</span>`
-  + `<span class="mkind">${kind}</span>${button}<span class="mstranded">${STRANDED_MARK}</span></div>`;
+const strandedRow = (id, kind, button = '', left = '') => `<div class="ops-idle-machine stranded"><span class="mid">${id}</span>`
+  + `<span class="mkind">${kind}</span>${button}<span class="mstranded">${STRANDED_MARK}${left ? ` · ${left}` : ''}</span></div>`;
 const deployButton = (id) => `<button class="ops-idle-deploy" type="button" data-kit-deploy="${id}">Deploy</button>`;
 // ⤳ losing ground client slice 4: a stranded MACHINE's row carries Salvage — live when a heavy that could take it is
 // in its system (g1's heavy is berthed at TARGET here), disabled when none is (salvage-client.test.js proves the gate).
@@ -246,9 +248,10 @@ test('IDLE: a machine or kit left stranded is marked awaiting salvage, in the sy
   const groups = idleGroups(p.html('ops-idle-list'));
   assert.deepEqual(Object.keys(groups).sort(), [HOME_NAME, TARGET_NAME].sort());
   // TARGET's group: both rows marked. The kit keeps its Deploy: a stranded kit loads as any kit does. (⤳ slice 4: the
-  // miner now carries Salvage, live, as g1's heavy is berthed at TARGET.)
-  assert.ok(groups[TARGET_NAME].includes(strandedRow(miner, 'miner', salvageButton(miner))), 'the stranded miner');
-  assert.ok(groups[TARGET_NAME].includes(strandedRow(kit, 'Outpost kit', deployButton(kit))), 'the stranded kit');
+  // miner now carries Salvage, live, as g1's heavy is berthed at TARGET.) (⤳ the salvage window, client: and both read
+  // the time left on TARGET's window — two assets stranded, 2 × 3 days, and this is the eviction's own tick.)
+  assert.ok(groups[TARGET_NAME].includes(strandedRow(miner, 'miner', salvageButton(miner), '6d 00h left')), 'the stranded miner');
+  assert.ok(groups[TARGET_NAME].includes(strandedRow(kit, 'Outpost kit', deployButton(kit), '6d 00h left')), 'the stranded kit');
   assert.equal(count(groups[TARGET_NAME], STRANDED_MARK), 2);
   // HOME's group: main's row, unmarked.
   assert.ok(groups[HOME_NAME].includes(ordinaryRow(homeMiner, 'miner')), 'the home miner, as main drew it');
