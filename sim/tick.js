@@ -62,7 +62,7 @@ const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require(
 const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
 const { stepScanCompletions } = require('./deep-scan-arrays.js');
-const { lapseSalvageWindows } = require('./eviction.js');
+const { lapseSalvageWindows, remindSalvageWindows } = require('./eviction.js');
 // The chained-route execution (the automation layer, transport-model.md §11.2) lives in actions.js:
 // `resolveRouteArrival` (a routed craft has just reached a waypoint — run its action, then go on) and
 // `advanceRoute` (dispatch the next leg, or reach the lap boundary: end the run, or start a repeating
@@ -1148,9 +1148,22 @@ function stepSyndicateBuilds(state) {
 // nothing in common). Same `thisTick = state.tick + 1` convention as every step: an eviction at
 // tick T with a window of L ticks lapses in the tick that builds T + L, so the assets are still
 // there (and salvageable) at T + L − 1 and gone at T + L.
+//
+// Its THIRD occupant (the salvage window's reminder, docs/event-log.md §16): on each window
+// boundary — the galaxy's midnight, the SAME `isWindowBoundary` test, over the same `windowN` /
+// `dayAnchorTick`, that the licence cycle and step 6 run on — the owner of every open window
+// that still holds something of its own is sent one notice (sim/eviction.js
+// remindSalvageWindows). A boundary is a scheduled time, so this is step 4's work too. It runs
+// AFTER the lapse on purpose: a window whose deadline is this very tick has just lapsed and
+// closed, so its owner gets the lapse's notice and not a reminder as well — one notice on a
+// closing day, not two. It only appends notices; nothing priced moves, so its place in the
+// step cannot change a number. Off a boundary it does nothing at all.
 function stepScheduledEvents(state, _actions) {
   stepSyndicateBuilds(state);
   lapseSalvageWindows(state, state.tick + 1);
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  if (isWindowBoundary(state.tick + 1, windowN, dayAnchorTick)) remindSalvageWindows(state, state.tick + 1);
   return state;
 }
 

@@ -92,7 +92,7 @@ const { manifestAmountError } = require('./manifest.js');
 const { isDockyard, producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
 const {
-  DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, winStartFor, windowFraction,
+  DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, winStartFor, windowFraction, isWindowBoundary,
 } = require('./windows.js');
 const { HISTORY_N } = require('./history.js');
 const { MODIFIER_HISTORY_N } = require('./modifier-history.js');
@@ -100,7 +100,7 @@ const { FUEL_BURN_HISTORY_N } = require('./fuel-burn-history.js');
 const { TIERS: PRICE_HISTORY_TIERS, TIER_KEYS } = require('./price-history.js');
 const { FUEL_PRICE_HISTORY_N } = require('./fuel-price-history.js');
 const { RING_DEPTH: PRICE_RING_DEPTH } = require('./price-ring.js');
-const { EVENT_TYPES, isEventType } = require('./events.js');
+const { EVENT_TYPES, isEventType, SALVAGE_WINDOW_REMINDER } = require('./events.js');
 const { computeGalacticSupply } = require('./supply.js');
 const {
   getSite, getPlanet, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
@@ -2594,6 +2594,67 @@ function checkSalvageWindows(state) {
   return out;
 }
 
+// Salvage-window reminders (the window's daily nudge — docs/event-log.md §16; sim/eviction.js remindSalvageWindows).
+// Every `salvage_window_reminder` row still in a guild's log is held to four rules for as long as it is kept. Each is a
+// fact about the moment the row was written, so nothing that happens afterwards — a salvage, a re-claim, the lapse, an
+// acknowledge — can make one false:
+//   - WELL-FORMED: the payload has exactly `systemId`, `systemName`, `strandedAssetIds` and `deadlineTick`; the system is
+//     a real seed system, its name a non-empty string, the deadline a whole tick.
+//   - ON A WINDOW BOUNDARY: its tick is a boundary of the galaxy's day (`isWindowBoundary`, over the same `windowN` /
+//     `dayAnchorTick` the tick reads; both are fixed once the galaxy runs). One on any other tick is a broken gate.
+//   - BEFORE ITS DEADLINE: `deadlineTick` is after the row's tick. The reminder runs after the lapse, so a window whose
+//     deadline has come is already closed; a reminder at or past its deadline means that order broke, and the owner was
+//     told twice on its closing day.
+//   - THE OWNER'S STRANDED ASSETS: `strandedAssetIds` is a non-empty list of distinct ids in sorted order, each naming
+//     THIS guild (an asset id carries its owner, §15.4 — the `asset-id-names-its-owner` rule). An empty list is a
+//     reminder about nothing; another guild's id would leak a rival's machine into this guild's log.
+// What it cannot check: that the list matched what was stranded when it was written — those assets may since have been
+// salvaged, recovered, swept or destroyed, all legally. The tests check that on real ticks
+// (sim/tests/salvage-reminder.test.js). A pure read; a guild with no reminder in its log is skipped.
+function checkSalvageReminders(state) {
+  const out = [];
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  // namesGuild(id, guildId) -> does `id` rebuild exactly as one of this guild's asset ids? A kind has no underscore, so
+  // the kind is whatever lies between the guild's prefix and the last `_NN`.
+  const namesGuild = (id, guildId) => {
+    const prefix = `asset_${guildId}_`;
+    if (typeof id !== 'string' || !id.startsWith(prefix)) return false;
+    const kind = id.slice(prefix.length, id.lastIndexOf('_'));
+    return (isAssetKind(kind) || isKitAssetKind(kind)) && assetId(guildId, kind, assetNumberOf(id)) === id;
+  };
+  for (const g of state.guilds || []) {
+    if (!Array.isArray(g.events)) continue; // checkEventLog reports a log that is not an array
+    g.events.forEach((e, i) => {
+      if (e.type !== SALVAGE_WINDOW_REMINDER) return;
+      const where = `guild:${g.id}.events[${i}]`;
+      const p = e.payload;
+      const wellFormed = p !== null && typeof p === 'object' && !Array.isArray(p)
+        && Object.keys(p).sort().join() === 'deadlineTick,strandedAssetIds,systemId,systemName'
+        && !!getSystem(p.systemId)
+        && typeof p.systemName === 'string' && p.systemName.length > 0
+        && Number.isInteger(p.deadlineTick)
+        && Array.isArray(p.strandedAssetIds);
+      if (!wellFormed) {
+        out.push({ rule: 'salvage-reminder-well-formed (sim/eviction.js)', where, detail: { payload: p } });
+        return; // the rules below read its fields
+      }
+      if (!isWindowBoundary(e.tick, windowN, dayAnchorTick)) {
+        out.push({ rule: 'salvage-reminder-on-a-window-boundary (docs/event-log.md §16)', where, detail: { tick: e.tick, windowN, dayAnchorTick } });
+      }
+      if (p.deadlineTick <= e.tick) {
+        out.push({ rule: 'salvage-reminder-before-its-deadline (docs/event-log.md §16)', where, detail: { tick: e.tick, deadlineTick: p.deadlineTick } });
+      }
+      const ids = p.strandedAssetIds;
+      const sortedDistinct = ids.every((id, k) => k === 0 || ids[k - 1] < id);
+      if (ids.length === 0 || !sortedDistinct || !ids.every((id) => namesGuild(id, g.id))) {
+        out.push({ rule: 'salvage-reminder-names-the-owners-stranded-assets (docs/event-log.md §16)', where, detail: { guildId: g.id, strandedAssetIds: ids } });
+      }
+    });
+  }
+  return out;
+}
+
 // Carried assets — the cross-system asset ferry (losing ground, engine PR 2; design.md §4, §19 #67; sim/ferry.js).
 // A heavy that has loaded a machine names it in `carryingAssetId`, and the machine's state is the derived third one,
 // IN TRANSIT. `loadAsset` / `unloadAsset` keep the rules below by construction; this asserts them every tick:
@@ -2965,6 +3026,7 @@ function checkInvariants(state, tick) {
     ...checkPrefectureIntegrity(state),
     ...checkStrandedAssets(state),
     ...checkSalvageWindows(state),
+    ...checkSalvageReminders(state),
     ...checkCarriedAssets(state),
     ...checkSavedRouteIntegrity(state),
     ...checkNodeLockouts(state),

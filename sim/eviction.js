@@ -37,10 +37,12 @@
 // deleted again when the last window closes, so a galaxy that has evicted nothing is byte-identical to one built before
 // this. A window closes one of two ways: a claim of the system (the plant calls closeSalvageWindow, right after the
 // recover and the sweep), or its deadline (lapseSalvageWindows, tick step 4), which DESTROYS whatever is still stranded.
+// While it is open, its owner is REMINDED at every window boundary for as long as something of its own is still
+// stranded there (remindSalvageWindows, tick step 4, after the lapse) — a notice, nothing more.
 
 const { applyVentureClosure } = require('./licence.js');
 const {
-  recordEvent, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
+  recordEvent, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED, SALVAGE_WINDOW_REMINDER,
 } = require('./events.js');
 const { forfeitSystemPool } = require('./stock.js');
 const { getSystem } = require('./seed.js');
@@ -364,8 +366,41 @@ function lapseSalvageWindows(state, tick) {
   }
 }
 
+// --- THE REMINDER (the salvage window's daily nudge, docs/event-log.md §16) -----------------------------------------
+//
+// remindSalvageWindows(state, tick) — MUTATES only guilds' event logs. Tick step 4 calls it, AFTER the lapse and only on
+// a window boundary (sim/tick.js — the boundary test lives there, with the other cycle reads, so this file stays
+// clock-free). While a lost system's window is open and its owner still has something stranded there, the owner is
+// reminded once a day, for the whole life of the window — a gentle recurring nudge, not a one-shot "closing soon".
+//   - Every open window, in systemId order — the lapse's order, never the map's key order (invariant 9). Each window has
+//     exactly one owner, so the order of the notices is fully fixed by the order of the systems.
+//   - The OWNER only (fogged from rivals, as every salvage field is), and only the owner's OWN assets still stranded
+//     there (strandedAssetsIn, then kept to the owner). Nothing of the owner's left stranded — everything salvaged out,
+//     though the window stands until its deadline — means no reminder: the same stranded-present rule the lapse, the
+//     Operations rows and the map marker already use. A machine aboard a heavy is not stranded, so it does not count.
+//   - The payload carries the window's absolute `deadlineTick`, as stored. The client differences it against the tick
+//     for "time left" (design.md §18); nothing is counted down here.
+// Running after the lapse is what keeps a closing day to ONE notice: a window whose deadline falls on this tick has
+// already lapsed and closed, so it is not here to be reminded. It reads state and appends notices; it moves nothing
+// priced, changes no asset and touches no window record.
+function remindSalvageWindows(state, tick) {
+  const windows = state.salvageWindows;
+  if (!windows) return;
+  for (const systemId of Object.keys(windows).sort(byId)) {
+    const { ownerGuildId, deadlineTick } = windows[systemId];
+    const strandedAssetIds = strandedAssetsIn(state, systemId)
+      .filter(({ guildId }) => guildId === ownerGuildId)
+      .map(({ assetId: id }) => id);
+    if (strandedAssetIds.length === 0) continue;
+    const system = getSystem(systemId);
+    recordEvent(state.guilds.find((g) => g.id === ownerGuildId), tick, SALVAGE_WINDOW_REMINDER, {
+      systemId, systemName: (system && system.name) || systemId, strandedAssetIds: strandedAssetIds.sort(byId), deadlineTick,
+    });
+  }
+}
+
 module.exports = {
   SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, SALVAGE_WINDOW_TICKS_PER_ASSET, SALVAGE_WINDOW_CAP_TICKS,
   isStranded, strandedAssetsIn, recoverStrandedAssets, sweepStrandedAssets, evictSystem,
-  salvageWindowTicks, closeSalvageWindow, lapseSalvageWindows,
+  salvageWindowTicks, closeSalvageWindow, lapseSalvageWindows, remindSalvageWindows,
 };

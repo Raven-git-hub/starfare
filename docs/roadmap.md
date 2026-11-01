@@ -3664,7 +3664,7 @@ boundary so the later hex-map swap doesn't touch it.
   salvage", the IN TRANSIT strip words a `system-lost` lane, and an evicted venture's closure says its system was lost.
   The "map + Operations read-state" slice split in two: a dark array has no published state to render, so it is the
   next slice, engine + client (a snapshot field, then its display); the map gets nothing (a fallow system already
-  renders unclaimed). Remaining: dark arrays, the abandon action, the salvage-run client.)* *(⤳ 29-10-26: **client slice 3, dark arrays, is BUILT** — 2.5 below. ⤳ 29-10-26: **client slice 4, the salvage-run client, is BUILT** — 2.5 below: a stranded machine's Salvage loads it onto an empty heavy in the fallow system, the laden heavy's hold names it, and Unload drops it at a held system. Remaining of the losing-ground client: the abandon action. ⤳ 29-10-26: **client slice 5, the abandon control, is BUILT** — 2.5 below: the overlay of the player's own Prefecture's slot carries Abandon Prefecture, behind a confirm that spells out the loss and counts what the player has there, and sends `abandonPrefecture`. **The losing-ground client is complete**; left of losing ground is the salvage window (its rate unset), and, separately, the establish / deploy pickers' scope fix.)* *(⤳ 31-10-26: **the salvage window's rate is RULED and its engine half is BUILT** — 2.5 below: an eviction opens one pooled window per lost system, `min(N × 4320, 25920)` ticks, fixed at the eviction; a claim closes it; at its deadline the still-stranded assets are destroyed (`salvage_window_lapsed`); the owner's snapshot row publishes the deadline. Left of losing ground: the Operations countdown (the next slice, client), then capture.)* *(⤳ 01-11-26: **the Operations countdown is BUILT** — 2.5 below: a stranded row's line now ends on the time left on its system's window, the published deadline less the published tick. The salvage window is complete, engine and client, and with it losing ground's client, bar capture. Left of losing ground: capture.)* *(⤳ 01-11-26: **the salvage map marker is BUILT** — 2.5 below: the galaxy map puts an amber clock dial on each lost system where something of the player's still lies stranded, and from the label zoom a tag with the time left on its window. It answers the checklist's "nothing marks 'you used to hold this'" for the actionable case.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
+  renders unclaimed). Remaining: dark arrays, the abandon action, the salvage-run client.)* *(⤳ 29-10-26: **client slice 3, dark arrays, is BUILT** — 2.5 below. ⤳ 29-10-26: **client slice 4, the salvage-run client, is BUILT** — 2.5 below: a stranded machine's Salvage loads it onto an empty heavy in the fallow system, the laden heavy's hold names it, and Unload drops it at a held system. Remaining of the losing-ground client: the abandon action. ⤳ 29-10-26: **client slice 5, the abandon control, is BUILT** — 2.5 below: the overlay of the player's own Prefecture's slot carries Abandon Prefecture, behind a confirm that spells out the loss and counts what the player has there, and sends `abandonPrefecture`. **The losing-ground client is complete**; left of losing ground is the salvage window (its rate unset), and, separately, the establish / deploy pickers' scope fix.)* *(⤳ 31-10-26: **the salvage window's rate is RULED and its engine half is BUILT** — 2.5 below: an eviction opens one pooled window per lost system, `min(N × 4320, 25920)` ticks, fixed at the eviction; a claim closes it; at its deadline the still-stranded assets are destroyed (`salvage_window_lapsed`); the owner's snapshot row publishes the deadline. Left of losing ground: the Operations countdown (the next slice, client), then capture.)* *(⤳ 01-11-26: **the Operations countdown is BUILT** — 2.5 below: a stranded row's line now ends on the time left on its system's window, the published deadline less the published tick. The salvage window is complete, engine and client, and with it losing ground's client, bar capture. Left of losing ground: capture.)* *(⤳ 01-11-26: **the salvage map marker is BUILT** — 2.5 below: the galaxy map puts an amber clock dial on each lost system where something of the player's still lies stranded, and from the label zoom a tag with the time left on its window. It answers the checklist's "nothing marks 'you used to hold this'" for the actionable case.)* *(⤳ 01-11-26: **the salvage window's daily reminder is BUILT, engine half** — 2.5 below: while a lost system's window is open and something of the owner's is still stranded there, the owner gets one `salvage_window_reminder` notice at every window boundary (the galaxy's midnight), naming the system, the still-stranded assets and the deadline; never on the closing day, which the lapse's notice covers. Left of the salvage window: the client's words for its two notices — the last salvage-window slice. Then capture.)* **The spatial control layer + the deploy pipeline are now designed — `docs/territory-model.md` (29-09-26):** the 7-hex footprint with first-settled seniority over overlaps, semi-controlled detection corridors, the two-lane cross-system deploy pipeline (the ferry that unblocks the Prefecture), and the starter ≥ 3 spacing rule; the open `[FIRST-CUT]` numbers are on the checklist below.
 - **2.3 — Transport (guild tier) + tolls.** Routes (construction, rules, location/route bonuses),
   payload, travel time; toll gates (built at 2.1, placed on territory from 2.2), toll rules; the
   Syndicate transport contract (the Syndicate leases guild transports back — recall-time model:
@@ -5373,7 +5373,59 @@ boundary so the later hex-map swap doesn't touch it.
     the label zoom → 1; the tag up-right → 1; the tag teal → 1; the dial teal → 1; the dial's lit segments inverted →
     1; counter-clockwise → 1; never running down → 2; the amber key moved off `--ops-amber2` → 1. Sim 2,562 →
     **2,575** (the 13 new tests), tools **98** (unchanged). **Next:** capture / takeover (the investment arc); the
-    `salvage_window_lapsed` card's words. Checklist items below.
+    `salvage_window_lapsed` card's words. Checklist items below. *(⤳ 01-11-26: the owner's daily reminder is BUILT,
+    engine half — the next entry.)*
+  - **Losing ground — the salvage window: the daily reminder (engine only) — ⤳ AS-BUILT 01-11-26.** The window's third
+    notice, between the eviction's `system_lost` and the lapse's `salvage_window_lapsed`: a gentle recurring nudge for the
+    whole life of the window, not a one-shot "closing soon". Its rules came with the slice (cadence, who, whole-time, the
+    stranded-present rule, after-the-lapse) and are recorded here and in the docs below, with no separate doc commit.
+    As-built detail: `event-log.md` §16 ("The daily reminder"), `territory-model.md` §4 ("AS-BUILT — the salvage
+    window's daily reminder (engine)"), `design.md` §2 / §15.6 / §19 #67. **No new number** — the cadence is the
+    galaxy's own day (`windowN` / `dayAnchorTick`, read from state); no snapshot, fog or client change. **(1) The
+    type.** `salvage_window_reminder` (`sim/events.js`, the thirteenth type), payload `{ systemId, systemName,
+    strandedAssetIds, deadlineTick }`: the owner's still-stranded ids, sorted (ids, not a count, as the other salvage
+    notices), and the window's stored absolute deadline — no countdown is worked out in the engine (the client
+    differences it, §18). **(2) The sweep.** `remindSalvageWindows(state, tick)` (`sim/eviction.js`), modelled on the
+    lapse: every open window in systemId order (invariant 9); each whose **owner** still has at least one asset flagged
+    `stranded` in its system (`strandedAssetsIn`, kept to the owner's) gets ONE notice, to the owner only. A window
+    salvaged clean stands until its deadline unreminded; a machine aboard a heavy is not stranded, so not counted; a
+    rival's asset stranded there (unreachable in play) is named in nobody's notice. It appends notices and nothing else.
+    **(3) Where.** Tick step 4 (scheduled events), right **after** `lapseSalvageWindows`, gated on `isWindowBoundary(
+    thisTick, windowN, dayAnchorTick)` — the licence cycle's own midnight test (the gate lives in `sim/tick.js`, with
+    the other cycle reads). After the lapse so a deadline that falls on a boundary closes the window first: the owner
+    gets the lapse's notice alone. Nothing after step 4 touches a window or a stranded flag, so what it reminds is what
+    the tick leaves. **(4) The same-day overlap with `system_lost`** is **not skipped** (the slice left it to the build):
+    an eviction is an action between ticks, so its first reminder can come at the very next tick if that is midnight;
+    the reminder is the first notice to carry the deadline, and a skip would need a rule of its own. **(5) The
+    tripwire** — `checkSalvageReminders` (`sim/invariants.js`), every tick and after every action: every reminder in a
+    log is `salvage-reminder-well-formed` (exactly the four keys, a real system, a name, a whole-tick deadline, a list),
+    `salvage-reminder-on-a-window-boundary`, `salvage-reminder-before-its-deadline` (one at or past it means it ran
+    before the lapse), and `salvage-reminder-names-the-owners-stranded-assets` (a non-empty, sorted list of distinct ids,
+    each this guild's own). Each is a fact about the moment of writing, so no later salvage, claim, lapse or acknowledge
+    can falsify it. **(6) Tests:** `sim/tests/salvage-reminder.test.js` (10). An **oracle on every tick** of every played
+    run: the reminders the tick wrote equal the test's own reckoning from the galaxy as the tick left it (none off a
+    boundary; on one, each open window in systemId order with its owner's still-stranded ids). **The main line** on the
+    production day, real ticks: an eviction at midnight (tick 1440) with one factory → a 3-day window whose deadline is
+    the midnight at 5760 → a reminder at 2880 and at 4320 with the same payload, the window record and the factory
+    untouched → at 5760 the lapse's notice alone, and the next midnight quiet. **A short day** (`windowN` 60, set at
+    tick 0): a reminder every short day; the miner loaded aboard a heavy drops out of the list (it keeps TARGET as its
+    `systemId`); with the factory aboard a second heavy nothing is reminded while the window stands. **Three windows of
+    two guilds** (g1 loses TARGET and a second system, g2 a third; lost in descending systemId order on tick 1439, so
+    the map's key order is reversed): at midnight one reminder per window, each to its owner and naming only its
+    assets, g1's two in systemId order on consecutive ids, each the tick after its `system_lost`; with the map's keys
+    re-sorted by hand the next tick is byte-identical. **The owner's own**: a rival's asset hand-stranded in g1's lost
+    system is in nobody's reminder. **A pure addition**: called directly it changes only the logs, and with no window
+    nothing at all. **The view**: the owner's row carries it with its `whenDay` and `attention.notices` counts it; the
+    rival's view has none. **Byte-identity**: a galaxy that evicts nothing crosses midnight with no reminder, pinned to
+    `main`'s hashes at 479894f (state, god's eye, both guilds). **The invariants bite**: each rule red alone on a forced
+    row, and the harness halting on one. **One existing test updated, count unchanged:** `events.test.js` (the
+    vocabulary is thirteen types). Every other test passed unchanged with the reminder in — no existing golden ticks a
+    stranded galaxy across midnight while pinning its log, so no pin needed the #204 strip. **Checked to fail**, one
+    mutation at a time over the six suites the window touches (`salvage-reminder`, `events`, `salvage-window`, `sweep`,
+    `asset-ferry`, `prefecture-abandon`; none committed; an unmutated control run → 0 red): the boundary gate removed (a reminder every tick) → 21 red (the new invariant halts the played runs in `salvage-reminder`, `salvage-window` and `asset-ferry` at the first non-boundary reminder); the gate off by one (`state.tick`, not the tick being built) → 15; the gate on the default day, not the galaxy's `windowN` → 1 (the short day); the reminder BEFORE the lapse → 4 (the closing midnight gets two notices; the invariant's before-its-deadline rule); the stranded-present filter dropped → 1 (the salvaged-clean short day reminds an empty list); the owner filter dropped → 1 (the rival's hand-stranded machine named in g1's notice); the map's key order instead of systemId order → 3 (the three-window order, the determinism bytes, and the owner's-own galaxy); the ids unsorted → 1; the stored eviction tick as the deadline → 14 (the payloads, and the invariant halting runs); a `ticksLeft` countdown added to the payload → 14 (the payloads, and well-formed halting runs); the first guild told instead of the owner → 2; and each invariant change alone → 1 each (the boundary rule off; it reading the default day instead of the galaxy's — the short day's legal reminders halt it; the deadline rule off; the names rule off; its owner check dropped; the shape ignoring extra keys; the check unregistered). Sim 2,575 →
+    **2,585** (the 10 new tests), tools **98** (unchanged). **Next:** the client's words for both salvage
+    notices (`salvage_window_lapsed` and the reminder — today both read "Licence lapsed — Venture"), the last
+    salvage-window slice; then capture / takeover (the investment arc). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
   a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -7443,6 +7495,27 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   5. **Not built, by the brief:** a map-key entry (the key lists neither this nor the beacon); hover or a tooltip; any
      marker for a window with nothing left stranded in it (the engine half's item 3: the window stands, and nothing
      shows it); the `salvage_window_lapsed` card's words.
+- **Losing ground — the salvage window's daily reminder (engine) — items for a confirm** — *surfaced 01-11-26 by the
+  build. The cadence, who, whole-time and the shape were settled with the slice; nothing was deferred and no number or
+  rule was chosen. Each item below was built the way stated and is flagged rather than decided.*
+  1. **The notice.** Type `salvage_window_reminder`; payload `{ systemId, systemName, strandedAssetIds, deadlineTick }` —
+     `strandedAssetIds` named as `system_lost` names the same thing; ids, not a count, as the other salvage notices.
+     Confirm, or rename (the string, as `system_lost` / `salvage_window_lapsed` were, is the build's to flag).
+  2. **The same-day overlap with `system_lost` — not skipped** (the slice left the call to the build). An eviction late
+     in a day is followed by a reminder at that midnight, as soon as the next tick. Kept because the reminder is the
+     first notice to carry the deadline, and a skip would need a rule (and a calendar read) of its own. Confirm, or rule
+     a skip (e.g. no reminder at a boundary closing the day the window opened).
+  3. **Owner only, the owner's own assets.** The reminder goes to the window's `ownerGuildId` and names only its assets;
+     the lapse tells each guild that lost something there. The two can differ only in a hand-built galaxy (in play every
+     claim recovers or sweeps what lies in a system, so only the owner's can be stranded there); built as the slice said
+     ("to that window's owner only"). Confirm.
+  4. **Where it sits.** Tick step 4, after the lapse, on a boundary only; the gate is in `sim/tick.js`, the sweep in
+     `sim/eviction.js`. Recorded; the eight-step order is unchanged.
+  5. **The live client** has no words for it: until the next slice the renderer's unknown-type fallback titles the row
+     "Licence lapsed — Venture", as it does `salvage_window_lapsed` today (the engine-first gap). Not fixed here, by the
+     brief.
+  6. **A size flag** (CLAUDE.md): `sim/invariants.js` was already ~3,000 lines and grows by ~55 with the new check;
+     `sim/tick.js` ~1,900 and `sim/eviction.js` ~400. Nothing split here.
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
 - **Droids:** the production-boost mechanic + numbers.
 

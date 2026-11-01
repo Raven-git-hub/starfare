@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine and client halves BUILT; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine and client halves BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine and client halves BUILT; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine and client halves BUILT; a twelfth, `salvage_window_lapsed`, is written when a lost system's salvage window runs out on assets still stranded there — §16, engine half BUILT; and a thirteenth, `salvage_window_reminder`, is written at each window boundary to the owner of an open salvage window that still holds something of its own — §16, engine half BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -886,7 +886,7 @@ recorded here.
 
 
 
-## 16. The `salvage_window_lapsed` notice — losing ground, the salvage window (engine half 31-10-26)
+## 16. The salvage-window notices — `salvage_window_lapsed` and `salvage_window_reminder` (losing ground, the salvage window; engine halves 31-10-26 and 01-11-26)
 
 **What it records.** A lost system's **salvage window ran out** while some of the guild's assets were still stranded
 there, and they were **destroyed** (`design.md` §2 / §19 #67, SETTLED 19-10-26 — "the clock lapsing → the un-salvaged
@@ -923,3 +923,56 @@ sweep's two included).
 **A NO-OP elsewhere.** A galaxy whose windows never lapse on anything writes no such notice, so every log, snapshot and
 golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts twelve types; the notice
 itself is pinned by `sim/tests/salvage-window.test.js`.
+
+**The daily reminder — `salvage_window_reminder` (engine half 01-11-26).** The window's third notice, between the
+eviction's `system_lost` (§14) and the lapse above. While a lost system's window is open and its owner still has
+something stranded there, the owner is reminded **once a day, for the whole life of the window** — a gentle recurring
+nudge, not a one-shot "closing soon". It is a discrete event (it happened at a tick, and the log keeps it), and the
+retention rules above (§4) age each one out on their own, so the reminders are a drip, not a pile. Passive and
+informational — no action-item, no decision. Born unread.
+- **When.** At each **window boundary** — the galaxy's midnight: `isWindowBoundary(tick, windowN, dayAnchorTick)`, the
+  same test, over the same `windowN` / `dayAnchorTick` from state, that the licence cycle and fuel allocation run on
+  (`docs/cycle-and-calendar.md` §2). At the production `windowN` of 1,440 that is daily; under a short test `windowN` it
+  is once per short day. **No new number:** the cadence is the galaxy's own day. Off a boundary nothing is written.
+- **Who.** The window's **owner only** (`ownerGuildId`), fogged from rivals as every salvage field is. ONE writer:
+  `remindSalvageWindows` (`sim/eviction.js`), run in tick step 4 (scheduled events, `design.md` §15.6) right **after**
+  `lapseSalvageWindows`, and only on a boundary tick (the gate is in `sim/tick.js`). Every open window, in **systemId
+  order** — the lapse's order, never the map's key order (invariant 9); each window has one owner, so that order fixes
+  the order of every guild's notices.
+- **Only while something is stranded.** A window is reminded only if its owner still has at least one asset flagged
+  `stranded` in the system (`strandedAssetsIn`, kept to the owner's). A window whose assets were all salvaged out stands
+  until its deadline but is **not** reminded — the same stranded-present rule the lapse, Operations' rows and the map
+  marker use. A machine aboard a heavy (mid-salvage) is not stranded, so it is not counted, and a system holding nothing
+  else is not reminded.
+- **One notice on a closing day.** Because the reminder runs after the lapse, a window whose deadline falls on a boundary
+  tick has already lapsed and closed when the reminder looks: its owner gets `salvage_window_lapsed`, not a reminder too.
+- **Beside `system_lost`.** An eviction is an action, applied between ticks, so the first reminder can come as soon as
+  the next boundary — even the very next tick. That overlap is **not skipped**: the reminder carries the deadline, which
+  `system_lost` does not, and a skip would need a rule of its own (roadmap checklist).
+
+**Its payload, self-contained**, in the shape of the other salvage notices:
+- `systemId`, `systemName` — the lost system, its seed name (falling back to its id);
+- `strandedAssetIds` — the owner's assets **still** stranded there at the reminder, sorted; machines and kits alike
+  (ids, not a count, as `system_lost`'s `strandedAssetIds` and the lapse's `destroyedAssetIds`: the count is the list's
+  length, and the kinds read off the ids). It never names another guild's asset;
+- `deadlineTick` — the window's stored, absolute deadline, as `salvageWindows` holds it. Nothing is counted down in the
+  engine: the client differences it against the tick for "time left" (`design.md` §18), as the Operations countdown
+  does. No `ticksLeft`, no day.
+
+**Its tripwire** (`checkSalvageReminders`, `sim/invariants.js`, every tick and after every action): every reminder still
+in a log is well-formed (exactly the four payload keys, a real system, a name, a whole-tick deadline), was written **on a
+window boundary**, **before its deadline** (a reminder at or past it would mean the reminder ran before the lapse), and
+names a non-empty, sorted list of distinct asset ids that are **this guild's own**. Each is a fact about the moment of
+writing, so no later salvage, re-claim, lapse or acknowledge can make it false. That the list matched what was stranded
+then is checked on real ticks, every tick, by `sim/tests/salvage-reminder.test.js`.
+
+**The surface — today.** No snapshot change: `guilds[].events` carries the row with its `whenDay`, `attention.notices`
+counts it while unread, and a rival's view carries none (`sim/fog.js` drops a rival's `events`). **Not built: the
+client** — the inbox row, the card, its words and its voice; that is the last salvage-window slice. Until it lands the
+live client's notice renderer treats a type it does not know as a licence lapse, so the row reads "Licence lapsed —
+Venture" — the gap every engine-first notice has had (`salvage_window_lapsed`'s included).
+
+**A NO-OP elsewhere.** A galaxy with no open window writes no reminder, so every log, snapshot and golden without one is
+unchanged: the whole suite passed unchanged with the reminder in, bar the vocabulary count, and a galaxy that evicts
+nothing crossing midnight is pinned to `main`'s hashes (`salvage-reminder.test.js`). The vocabulary test now counts
+thirteen types.
