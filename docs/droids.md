@@ -69,7 +69,7 @@ skeleton stays unresurrected. So *deployed* iff that pointer is present, *idle* 
 `sim/droids.js`) — the same derivation, read from the other end. **`assignDroid { guildId, droidId, ventureId }`**
 refuses, in order, each with its own reason: the guild owns no such droid / no such venture; the droid is already
 assigned (naming the venture); the droid's system is not the venture's (same-system only, the establish Gate-2
-rule); the droid is **Syndicate**-source and the venture is **unlicensed** (`!venture.licence` — §4's gate, naming
+rule); the droid is **Syndicate**-source and the venture is **unlicensed** (neither licence — §4's gate, naming
 the venture); the venture already holds **CAP** (20, `DROID_CAP`) assigned droids, counted source-blind. On success
 it records the venture and the tick, and moves nothing else. **`unassignDroid { guildId, droidId }`** refuses a droid
 that is not the guild's or is already idle, and returns it to idle in place. A **guild** droid may staff any of the
@@ -156,7 +156,10 @@ On a licence lapse, Syndicate droids already assigned keep running (no retroacti
 you simply can't assign more. The illegality of that arrangement is future enforcement (§7).
 
 *(**⤳ AS-BUILT 02-11-26 — droid engine slice 3.** The gate is built **assign-time only**: `assignDroid` refuses a
-Syndicate droid on a venture with no `licence`, naming the venture, and a guild droid is never licence-checked. There
+Syndicate droid on an **unlicensed** venture, naming the venture, and a guild droid is never licence-checked.
+**"Licensed" means either licence a venture can hold:** the windowed `licence` (Tier-1/2/3) **or** a deuterium mine's
+windowless `deuteriumLicence` (`isLicensedDeuteriumMine`, `sim/baseline.js`) — so a licensed deuterium mine takes
+Syndicate droids like any licensed venture (test-pinned; an unlicensed deuterium mine is still refused). There
 is deliberately **no** invariant that a Syndicate droid's venture be licensed — a lapse after assignment leaves the
 droid assigned and running (a legal state; an invariant demanding the licence would wrongly halt on it). Test-pinned:
 a Syndicate droid on a venture whose licence then lapses (`applyLapse`) stays assigned, un-restamped, through every
@@ -303,7 +306,8 @@ its production timer — 30 ticks/unit, y = 336/week).
    + the licence gate + the cap, the boost, decay and the maintenance pool.)*
    *(⤳ **Slice 3 — the Syndicate flat-tariff buy + assignment (the licence gate + the cap) — BUILT 02-11-26.** A
    Syndicate droid bought for a flat 10,000 cr, minted at once at a held system (§3); `assignDroid` / `unassignDroid`
-   with the five ordered refusals, the assign-time-only licence gate and the source-blind cap of 20 (§1, §4); a
+   with the five ordered refusals, the assign-time-only licence gate (licensed = the windowed `licence` or a deuterium
+   mine's `deuteriumLicence`) and the source-blind cap of 20 (§1, §4); a
    closed venture releasing its droids; `checkDroids`' assignment rules; the snapshot's droid `assignedToVentureId`
    and the owner-only `droidComplement` (omit-when-empty). Assigned droids still do nothing to production. **Still
    pending:** the boost, decay and the maintenance pool.)*

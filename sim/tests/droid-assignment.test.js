@@ -257,6 +257,43 @@ test('THE GATE: a Syndicate droid is refused on an UNLICENSED venture, naming it
   assert.equal(droidOf(s, D2).assignedToVentureId, UNLICENSED);
 });
 
+// A licensed DEUTERIUM mine holds no windowed `licence` — its licence is the windowless `deuteriumLicence`
+// (sim/baseline.js isLicensedDeuteriumMine). It is licensed all the same, so it must take a Syndicate droid.
+// Added to a copy of the fixture as a bare mine, like the others: no site, so it neither produces nor trips.
+const DEUTERIUM_MINE = 'v_deut';
+function withDeuteriumMine(s, licensed = true) {
+  const next = structuredClone(s);
+  g1Of(next).ventures.push({
+    id: DEUTERIUM_MINE, ownerGuildId: 'g1', type: 'mining', resourceType: 'deuterium', systemId: HOME.id,
+    ...(licensed ? { deuteriumLicence: { signedTick: 0 } } : {}),
+  });
+  assert.deepEqual(checkInvariants(next, next.tick), []);
+  return next;
+}
+
+test('THE GATE: a licensed DEUTERIUM mine (deuteriumLicence, no windowed licence) takes a Syndicate droid', () => {
+  let s = withDeuteriumMine(accept(assignGalaxy(), buy())); // D1 — Syndicate
+  s = withGuildDroid(s); // D2 — guild
+  const mine = g1Of(s).ventures.find((v) => v.id === DEUTERIUM_MINE);
+  assert.equal(mine.licence, undefined, 'no windowed licence — only the deuterium one');
+  s = accept(s, assign(D1, DEUTERIUM_MINE));
+  assert.equal(droidOf(s, D1).assignedToVentureId, DEUTERIUM_MINE);
+  // The gate is unchanged for a genuinely unlicensed venture (a second Syndicate droid, 03) …
+  s = accept(s, buy());
+  assert.match(refuse(s, assign('asset_g1_droid_03', UNLICENSED)), /is a Syndicate droid and venture v_unlic is unlicensed/);
+  // … and a guild droid still goes anywhere, the deuterium mine included.
+  s = accept(s, assign(D2, DEUTERIUM_MINE));
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  ticks(s, 5);
+});
+
+test('THE GATE: an UNLICENSED deuterium mine still refuses a Syndicate droid, naming it — a guild droid is allowed', () => {
+  let s = withDeuteriumMine(accept(assignGalaxy(), buy()), false);
+  s = withGuildDroid(s);
+  assert.match(refuse(s, assign(D1, DEUTERIUM_MINE)), /is a Syndicate droid and venture v_deut is unlicensed/);
+  accept(s, assign(D2, DEUTERIUM_MINE));
+});
+
 test('gate: a guild droid may staff a LICENSED venture too', () => {
   const s = accept(withGuildDroid(assignGalaxy()), assign(D1, LICENSED));
   assert.equal(droidOf(s, D1).assignedToVentureId, LICENSED);

@@ -3989,10 +3989,13 @@ function validateAction(state, action) {
     if (droid.systemId !== venture.systemId) {
       return { valid: false, reason: `droid ${droid.id} is in system ${JSON.stringify(droid.systemId)}, but venture ${venture.id} is in ${JSON.stringify(venture.systemId)} — a droid is assigned only within its own system` };
     }
-    // 4. THE LICENCE GATE — the payoff (docs/droids.md §4): a SYNDICATE droid staffs only a licensed venture
-    // (`venture.licence` is truthy exactly while it is licensed). A guild droid may staff any venture. This
-    // is ASSIGN-TIME ONLY: a licence that lapses later leaves an assigned Syndicate droid where it is.
-    if (droid.source === DROID_SOURCE_SYNDICATE && !venture.licence) {
+    // 4. THE LICENCE GATE — the payoff (docs/droids.md §4): a SYNDICATE droid staffs only a licensed venture.
+    // "Licensed" means EITHER licence a venture can hold: the windowed `licence` (Tier-1/2/3), or the
+    // windowless `deuteriumLicence` of a licensed deuterium mine (sim/baseline.js isLicensedDeuteriumMine —
+    // the existing predicate, reused so the two can never disagree). A guild droid may staff any venture.
+    // This is ASSIGN-TIME ONLY: a licence that lapses later leaves an assigned Syndicate droid where it is.
+    const licensed = Boolean(venture.licence) || isLicensedDeuteriumMine(venture);
+    if (droid.source === DROID_SOURCE_SYNDICATE && !licensed) {
       return { valid: false, reason: `droid ${droid.id} is a Syndicate droid and venture ${venture.id} is unlicensed — a Syndicate droid may be assigned only to a licensed venture (docs/droids.md §4)` };
     }
     // 5. THE CAP — at most DROID_CAP assigned droids per venture, every source counted.

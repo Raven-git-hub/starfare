@@ -5532,7 +5532,8 @@ boundary so the later hex-map swap doesn't touch it.
     (`mintDroid`) — no commission queue, build wait or delivery fuel; refused short of credits (naming the shortfall) or
     into a system the guild does not hold. The slice-2 "not sold yet" refusal is gone. **Assignment:**
     `assignDroid { guildId, droidId, ventureId }` refuses, in order — not the guild's droid or venture; already
-    assigned (naming the venture); a different system; a Syndicate droid on an unlicensed venture (naming it); a full
+    assigned (naming the venture); a different system; a Syndicate droid on an unlicensed venture (naming it —
+    "licensed" is the windowed `licence` or a deuterium mine's `deuteriumLicence`); a full
     venture (20, source-blind) — else records `assignedToVentureId` + `deployedAtTick` on the droid (omitted when idle,
     so idle is slice 2's row); `unassignDroid { guildId, droidId }` returns an assigned droid to idle in place. A guild
     droid may staff any of the guild's ventures. The licence gate is **assign-time only** — a lapse leaves an assigned
@@ -5545,7 +5546,7 @@ boundary so the later hex-map swap doesn't touch it.
     commissioned-asset quote (`assetPurchaseQuote` — no build time to quote). **No-op byte-identical:** a run that builds
     a guild droid, buys a miner from the Syndicate and closes a venture — but buys and assigns no droid — hashes as it
     did at b226b3a (recorded there), and slice 2's two fb550f7 pins still hold. Assigned droids do **nothing** to
-    production. **Not built:** the boost, decay, maintenance, any client work. Sim 2,619 → **2,644** (25 new tests in
+    production. **Not built:** the boost, decay, maintenance, any client work. Sim 2,619 → **2,646** (27 new tests in
     `droid-assignment.test.js`, with its no-op script `droid-assign-noop-script.js`; seven existing tests moved from
     the unsold to the selling droid), tools **98** (unchanged). **Next:** the boost (not yet scoped). Checklist items below ("Droids: slice-3 calls …").
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5636,10 +5637,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   tick behind, and a minted droid (either source, the slice-2 precedent) carries no mint tick. Should a droid row
   carry a minted-at / last-changed tick (§15.2), or an event-log notice? **(5) The client surface for the tariff.**
   The droid is left out of `assetPurchaseQuote` (its `buildTicks` would be the dockyard's 360, wrong for an instant
-  buy), so nothing in the snapshot shows the 10,000 yet — the droid client slice must add one. **(6) A deuterium
-  licence is not a licence here.** The gate reads `venture.licence` (as the slice prompt ruled); a deuterium mine's
-  licence lives in `deuteriumLicence`, so a Syndicate droid is refused there as "unlicensed". Rule whether a
-  deuterium-licensed venture counts as licensed for droids.
+  buy), so nothing in the snapshot shows the 10,000 yet — the droid client slice must add one.
 - **Droids: three seams the entity slice found and did not answer (02-11-26, droid engine slice 2,
   `docs/droids.md` §1).** Built as the plainest thing, flagged rather than ruled:
   **(1) A droid in a lost system.** An eviction (`sim/eviction.js`) strands machines and its salvage window
