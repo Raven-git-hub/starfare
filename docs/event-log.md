@@ -201,7 +201,9 @@ detail opens in a **popup** (`docs/mockups/guild-hall-messages.html`). **Client 
   notice is one exception to the uniform adviser: it re-dresses this same card with the pilot (§10, client
   AS-BUILT). The two delivery notices are the other: they wear the Trader (§11, client AS-BUILT). *(⤳ 28-10-26: the
   three territory notices — `system_lost`, `assets_inherited`, `assets_swept` — keep the uniform adviser, but add Show on
-  map, to the system they name: §14's client AS-BUILT.)*
+  map, to the system they name: §14's client AS-BUILT.)* *(⤳ 02-11-26: the two salvage-window notices —
+  `salvage_window_reminder`, `salvage_window_lapsed` — wear the pilot, with Show on map to the system they name: §16's
+  client AS-BUILT.)*
 - **Read = opening the message.** Clicking a notice row opens its popup (filled from that row in
   `meGuild().events` by its id) and dispatches the existing `acknowledgeEvent { guildId, eventId }`
   for its id (sent as a Number — the apply matches by `===`), so the row renders read on the next
@@ -918,7 +920,8 @@ rival's `events`). The deadline before the lapse is published separately, on the
 (`salvageWindows: { [systemId]: { deadlineTick } }`, `docs/territory-model.md` §4). **Not built: the client** — the inbox
 row, the card and its voice. Until it lands the live client's notice renderer treats a type it does not know as a licence
 lapse, so the row would read "Licence lapsed — …" — the gap every engine-first notice has had (`system_lost` and the
-sweep's two included).
+sweep's two included). *(⤳ 02-11-26: the client half is BUILT, for both salvage notices — "AS-BUILT — the client half",
+the end of this section.)*
 
 **A NO-OP elsewhere.** A galaxy whose windows never lapse on anything writes no such notice, so every log, snapshot and
 golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts twelve types; the notice
@@ -970,9 +973,59 @@ then is checked on real ticks, every tick, by `sim/tests/salvage-reminder.test.j
 counts it while unread, and a rival's view carries none (`sim/fog.js` drops a rival's `events`). **Not built: the
 client** — the inbox row, the card, its words and its voice; that is the last salvage-window slice. Until it lands the
 live client's notice renderer treats a type it does not know as a licence lapse, so the row reads "Licence lapsed —
-Venture" — the gap every engine-first notice has had (`salvage_window_lapsed`'s included).
+Venture" — the gap every engine-first notice has had (`salvage_window_lapsed`'s included). *(⤳ 02-11-26: the client
+half is BUILT, below.)*
 
 **A NO-OP elsewhere.** A galaxy with no open window writes no reminder, so every log, snapshot and golden without one is
 unchanged: the whole suite passed unchanged with the reminder in, bar the vocabulary count, and a galaxy that evicts
 nothing crossing midnight is pinned to `main`'s hashes (`salvage-reminder.test.js`). The vocabulary test now counts
 thirteen types.
+
+**AS-BUILT — the client half, both notices (02-11-26; `client/game.html` only, NO `sim/` change; roadmap 2.5, losing
+ground — the salvage window, the notices' words).** Built to the slice's brief: the copy is the human's, in the Chief
+Pilot's voice — she is the one who flies the salvage. No engine, snapshot or fog change; no new number. The two notices
+share one block in the notice code, beside §14's territory block, whose helpers they reuse.
+- **The voice.** The pilot, as §10 and §12: `openNotice`'s `pilot` flag now covers `salvage` (`isSalvageNotice`), so the
+  card wears the eyebrow "Fleet — Dispatch" and `assets/characters/pilot.jpg` — the portrait the Operations hero draws
+  under her role, "Chief Pilot". No new asset.
+- **The row and title.** "Awaiting salvage — {systemName}" (the reminder) and "Machines lost — {systemName}" (the lapse),
+  `SALVAGE_TITLE`, with the name in the row's muted `.who` span, as a territory notice carries it. The name falls back
+  as a territory notice's does (`territorySystemName`: the id, then "Unknown system").
+- **The body**, one paragraph each, the human's words verbatim with the payload's values filled in:
+  - the reminder — "Still got {N machines} cooling their heels out at {systemName}, Guildmaster. We still have another
+    {TIME} to get them, but I wouldn't dawdle. Space is pretty big, as I'm sure you're aware, so it's going to take some
+    time to get the crews together and the transports moving. Just say the word and I'll get some heavies out there to
+    haul them home before the clock runs dry."
+  - the lapse — "That's the salvage window shut on {systemName}, Guildmaster. Unfortunately the guys just couldn't get it
+    done — we lost {N machines}. It is what it is I guess. We're haulers, not miracle workers."
+- **{N machines}** is `countWords(n, 'machine', 'machines')` — "1 machine", "3 machines" — over the length of
+  `strandedAssetIds` (the reminder) or `destroyedAssetIds` (the lapse). `countWords` is the abandon confirm's plural
+  helper, now shared with the notice code as `window.__countWords` (the `__fmtETA` pattern: one helper, not a copy). A kit
+  in the list counts as a machine: the human's word, accepted as a slight generalisation. In the reminder the pronouns
+  follow the same count, so one reads "cooling its heels … to get it … haul it home", and several "their" / "them".
+- **{TIME}** (the reminder only) is `fmtETA(deadlineTick − n.tick)`: the window's stored deadline less **the notice's own
+  tick**, through the map's ETA formatter (`window.__fmtETA`) — "8d 07h". A reminder is a logged moment ("at this
+  midnight, 9d left"), so a later snapshot does not move it: each of a window's reminders keeps the time left on the
+  midnight it was written. The live countdowns (Operations, the map marker) difference against the snapshot's tick
+  instead, because they are live. Either way it is a difference of two published ticks (design.md §18). A reminder with no
+  numeric deadline or tick — which `checkSalvageReminders` forbids — reads "—", never a made-up time.
+- **The facts** carry the one-word day tag alone: `Awaiting` = "Day {whenDay}" (the reminder) and `Lost` = "Day {whenDay}"
+  (the lapse). That tag is the territory notices' day word (the last fact, "Lost · Day 12"); its map, `SYSTEM_DAY_WORD`,
+  moved out of `territoryFacts` so the five types share it, with the territory three's output unchanged. The count and
+  the time are in her words, so no other fact is shown. The inbox row's "when" is "Day N", as for every notice.
+- **Show on map**, beside Dismiss, for both: to `payload.systemId`'s centre hex through `territorySystemHex`, at zoom 9,
+  as a territory notice goes. A system the board does not hold closes the popup and leaves the map where it is.
+- **Passive.** Dismiss and Show on map; no forks, no acknowledge button. Read-on-open (§8) is unchanged.
+- **The type audit.** The Messages list, the badge and both pips are type-agnostic, so the rows list, count and light
+  them unchanged. `isTerritoryNotice`, `isDeliveryNotice` and `isScanNotice` are false for both.
+- **Tripwires.** `sim/tests/salvage-notice-client.test.js` (10) runs the page's own notice code in a `node:vm` sandbox
+  against real engine output: one machine stranded and run to its deadline (three reminders, then the lapse), and
+  `salvage-script.js`'s three stranded, run to the first midnight and on to the deadline. It checks the rows and titles,
+  both cards whole (speaker, words, count, time, tag, buttons), the count for one and for three, the time read off each
+  notice's own tick (nine reminders on one snapshot, each with its own time; the first word for word the same 11,970
+  ticks later), the re-dress across opens, Show on map's target, degradation and read-on-open. A guard pins every notice
+  the client already had words for as `main` rendered it at 78bb7a4, hashed on a `main` worktree, and passes there. Three
+  existing suites updated, counts unchanged: the source pins on the Show on map gate, its target and the pilot flag moved
+  (`losing-ground-notice-client.test.js`, `outpost-teardown-client.test.js`, `server.test.js`), and `server.test.js`'s
+  "no arithmetic over a payload field" check on the delivery facts now ends at the next function: it ran on to
+  `myUnreadNotices` and so had come to span the salvage block, whose time is the one allowed difference.

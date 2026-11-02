@@ -502,8 +502,9 @@ test('read-on-open is unchanged: an unread territory notice sends one acknowledg
 });
 
 test('wiring: Show on map is gated on the packed and territory notices, and the two shell bridges the sandbox stands in for are real', () => {
-  assert.match(noticeSrc, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory\);/);
-  assert.match(noticeSrc, /var hex = isTerritoryNotice\(n\) \? territorySystemHex\(p\) : packedCraftHex\(p\);/);
+  // (⤳ 02-11-26: the two salvage-window notices joined both lines — salvage-notice-client.test.js.)
+  assert.match(noticeSrc, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory \|\| salvage\);/);
+  assert.match(noticeSrc, /var hex = \(isTerritoryNotice\(n\) \|\| isSalvageNotice\(n\)\) \? territorySystemHex\(p\) : packedCraftHex\(p\);/);
   // __boardSystem hands back the board's own system row, whose centre hex the map is drawn from.
   assert.match(html, /window\.__boardSystem = function\(id\)\{ return systemById\(id\); \};/);
   assert.match(html, /function systemById\(id\)\{\n\s+if \(!id \|\| !GAME\.galaxy\) return null;\n\s+return GAME\.galaxy\.systems\.filter/);
