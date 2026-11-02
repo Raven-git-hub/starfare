@@ -46,6 +46,7 @@ const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds, carriedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
+const { DROID } = require('./droids.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
 const { copyScanJob, isArrayAttached } = require('./deep-scan-arrays.js');
@@ -758,8 +759,11 @@ function computeAttention(state) {
 //                                                                   //   salvage (§19 #67); omit-when-absent
 //                             inTransitOnVehicleId? } ],           //   aboard that craft (the asset ferry —
 //                                                                   //   the third state); omit-when-absent
-//                 droids?: [ { id, systemId, source, condition } ], // 2.6 droids (docs/droids.md §1), all idle
-//                                                                   //   this slice; sorted by id; omit-when-empty
+//                 droids?: [ { id, systemId, source, condition,     // 2.6 droids (docs/droids.md §1); sorted
+//                              assignedToVentureId? } ],             //   by id; omit-when-empty; the venture
+//                                                                   //   only while assigned
+//                 droidComplement?: { ventureId: [droidId] },       // assigned droids per venture, sorted;
+//                                                                   //   omit-when-none assigned
 //                 salvageWindows?: { systemId: { deadlineTick } }, // its lost systems' open salvage windows —
 //                                                                   //   the tick each lapses; omit-when-empty
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
@@ -1662,18 +1666,27 @@ function buildGodsEyeSnapshot(state) {
       // mutating the snapshot can't alias into engine state.
       vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice, dockStatusByVehicle.get(v.id)))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-      // droids (roadmap 2.6, droid engine slice 2; docs/droids.md §1): the guild's droids, one row each —
-      // `{ id, systemId, source, condition }`, the stored fields echoed, fresh objects so a consumer can never
-      // alias into engine state. Sorted by id (the mint order). Every droid is idle this slice (assignment is
-      // a later slice), so no derived state rides along yet. PRESENT ONLY when the guild has a droid, so a
-      // droidless galaxy's snapshot is byte-identical to pre-slice. A rival never sees it: a rival's guild row
-      // is cut to RIVAL_GUILD_FIELDS (sim/fog.js).
+      // droids (roadmap 2.6, droid engine slices 2–3; docs/droids.md §1): the guild's droids, one row each —
+      // `{ id, systemId, source, condition, assignedToVentureId? }`, the stored fields echoed, fresh objects
+      // so a consumer can never alias into engine state. `assignedToVentureId` is present only on an assigned
+      // droid (an idle row is slice 2's exact four fields). Sorted by id (the mint order). PRESENT ONLY when
+      // the guild has a droid, so a droidless galaxy's snapshot is byte-identical to pre-slice. A rival never
+      // sees it: a rival's guild row is cut to RIVAL_GUILD_FIELDS (sim/fog.js).
       ...(g.droids && g.droids.length
         ? {
-            droids: g.droids.map((d) => ({ id: d.id, systemId: d.systemId, source: d.source, condition: d.condition }))
+            droids: g.droids.map((d) => ({
+              id: d.id, systemId: d.systemId, source: d.source, condition: d.condition,
+              ...(d.assignedToVentureId === undefined ? {} : { assignedToVentureId: d.assignedToVentureId }),
+            }))
               .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
           }
         : {}),
+      // droidComplement (droid engine slice 3): each of the guild's ventures that holds an assigned droid →
+      // the sorted ids of the droids staffing it — so the client reads a venture's complement (and its
+      // count against the cap) without grouping the droid rows itself. Derived on read from the droids'
+      // pointers. On the guild's OWN row, not the public venture rows, so a rival never sees a complement.
+      // PRESENT ONLY when some droid is assigned, so a galaxy with none stays byte-identical.
+      ...droidComplementField(g),
       // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — what the client's "Load Route"
       // list reads (slice 2b). Each row is `{ id, name, waypoints: [{ anchor, action? }] }`, FRESH-copied
       // (copyRouteWaypoint copies each anchor and manifest line) so a consumer mutating the snapshot can
@@ -2344,8 +2357,11 @@ function buildGodsEyeSnapshot(state) {
     // from the per-system `fuelCost[dest].travelTicks` above, exactly as the goods-buy popup does.
     // Additive DERIVED-ON-READ telemetry like `syndicateBuilds` above: no serialized byte, no
     // schema bump, no golden move — a galaxy that buys nothing serializes byte-identically.
+    // THE DROID IS LEFT OUT (droid engine slice 3): it is Syndicate-sellable, but not a commission — a flat
+    // tariff handed over at once, with no build time and no delivery leg — so this row's `buildTicks` (the
+    // DOCKYARD's 360) would mislead. Surfacing the tariff to the client is the droid client slice's job.
     assetPurchaseQuote: Object.fromEntries(
-      SYNDICATE_SELLABLE_KINDS.map((kind) => [
+      SYNDICATE_SELLABLE_KINDS.filter((kind) => kind !== DROID).map((kind) => [
         kind,
         { price: priceAssetForPurchase(state, kind, state.tick), buildTicks: BUILD_TICKS[kind] },
       ]),
@@ -2358,6 +2374,20 @@ function buildGodsEyeSnapshot(state) {
     // hash. See computeAttention.
     attention: computeAttention(state),
   };
+}
+
+// droidComplementField(guild) -> `{ droidComplement: { ventureId: [droidId, ...] } }` for the guild's
+// assigned droids, or `{}` when none is assigned (omit-when-empty). Ventures keyed in sorted order and ids
+// sorted within each, so the read is deterministic whatever the stored order.
+function droidComplementField(guild) {
+  const byVenture = {};
+  for (const d of guild.droids || []) {
+    if (d.assignedToVentureId === undefined) continue;
+    (byVenture[d.assignedToVentureId] = byVenture[d.assignedToVentureId] || []).push(d.id);
+  }
+  const ventureIds = Object.keys(byVenture).sort();
+  if (ventureIds.length === 0) return {};
+  return { droidComplement: Object.fromEntries(ventureIds.map((id) => [id, byVenture[id].sort()])) };
 }
 
 // buildSnapshot(state, guildId?) — THE ONE ENTRY POINT, two lenses (docs/exploration-model.md §7,

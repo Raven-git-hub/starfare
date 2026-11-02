@@ -40,6 +40,10 @@ catalogs deliberately DIVERGE at spycraft:
   wealthy guilds, a guild must build its flag (`docs/asset-recipes.md`, the 16-10-26 note). So
   `SYNDICATE_SELLABLE_KINDS` = `BUILDABLE_KINDS` minus `spycraft` **and `prefecture`**, still seven kinds; a Prefecture
   buy is refused loudly, naming its kind, and it has no `INSTALLATION_KIT_BUY_BASELINE` row.)*
+  *(⤳ 02-11-26 — droid engine slice 3: the **droid** joins the SELL catalog too — eight kinds — but as a **flat
+  10,000 cr tariff**, not this file's parts-priced commission: `priceAssetForPurchase` returns the tariff for it, and a
+  droid buy mints the droid at once at a held system — no queue, no build wait, no delivery fuel, so it is not in
+  `assetPurchaseQuote` either. `docs/droids.md` §3, `docs/asset-recipes.md`'s slice-3 note.)*
 
 `SYNDICATE_SELLABLE_KINDS` is the one authoritative set for "what the Syndicate sells": the buy
 gate **refuses** any kind outside it (a spycraft buy is refused loudly, not merely hidden from

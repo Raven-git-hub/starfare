@@ -6,8 +6,9 @@ headline rulings and points here; this file is the model the build reads. Number
 `[FIRST-CUT]` and live in `docs/phase-1-tuning.md` §Droids — this file names them for orientation
 but that file is their source of truth. Nothing here is built yet. *(⤳ 02-11-26: except the §11 sub-tier reband —
 `drive_module` / `droid_components` → 3-2 — BUILT as **droid engine slice 1** (§12); and the §1 entity + the guild
-dockyard build (§3's guild half), BUILT as **droid engine slice 2** (§12). The Syndicate buy, assignment, the boost,
-decay and maintenance are not.)*
+dockyard build (§3's guild half), BUILT as **droid engine slice 2** (§12); and the Syndicate flat-tariff buy (§3's
+Syndicate half) + assignment with the licence gate and the cap (§1/§4), BUILT as **droid engine slice 3** (§12). The
+boost, decay and maintenance are not.)*
 
 **Scope discipline:** 2.6 builds **droids functioning, with these numbers** — the entity, the two
 sources, the boost, decay and the maintenance pool. The **failure mechanism is NOT built here**
@@ -39,11 +40,12 @@ per-droid). Each row:
 - `systemId` — the system it sits in (an idle droid has a location, like an asset).
 - `source` — `'syndicate'` or `'guild'`. Governs durability, cost, maintenance demand and where it
   may be used (§3). **Not** a quality tier — the boost is identical regardless of source (§2).
-- `assignedToVentureId` — nullable; the venture it staffs, or null when idle. *(Not built yet — the assignment
-  slice adds it. AS-BUILT slice 2 rows carry only `id`, `systemId`, `source`, `condition`.)*
+- `assignedToVentureId` — nullable; the venture it staffs, or null when idle. *(⤳ AS-BUILT slice 3: **omitted**
+  when idle rather than null, so an idle row is exactly slice 2's `id`, `systemId`, `source`, `condition`.)*
 - `condition` — a stored fraction in `(0, 1]`, decaying while deployed (§5). **Every mutation
   records its tick** (§15.2).
-- `deployedAtTick` — set on assignment; the anchor decay reads from. *(Not built yet — the assignment slice.)*
+- `deployedAtTick` — set on assignment; the anchor decay reads from. *(⤳ AS-BUILT slice 3: stamped with the assign
+  tick, omitted when idle; it travels with `assignedToVentureId` — both or neither.)*
 
 *(**⤳ AS-BUILT 02-11-26 — droid engine slice 2.** `createDroid` (`sim/state.js`) assembles
 `{ id, systemId, source, condition }`; `condition` is minted at `ASSET_CONDITION_NEW` (1) and is inert. The rows live
@@ -60,6 +62,23 @@ Ownership is containment (the guild whose array holds the row). **Assignment** i
 idle droid → a venture, **same-system** and **instant** (the asset Gate-2 shape); unassign returns
 it to idle. A venture holds at most **CAP** droids (`[FIRST-CUT]` 20); a 21st is refused. Idle
 droids **do not decay** (§4) and carry no storage cost this slice (deferred, §8).
+
+*(**⤳ AS-BUILT 02-11-26 — droid engine slice 3, assignment.** The stored fact is the **droid's** pointer,
+`assignedToVentureId` (with `deployedAtTick`), not a list on the venture — the superseded `droidComplement` venture
+skeleton stays unresurrected. So *deployed* iff that pointer is present, *idle* iff absent (`isDroidIdle`,
+`sim/droids.js`) — the same derivation, read from the other end. **`assignDroid { guildId, droidId, ventureId }`**
+refuses, in order, each with its own reason: the guild owns no such droid / no such venture; the droid is already
+assigned (naming the venture); the droid's system is not the venture's (same-system only, the establish Gate-2
+rule); the droid is **Syndicate**-source and the venture is **unlicensed** (`!venture.licence` — §4's gate, naming
+the venture); the venture already holds **CAP** (20, `DROID_CAP`) assigned droids, counted source-blind. On success
+it records the venture and the tick, and moves nothing else. **`unassignDroid { guildId, droidId }`** refuses a droid
+that is not the guild's or is already idle, and returns it to idle in place. A **guild** droid may staff any of the
+guild's ventures, licensed or not. **A closed venture releases its droids:** the one closure path
+(`applyVentureClosure`, `sim/licence.js` — teardown, forced closure, eviction, the operator lever) returns every droid
+it held to idle where it stands, as a closed venture's asset returns to idle. `checkDroids` (`sim/invariants.js`) now
+also halts on a half-assigned droid, a deploy tick in the future, a droid on a venture that is not its own guild's
+(or no longer exists), a droid in a different system from its venture, and a venture over the cap. Assigned droids
+still do **nothing** to production — the boost is a later slice.)*
 
 ## 2. The buff — one knob, two emission paths
 
@@ -100,7 +119,7 @@ Two sources, deliberately asymmetric. The asymmetry is set **now, aware of a fut
   future risk; **in 2.6 that risk is absent, so guild droids are the better buy** (the accepted
   latency — the payoff completes with the storyteller, roadmap 2.6).
 - **Syndicate droid** — **dearer and shorter-lived, but safe and legal.** Bought at a **flat,
-  market-independent tariff** (`[FIRST-CUT]` ~12–15k cr — a special institutional product, not a
+  market-independent tariff** (`[FIRST-CUT]` ~12–15k cr, *⤳ pinned at **10,000 cr** for slice 3* — a special institutional product, not a
   market good, so NOT an `INSTALLATION_KIT_BUY_BASELINE` floor). Durability **2 weeks** raw →
   **4 weeks** maintained. **Higher maintenance demand** (the "red tape": `[FIRST-CUT]` twice the
   `droid_components`/week of a guild droid). May be assigned **only to a licensed venture** (§4).
@@ -108,8 +127,14 @@ Two sources, deliberately asymmetric. The asymmetry is set **now, aware of a fut
 Both sources mint one idle droid row, `source`-stamped, through one helper. *(⤳ AS-BUILT 02-11-26, droid engine
 slice 2: the helper is `mintDroid` (`sim/droids.js`), and the **guild** path is built — a dockyard build of kind
 `droid` from the lean bill above, `BUILD_TICKS` 360, minting through `mintFinishedKind` (`sim/tick.js`), never
-through the kit mint. The **Syndicate** path is not: a Syndicate buy of a droid is refused at the gate, naming it,
-until the flat-tariff slice.)*
+through the kit mint. *(⤳ AS-BUILT 02-11-26, droid engine slice 3:)* the **Syndicate** path is built too — a
+`buyAssetFromSyndicate` of kind `droid` (the droid now in `SYNDICATE_SELLABLE_KINDS`) charges the flat
+**`SYNDICATE_DROID_TARIFF` 10,000 cr** (`priceAssetForPurchase` branches to it — no parts price, no quote ring, no
+floor), ledgers it to the Syndicate (invariant 2), and mints **one idle Syndicate-source droid** at the destination
+through the same `mintDroid`, at once: no commission queue, no build wait, no delivery fuel. The destination must be a
+system the guild **holds** (where its ventures are — assignment is same-system); a short guild is refused, naming
+the shortfall. The commissioned-asset quote in the snapshot (`assetPurchaseQuote`) does not list the droid — it has
+no build time or delivery leg to quote; surfacing the tariff is the client slice's.)*
 
 **Why this gap (the rationale to lock):** guild droids out-perform on cost, life and upkeep because
 they will eventually be the *risky, illicit* option; the Syndicate premium (dearer, shorter, more
@@ -129,6 +154,14 @@ boost never touches licence terms and licence terms never touch the boost (`desi
 
 On a licence lapse, Syndicate droids already assigned keep running (no retroactive change in 2.6);
 you simply can't assign more. The illegality of that arrangement is future enforcement (§7).
+
+*(**⤳ AS-BUILT 02-11-26 — droid engine slice 3.** The gate is built **assign-time only**: `assignDroid` refuses a
+Syndicate droid on a venture with no `licence`, naming the venture, and a guild droid is never licence-checked. There
+is deliberately **no** invariant that a Syndicate droid's venture be licensed — a lapse after assignment leaves the
+droid assigned and running (a legal state; an invariant demanding the licence would wrongly halt on it). Test-pinned:
+a Syndicate droid on a venture whose licence then lapses (`applyLapse`) stays assigned, un-restamped, through every
+invariant on every tick; a second Syndicate droid is then refused there; the first can be taken off but not put
+back. The licence's fee and terms still read only the droidless baseline — nothing in this slice touches them.)*
 
 ## 5. Decay & maintenance
 
@@ -243,7 +276,7 @@ repair, miner/factory condition, the throttle-below rate cap, anything rival-dep
 
 Cap 20 · `BOOST_MAX` 1.0 (×2 at full) · `p` 1.5 · **guild** droid life 4 wk / 8 wk (0 / full
 maintenance), bill `3 droid_components · 1 drive_module · 2 power_cells`, `BUILD_TICKS` 360, upkeep
-1 `droid_components` = 1 droid-week · **Syndicate** droid life 2 wk / 4 wk, flat tariff ~12–15k cr,
+1 `droid_components` = 1 droid-week · **Syndicate** droid life 2 wk / 4 wk, flat tariff ~12–15k cr (*pinned 10,000, slice 3*),
 upkeep 2 `droid_components` = 1 droid-week · `droidComponentReserve` default 0 · `drive_module` →
 sub-tier **3-2**, `droid_components` → sub-tier **3-2** (each sets the module's price band **and**
 its production timer — 30 ticks/unit, y = 336/week).
@@ -268,6 +301,12 @@ its production timer — 30 ticks/unit, y = 336/week).
    dockyard build minting one idle guild-source droid at the dockyard's system; the `checkDroids` invariant; the
    snapshot rows. **Still pending:** the Syndicate flat-tariff buy (a droid buy is refused until then), assignment
    + the licence gate + the cap, the boost, decay and the maintenance pool.)*
+   *(⤳ **Slice 3 — the Syndicate flat-tariff buy + assignment (the licence gate + the cap) — BUILT 02-11-26.** A
+   Syndicate droid bought for a flat 10,000 cr, minted at once at a held system (§3); `assignDroid` / `unassignDroid`
+   with the five ordered refusals, the assign-time-only licence gate and the source-blind cap of 20 (§1, §4); a
+   closed venture releasing its droids; `checkDroids`' assignment rules; the snapshot's droid `assignedToVentureId`
+   and the owner-only `droidComplement` (omit-when-empty). Assigned droids still do nothing to production. **Still
+   pending:** the boost, decay and the maintenance pool.)*
 2. **Client** — buy / build / assign / unassign + the boosted-rate and coverage display; renders the
    snapshot, computes no game number.
 

@@ -22,7 +22,9 @@ const {
   BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, SYNDICATE_QUEUE_MAX, assetBill,
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
-const { DROID } = require('./droids.js');
+const {
+  DROID, DROID_SOURCE_SYNDICATE, SYNDICATE_DROID_TARIFF, DROID_CAP, mintDroid, isDroidIdle, assignedDroidCount, unassign,
+} = require('./droids.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
@@ -1647,6 +1649,26 @@ function createBuyAssetFromSyndicateAction({ guildId, assetKind, destinationSyst
   };
 }
 
+// assignDroid: put one of the guild's IDLE droids to work at one of its ventures (droid engine slice 3;
+// docs/droids.md §1/§4). Instant and same-system (the establish Gate-2 shape). A Syndicate droid may go
+// only to a LICENSED venture; a guild droid to any. A venture holds at most DROID_CAP. Shape is exactly
+// `{ guildId, droidId, ventureId }`. An assigned droid does nothing to production yet (the boost is a
+// later slice).
+function createAssignDroidAction({ guildId, droidId, ventureId }) {
+  if (guildId === undefined) throw new Error('createAssignDroidAction: guildId is required');
+  if (droidId === undefined) throw new Error('createAssignDroidAction: droidId is required');
+  if (ventureId === undefined) throw new Error('createAssignDroidAction: ventureId is required');
+  return { type: 'assignDroid', guildId, droidId, ventureId };
+}
+
+// unassignDroid: return an assigned droid to idle, where it stands (droid engine slice 3; docs/droids.md
+// §1). Shape is exactly `{ guildId, droidId }` — the droid knows its venture.
+function createUnassignDroidAction({ guildId, droidId }) {
+  if (guildId === undefined) throw new Error('createUnassignDroidAction: guildId is required');
+  if (droidId === undefined) throw new Error('createUnassignDroidAction: droidId is required');
+  return { type: 'unassignDroid', guildId, droidId };
+}
+
 // cancelSyndicateCommission: withdraw a Syndicate commission that HAS NOT STARTED building
 // (docs/asset-purchase.md §"Cancelling a queued commission", RULED 26-09-26) — a queued entry, or a
 // head whose countdown has not begun. Addressed by the stable per-guild `commissionId` stamped at
@@ -2694,6 +2716,31 @@ function validateTier3Licence(state, action, venture, good) {
   }
   if (!isValidCommittedUnits(action.committedUnits, basis)) {
     return { valid: false, reason: `committedUnits must be ${bound} — got ${JSON.stringify(action.committedUnits)}` };
+  }
+  return { valid: true };
+}
+
+// validateSyndicateDroidBuy(state, guild, action) -> the gates for buying ONE droid from the Syndicate
+// (droid engine slice 3; docs/droids.md §3). Reached from the buyAssetFromSyndicate validate once the
+// kind (a droid) and the destination's shape are proven. Much shorter than an asset buy, because a
+// Syndicate droid is a flat-tariff institutional product handed over at once, not a commission:
+//   - NO build queue, so no queue cap: nothing waits on `syndicateBuilds`;
+//   - NO delivery flight, so no fuel gate and no waystation gate;
+//   - NO market price, so no quote-lock: the tariff is the same at every tick, so `issueTick` (if sent)
+//     cannot change the price and is not checked.
+// What it DOES gate, in order:
+//   1. the destination is a real system the guild HOLDS — the droid is minted straight into it, and the
+//      only place a guild can use a droid is beside one of its own ventures (assignment is same-system);
+//   2. the guild can pay the whole tariff, the shortfall named.
+function validateSyndicateDroidBuy(state, guild, action) {
+  if (!getSystem(action.destinationSystemId)) {
+    return { valid: false, reason: `system ${JSON.stringify(action.destinationSystemId)} is not a system on the seed` };
+  }
+  if (!guildHolds(state, guild.id, action.destinationSystemId)) {
+    return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.destinationSystemId)} — a Syndicate droid is handed over in a system the guild holds` };
+  }
+  if (guild.credits < SYNDICATE_DROID_TARIFF) {
+    return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay the Syndicate droid tariff of ${SYNDICATE_DROID_TARIFF} — short by ${SYNDICATE_DROID_TARIFF - guild.credits}` };
   }
   return { valid: true };
 }
@@ -3846,19 +3893,18 @@ function validateAction(state, action) {
     // but the Syndicate never sells them, so such a buy is refused LOUDLY here (not merely hidden from
     // the UI), naming the kind.
     if (typeof action.assetKind !== 'string' || !SYNDICATE_SELLABLE_KINDS.includes(action.assetKind)) {
-      // A droid is buildable but not yet sold — NOT build-only like spycraft / the Prefecture: the Syndicate's
-      // flat-tariff droid is the next droid slice (docs/droids.md §3), so its refusal says that instead.
       let buildOnlyNote = '';
-      if (action.assetKind === DROID) {
-        buildOnlyNote = ' — the Syndicate does not sell droids yet (its flat-tariff droid is a later slice, docs/droids.md §3); commission one at a dockyard';
-      } else if (typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)) {
+      if (typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)) {
         buildOnlyNote = ` — the Syndicate does not sell ${action.assetKind}, it is guild-build-only; commission it at a dockyard`;
       }
-      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, a cargo transport, or a deep_scan_array / outpost kit)${buildOnlyNote}` };
+      return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, a cargo transport, a deep_scan_array / outpost kit, or a droid)${buildOnlyNote}` };
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
     }
+    // A DROID is its own, much shorter path (droid engine slice 3, docs/droids.md §3) — see
+    // validateSyndicateDroidBuy, just above validateAction. Branched here, after the shared kind/destination-shape gates.
+    if (action.assetKind === DROID) return validateSyndicateDroidBuy(state, guild, action);
     // A REAL system to deliver to — but NO guildHolds gate (asset-purchase.md "Destination"): an
     // idle asset is guild inventory located at a system, like a dockyard's output, so it may land
     // in any system that exists. Refused (not defaulted) when the system is unknown or no
@@ -3913,6 +3959,64 @@ function validateAction(state, action) {
     // module was unpriced at the issue tick.
     const quote = checkQuote(state, Object.keys(assetBill(action.assetKind))[0], issueTick);
     if (!quote.valid) return quote;
+    return { valid: true };
+  }
+
+  if (action.type === 'assignDroid') {
+    // Assign an idle droid to a venture (droid engine slice 3; docs/droids.md §1/§4). Each refusal has its
+    // own reason, in this order, so the player learns WHICH way the request was wrong — the establish
+    // Gate-2 discipline. Checked against state-as-it-stands, so two assigns of one droid in a batch resolve
+    // first-valid-wins: the second sees it already assigned.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    // 1. OWNERSHIP — containment, both ways. A rival's droid or venture is simply not in these arrays.
+    const droid = (guild.droids || []).find((d) => d.id === action.droidId);
+    if (!droid) {
+      return { valid: false, reason: `guild ${guild.id} owns no droid ${JSON.stringify(action.droidId)}` };
+    }
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${guild.id} owns no venture ${JSON.stringify(action.ventureId)}` };
+    }
+    // 2. IDLE — a droid staffs one venture at a time. Unassign it first (this names where it is).
+    if (!isDroidIdle(droid)) {
+      return { valid: false, reason: `droid ${droid.id} is already assigned to venture ${JSON.stringify(droid.assignedToVentureId)} — unassign it first` };
+    }
+    // 3. SAME SYSTEM — assignment is instant and moves nothing (docs/droids.md §1, the asset Gate-2 shape),
+    // so the droid must already stand in the venture's system.
+    if (droid.systemId !== venture.systemId) {
+      return { valid: false, reason: `droid ${droid.id} is in system ${JSON.stringify(droid.systemId)}, but venture ${venture.id} is in ${JSON.stringify(venture.systemId)} — a droid is assigned only within its own system` };
+    }
+    // 4. THE LICENCE GATE — the payoff (docs/droids.md §4): a SYNDICATE droid staffs only a licensed venture
+    // (`venture.licence` is truthy exactly while it is licensed). A guild droid may staff any venture. This
+    // is ASSIGN-TIME ONLY: a licence that lapses later leaves an assigned Syndicate droid where it is.
+    if (droid.source === DROID_SOURCE_SYNDICATE && !venture.licence) {
+      return { valid: false, reason: `droid ${droid.id} is a Syndicate droid and venture ${venture.id} is unlicensed — a Syndicate droid may be assigned only to a licensed venture (docs/droids.md §4)` };
+    }
+    // 5. THE CAP — at most DROID_CAP assigned droids per venture, every source counted.
+    const held = assignedDroidCount(guild, venture.id);
+    if (held >= DROID_CAP) {
+      return { valid: false, reason: `venture ${venture.id} already holds ${held} droids, the cap of ${DROID_CAP} — unassign one first` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'unassignDroid') {
+    // Return an assigned droid to idle (droid engine slice 3). Refusals: no guild, not the guild's droid,
+    // not assigned (an idle droid has nothing to leave — a refused no-op, not a silent one).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const droid = (guild.droids || []).find((d) => d.id === action.droidId);
+    if (!droid) {
+      return { valid: false, reason: `guild ${guild.id} owns no droid ${JSON.stringify(action.droidId)}` };
+    }
+    if (isDroidIdle(droid)) {
+      return { valid: false, reason: `droid ${droid.id} is idle — it is assigned to no venture` };
+    }
     return { valid: true };
   }
 
@@ -5883,6 +5987,24 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'buyAssetFromSyndicate' && action.assetKind === DROID) {
+    // A SYNDICATE DROID (droid engine slice 3; docs/droids.md §3) — no commission, no flight, no fuel:
+    // the flat tariff moves and one droid is minted at once. Validate proved the system is held and the
+    // tariff affordable.
+    const guild = findGuild(next, action.guildId);
+    // CREDITS — exactly the tariff leaves the guild and the same integer lands in the Syndicate ledger, so
+    // invariant 2 (credit conservation) holds to the credit by construction, as for every other buy.
+    guild.credits -= SYNDICATE_DROID_TARIFF;
+    next.syndicate.ledger += SYNDICATE_DROID_TARIFF;
+    // THE DROID — one idle, Syndicate-source row through THE ONE droid mint (sim/droids.js), the same
+    // helper a finished dockyard build uses, so both sources number off the one `droidSerial`.
+    mintDroid(guild, DROID_SOURCE_SYNDICATE, action.destinationSystemId);
+    // No fuel or goods moved, and credits only moved guild↔ledger, so the cache is expected unchanged —
+    // refreshed anyway, as the cancel apply does, so it can never lag the state it summarises.
+    next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
   if (action.type === 'buyAssetFromSyndicate') {
     // The BUY-AN-ASSET half (docs/asset-purchase.md). TWO costs move NOW and a build order is
     // RECORDED — nothing else (the goods buy's discipline). No shipment yet, no asset yet:
@@ -5951,6 +6073,25 @@ function applyAction(state, action) {
     // asserts every invariant with no tick between. No goods moved (nothing to refresh there) and
     // `expectedCreditTotal` is untouched (credits moved guild↔ledger without changing the total).
     next.galacticSupply = computeGalacticSupply(next);
+    return next;
+  }
+
+  if (action.type === 'assignDroid') {
+    // Validate proved the droid is this guild's, idle, in the venture's system, licence-eligible and
+    // under the cap. Assignment moves nothing — no credit, good or fuel — it only records WHICH venture
+    // and WHEN (§15.2: every mutation records its tick). It still does nothing to production: the boost
+    // is a later slice.
+    const guild = findGuild(next, action.guildId);
+    const droid = guild.droids.find((d) => d.id === action.droidId);
+    droid.assignedToVentureId = action.ventureId;
+    droid.deployedAtTick = next.tick;
+    return next;
+  }
+
+  if (action.type === 'unassignDroid') {
+    // Back to idle, in the system it already stands in (assignment never moved it).
+    const guild = findGuild(next, action.guildId);
+    unassign(guild.droids.find((d) => d.id === action.droidId));
     return next;
   }
 
@@ -6689,6 +6830,8 @@ module.exports = {
   createSellToSyndicateAction,
   createBuyFromSyndicateAction,
   createBuyAssetFromSyndicateAction,
+  createAssignDroidAction,
+  createUnassignDroidAction,
   createCancelSyndicateCommissionAction,
   createAddOrderLineAction,
   createRemoveOrderLineAction,

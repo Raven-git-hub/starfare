@@ -120,7 +120,9 @@ test('assetPurchaseBaseline: the per-class transport baseline, else the flat 12M
   // At today's parts scale the baseline binds for every sellable kind, so the price IS the baseline —
   // which is exactly why a cancel refund at the baseline makes the guild whole on credits today.
   const s = queueState();
-  for (const kind of SYNDICATE_SELLABLE_KINDS) {
+  // ⤳ 02-11-26 (droid engine slice 3): every COMMISSIONED kind — the droid is sellable but a flat tariff, never
+  // queued (so never cancelled or refunded), and its price is not a baseline (droid-assignment.test.js).
+  for (const kind of SYNDICATE_SELLABLE_KINDS.filter((k) => k !== 'droid')) {
     assert.equal(priceAssetForPurchase(s, kind, s.tick), assetPurchaseBaseline(kind), `${kind}: the floor binds`);
   }
 });
