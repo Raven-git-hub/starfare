@@ -4,7 +4,7 @@
 // (docs/asset-recipes.md "Tier-4 asset bills (3→4 recipes) — FINAL"; docs/build-yard.md §1).
 // A Tier-4 recipe is NOT a `recipes.js` row: its output is an ASSET, not a stockpile good, so
 // it never runs through the 2→3 resolver. This file is the machine-readable form of the doc's
-// ten FINAL bills — `assetKind -> { module: qty }` — in three catalogs:
+// eleven FINAL bills — `assetKind -> { module: qty }` — in four catalogs:
 //
 //   - ASSET_BILLS        — miner, factory (the two ground assets).
 //   - VEHICLE_BILLS      — the four guild transports.
@@ -13,8 +13,9 @@
 //                          Prefecture is buildable but NOT sellable (build-only, 16-10-26) and
 //                          finishes as a kit too; the toll gate is still data only (see
 //                          INSTALLATION_BILLS below for why).
-//
-// The Droid row of the doc has no bill yet (design-ahead, no entity), so it is not here.
+//   - DROID_BILLS        — the droid (2.6, droid engine slice 2). Its own category, because a droid is
+//                          none of the three above: it finishes as a row in `guild.droids`
+//                          (sim/droids.js), not an asset, a vehicle or a kit.
 //
 // The buildable bills (ALL_BILLS) are read by the Dockyard's reserve-and-wait build step
 // (sim/tick.js), the commission intake (sim/actions.js) and the Syndicate purchase price.
@@ -23,6 +24,7 @@ const { MINER, FACTORY } = require('./assets.js');
 const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT, BUILDABLE_VEHICLE_KINDS,
 } = require('./vehicles.js');
+const { DROID } = require('./droids.js');
 const { isTier3Good, kitGoodFor } = require('./resources.js');
 const { quotedPrice } = require('./price-ring.js');
 
@@ -207,30 +209,55 @@ const INSTALLATION_BILLS = Object.freeze({
   [PREFECTURE]: PREFECTURE_BILL,
 });
 
+// ── THE DROID BILL (RULED 02-11-26; built in droid engine slice 2) ──────────────────────────────
+// The lean GUILD droid bill, lifted verbatim from docs/asset-recipes.md's FINAL table (the Droid row) and
+// docs/phase-1-tuning.md §Droids, `[FIRST-CUT]`. It is deliberately leaner than a full machine — no
+// separate chassis / control_module / sensor_suite — because the off-spec guild droid is mostly
+// droid_components (docs/droids.md §3).
+//
+// Its own catalog, not ASSET_BILLS / VEHICLE_BILLS / INSTALLATION_BILLS, because a droid is none of those:
+// a finished build mints one idle row in `guild.droids` (sim/tick.js mintFinishedKind → sim/droids.js
+// mintDroid). It has NO KIT_KIND_FOR_BILL row (it is not a kit; assertKitBridge only demands a row for an
+// installation), and it is NOT Syndicate-sellable this slice: the Syndicate droid is a flat tariff, not a
+// parts-priced buy, and that is the next slice (so it has no INSTALLATION_KIT_BUY_BASELINE either).
+const DROID_BILL = Object.freeze({
+  droid_components: 3,
+  drive_module: 1,
+  power_cells: 2,
+});
+
+const DROID_BILLS = Object.freeze({
+  [DROID]: DROID_BILL,
+});
+
+// The droid kinds a dockyard can build — just the one (a single droid type, no quality tiers, v1).
+const BUILDABLE_DROID_KINDS = Object.freeze([DROID]);
+
 // The installations a dockyard can build — the deep scan array, the outpost and the Prefecture, in
 // the doc's table order. The toll gate is deliberately absent (see above). The Syndicate sells only
 // the first two (SYNDICATE_SELLABLE_KINDS below).
 const BUILDABLE_INSTALLATION_KINDS = Object.freeze([DEEP_SCAN_ARRAY, OUTPOST, PREFECTURE]);
 
-// The merged view — every buildable/buyable kind's bill: ground assets, vehicles AND the buildable
-// installations. `assetBill` reads this, so one lookup answers "the bill for this kind" for every
+// The merged view — every buildable/buyable kind's bill: ground assets, vehicles, the buildable
+// installations AND (2.6) the droid. `assetBill` reads this, so one lookup answers "the bill for this kind" for every
 // family. The toll gate's bill is NOT in it: it has no build path yet.
 const ALL_BILLS = Object.freeze({
   ...ASSET_BILLS,
   ...VEHICLE_BILLS,
   ...Object.fromEntries(BUILDABLE_INSTALLATION_KINDS.map((kind) => [kind, INSTALLATION_BILLS[kind]])),
+  ...DROID_BILLS,
 });
 
 // The combined kind vocabulary a dockyard can BUILD — ground assets, then vehicles, then the
-// buildable installations. The build gate (commissionBuild, sim/actions.js), the build-queue
+// buildable installations, then (2.6) the droid. The build gate (commissionBuild, sim/actions.js), the build-queue
 // invariant, and `GET /asset-recipes` read THIS, so anything here is buildable everywhere —
 // spycraft INCLUDED (a guild builds it at its own dockyard).
 const BUILDABLE_KINDS = Object.freeze([
-  ...BUILDABLE_ASSET_KINDS, ...BUILDABLE_VEHICLE_KINDS, ...BUILDABLE_INSTALLATION_KINDS,
+  ...BUILDABLE_ASSET_KINDS, ...BUILDABLE_VEHICLE_KINDS, ...BUILDABLE_INSTALLATION_KINDS, ...BUILDABLE_DROID_KINDS,
 ]);
 
 // SYNDICATE_SELLABLE_KINDS — the kinds the Syndicate SELLS: sellable ⊂ buildable, diverging at
-// the BUILD-ONLY kinds (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable
+// the BUILD-ONLY kinds and (2.6) the droid (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable
 // (RULED 22-09-26)"). It is `BUILDABLE_KINDS` MINUS the two build-only kinds — the two ground
 // assets, the three CARGO transports (light / medium / heavy), and the two installation kits (deep
 // scan array, outpost; RULED 15-10-26, docs/asset-purchase.md §"Installation kits"): seven kinds.
@@ -239,6 +266,9 @@ const BUILDABLE_KINDS = Object.freeze([
 //   - prefecture — the deliberate throttle on rapid expansion by wealthy guilds: a guild must BUILD
 //                  its flag, there is no buy-it-and-skip path (RULED 16-10-26, docs/asset-recipes.md).
 //                  So it has no INSTALLATION_KIT_BUY_BASELINE either.
+// The DROID is also buildable and not in this list, but for a different reason: it is NOT build-only. The
+// Syndicate WILL sell droids — at a flat, market-independent tariff, not this parts-priced path — and that
+// buy is the next droid slice (docs/droids.md §3). Until then a droid buy is refused here like the two above.
 // Spelled as an explicit list (not a filter of BUILDABLE_KINDS) so it reads as the deliberate sell
 // catalog it is — the buy gate (buyAssetFromSyndicate) and the snapshot's purchase quote read THIS,
 // not BUILDABLE_KINDS, so a buy of either build-only kind is refused loudly.
@@ -283,7 +313,8 @@ function assertBillModulesAreTier3(bills) {
 }
 
 // Run it now, at require time, over EVERY catalog (ground assets, the four ship bills AND all four
-// installation bills, the toll gate's data-only one included), so a drift in ANY bill fails the whole suite loudly the
+// installation bills, the toll gate's data-only one included, and the droid's — ALL_BILLS carries it),
+// so a drift in ANY bill fails the whole suite loudly the
 // instant this file is required.
 assertBillModulesAreTier3(ALL_BILLS);
 assertBillModulesAreTier3(INSTALLATION_BILLS);
@@ -367,6 +398,8 @@ const BUILD_TICKS = Object.freeze({
   [DEEP_SCAN_ARRAY]: 10080,   // 7 days (7 × 1,440)
   [TOLL_GATE]: 8640,          // 6 days (6 × 1,440) — inert
   [PREFECTURE]: 20160,        // 14 days (14 × 1,440)
+  // The guild droid's assembly (docs/phase-1-tuning.md §Droids, RULED 02-11-26). `[FIRST-CUT]`.
+  [DROID]: 360,               // 6 hours
 });
 
 // ── BUYING A TIER-4 ASSET FROM THE SYNDICATE (2.1d) ─────────────────────────────────────────
@@ -473,6 +506,8 @@ module.exports = {
   ASSET_BILLS,
   VEHICLE_BILLS,
   INSTALLATION_BILLS,
+  DROID_BILLS,
+  DROID,
   OUTPOST,
   DEEP_SCAN_ARRAY,
   TOLL_GATE,
@@ -480,6 +515,7 @@ module.exports = {
   ALL_BILLS,
   BUILDABLE_ASSET_KINDS,
   BUILDABLE_INSTALLATION_KINDS,
+  BUILDABLE_DROID_KINDS,
   BUILDABLE_KINDS,
   SYNDICATE_SELLABLE_KINDS,
   KIT_KIND_FOR_BILL,

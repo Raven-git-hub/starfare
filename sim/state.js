@@ -115,6 +115,8 @@ function createGuild({
   syndicateCommissionSerial = 0,
   kitAssetSerial = 0,
   removedAssetHighWater = {},
+  droids = [],
+  droidSerial = 0,
   events = [],
   eventSeq = 0,
   exploration = null,
@@ -427,6 +429,18 @@ function createGuild({
     // that never had an asset deleted carries no key and serializes byte-identically to pre-fix
     // (invariant 9). A restored save that HANDS ONE IN keeps it (copied, so it never aliases the caller's).
     ...(Object.keys(removedAssetHighWater).length ? { removedAssetHighWater: { ...removedAssetHighWater } } : {}),
+    // droids: the guild's DROIDS (roadmap 2.6, droid engine slice 2; docs/droids.md §1) — one row per
+    // droid, a sibling of `assets` / `ventures` / `vehicles`. Ownership is containment (the guild whose
+    // array holds the row). This slice only MINTS them — a finished dockyard `droid` build, through
+    // `mintDroid` (sim/droids.js) — and nothing reads one yet. Deep-copied through createDroid so a
+    // caller's row can never alias into engine state. OMITTED when empty, like `assets`: a guild that has
+    // never built a droid carries no key and serializes byte-identically to pre-slice (invariant 9).
+    ...(Array.isArray(droids) && droids.length ? { droids: droids.map(createDroid) } : {}),
+    // droidSerial: the per-guild MONOTONIC droid mint counter (design.md §15.4 "Ids never repeat"), the
+    // `kitAssetSerial` pattern. Bumped at every droid mint and never decremented, so a droid's id
+    // (`asset_<guild>_droid_NN`) is never reissued — even once droids can be spent (a later slice).
+    // Guarded by `checkDroids` (sim/invariants.js). OMITTED when 0, so a droidless guild carries no key.
+    ...(droidSerial !== 0 ? { droidSerial } : {}),
     // exploration: the guild's EXPLORATION RECORD (docs/exploration-model.md §3/§7, roadmap 2.5) —
     // `{ [planetId]: { tick, nodes: { [nodeId]: tick }, slots: { [slotId]: tick } } }`, the static
     // geography it has LEARNED, learn-once / known-forever. Ids only: the archetype and node types stay
@@ -816,6 +830,25 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
     ...(stranded === undefined ? {} : { stranded: { ...stranded } }),
     ...(updatedAtTick === undefined ? {} : { updatedAtTick }),
   };
+}
+
+// Droid (OWNED, roadmap 2.6 droid engine slice 2; docs/droids.md §1) — one droid, a row in
+// `guild.droids`. Four fields this slice:
+//   - id        — `asset_<guild>_droid_NN`, from the guild's `droidSerial` (sim/droids.js);
+//   - systemId  — the system it sits in. REQUIRED, like an asset's: an idle droid has a location;
+//   - source    — 'guild' or 'syndicate' (sim/droids.js DROID_SOURCES). REQUIRED, never defaulted,
+//                 because it will decide durability, cost and upkeep — a guessed source would be a
+//                 guessed number;
+//   - condition — a fraction, 1 = new. Minted at ASSET_CONDITION_NEW and INERT until the decay slice:
+//                 nothing reads it or changes it yet.
+// `assignedToVentureId` and `deployedAtTick` are in the design (docs/droids.md §1) but belong to the
+// assignment slice, so they are deliberately NOT here yet. This function only ASSEMBLES the row;
+// `checkDroids` (sim/invariants.js) is where a bad source or condition is caught.
+function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW }) {
+  if (id === undefined) throw new Error('createDroid: id is required');
+  if (systemId === undefined) throw new Error('createDroid: systemId is required');
+  if (source === undefined) throw new Error('createDroid: source is required');
+  return { id, systemId, source, condition };
 }
 
 // Vehicle (OWNED, design.md §15.4): "id, ownerGuildId, class, speed/capacity/
@@ -1410,6 +1443,7 @@ module.exports = {
   createGuild,
   createVenture,
   createAsset,
+  createDroid,
   createVehicle,
   createOutpost,
   createDeepScanArray,

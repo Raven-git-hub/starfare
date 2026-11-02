@@ -91,6 +91,7 @@ const { volumeOf } = require('./fuel.js');
 const { manifestAmountError } = require('./manifest.js');
 const { isDockyard, producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
+const { DROID_SOURCES, droidId } = require('./droids.js');
 const {
   DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, winStartFor, windowFraction, isWindowBoundary,
 } = require('./windows.js');
@@ -1443,6 +1444,66 @@ function checkAssetOccupancy(state) {
           }
         }
       }
+    }
+  }
+  return out;
+}
+
+// checkDroids — every droid row is well-formed (roadmap 2.6, droid engine slice 2; docs/droids.md §1).
+// A droid is minted only by `mintDroid` (sim/droids.js), so each rule below is a way that mint — or a
+// hand-edited save — could leave a row the later slices (assignment, boost, decay) would misread:
+//   - `droids-is-array`: when present, `guild.droids` is an array (it is omitted when empty);
+//   - `droid-source-known`: source is one of DROID_SOURCES ('guild' / 'syndicate'). A source is not a
+//     quality tier but it WILL decide durability and upkeep, so an unknown one must not slip through;
+//   - `droid-system-present`: an idle droid has a location — a non-empty string, as an asset's is;
+//   - `droid-condition-in-range`: a finite fraction in [0, 1] (minted at 1, inert until decay);
+//   - `droid-id-names-its-owner`: the id rebuilds exactly as `asset_<this guild>_droid_NN` from its own
+//     number — the droidSerial scheme. A droid moved between guilds without a re-mint fails here;
+//   - `droid-id-unique`: no two droids of a guild share an id;
+//   - `droid-serial-valid` / `droid-serial-monotonic`: `droidSerial`, when present, is a whole number
+//     >= 1, and it is >= every live droid's number. The kit-asset-serial-monotonic rule's sibling: a live
+//     droid above the counter means the counter drifted, and the next mint could reissue an id (§15.4).
+// A pure read: it reports, it never repairs.
+function checkDroids(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    if (g.droids === undefined) {
+      // Omitted is the droidless guild. A serial with no droids is legal too (they may all be spent, later).
+    } else if (!Array.isArray(g.droids)) {
+      out.push({ rule: 'droids-is-array', where: `guild:${g.id}.droids`, detail: { droids: g.droids } });
+      continue;
+    }
+    const serial = g.droidSerial;
+    if (serial !== undefined && (!Number.isSafeInteger(serial) || serial < 1)) {
+      out.push({ rule: 'droid-serial-valid', where: `guild:${g.id}.droidSerial`, detail: { droidSerial: serial } });
+    }
+    const seen = new Set();
+    let maxNumber = 0;
+    for (const d of g.droids || []) {
+      const where = `guild:${g.id}.droid:${d && d.id}`;
+      if (!DROID_SOURCES.includes(d.source)) {
+        out.push({ rule: 'droid-source-known', where: `${where}.source`, detail: { source: d.source, known: DROID_SOURCES } });
+      }
+      if (typeof d.systemId !== 'string' || d.systemId.length === 0) {
+        out.push({ rule: 'droid-system-present', where: `${where}.systemId`, detail: { systemId: d.systemId } });
+      }
+      const cond = d.condition;
+      if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
+        out.push({ rule: 'droid-condition-in-range', where: `${where}.condition`, detail: { condition: cond, min: ASSET_CONDITION_MIN, max: ASSET_CONDITION_NEW } });
+      }
+      const n = assetNumberOf(d.id);
+      const rebuilt = n === null ? null : droidId(g.id, n);
+      if (d.id !== rebuilt) {
+        out.push({ rule: 'droid-id-names-its-owner (design.md §15.4)', where, detail: { droidId: d.id, owner: g.id, expected: rebuilt } });
+      }
+      if (seen.has(d.id)) {
+        out.push({ rule: 'droid-id-unique (design.md §15.4)', where, detail: { droidId: d.id } });
+      }
+      seen.add(d.id);
+      if (n !== null && n > maxNumber) maxNumber = n;
+    }
+    if ((serial || 0) < maxNumber) {
+      out.push({ rule: 'droid-serial-monotonic (design.md §15.4)', where: `guild:${g.id}.droidSerial`, detail: { droidSerial: serial || 0, highestLiveDroidNumber: maxNumber } });
     }
   }
   return out;
@@ -3016,6 +3077,7 @@ function checkInvariants(state, tick) {
     ...checkReputationBand(state),
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
+    ...checkDroids(state),
     ...checkVehicleIntegrity(state),
     ...checkBuildQueues(state),
     ...checkSyndicateBuildsIntegrity(state),
@@ -3047,4 +3109,4 @@ function assertInvariants(state, tick) {
   }
 }
 
-module.exports = { checkInvariants, assertInvariants };
+module.exports = { checkInvariants, assertInvariants, checkDroids };

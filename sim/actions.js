@@ -22,6 +22,7 @@ const {
   BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, MAX_QUEUE, SYNDICATE_QUEUE_MAX, assetBill,
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
+const { DROID } = require('./droids.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
@@ -3450,7 +3451,7 @@ function validateAction(state, action) {
       return { valid: false, reason: `venture ${JSON.stringify(action.ventureId)} is not a dockyard — only a dockyard can be commissioned to build (docs/build-yard.md §3)` };
     }
     if (!BUILDABLE_KINDS.includes(action.assetKind)) {
-      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets, the four guild transports or the three installation kits, docs/build-yard.md §1 / docs/asset-purchase.md §"Installation kits")` };
+      return { valid: false, reason: `assetKind ${JSON.stringify(action.assetKind)} is not buildable — a dockyard builds one of ${JSON.stringify(BUILDABLE_KINDS)} (the two ground assets, the four guild transports, the three installation kits or a droid, docs/build-yard.md §1 / docs/asset-purchase.md §"Installation kits" / docs/droids.md §3)` };
     }
     // Single-slot queue capped at MAX_QUEUE — a commission over the cap is refused loudly (§3).
     const queueLen = (venture.buildQueue || []).length;
@@ -3845,9 +3846,14 @@ function validateAction(state, action) {
     // but the Syndicate never sells them, so such a buy is refused LOUDLY here (not merely hidden from
     // the UI), naming the kind.
     if (typeof action.assetKind !== 'string' || !SYNDICATE_SELLABLE_KINDS.includes(action.assetKind)) {
-      const buildOnlyNote = typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)
-        ? ` — the Syndicate does not sell ${action.assetKind}, it is guild-build-only; commission it at a dockyard`
-        : '';
+      // A droid is buildable but not yet sold — NOT build-only like spycraft / the Prefecture: the Syndicate's
+      // flat-tariff droid is the next droid slice (docs/droids.md §3), so its refusal says that instead.
+      let buildOnlyNote = '';
+      if (action.assetKind === DROID) {
+        buildOnlyNote = ' — the Syndicate does not sell droids yet (its flat-tariff droid is a later slice, docs/droids.md §3); commission one at a dockyard';
+      } else if (typeof action.assetKind === 'string' && BUILDABLE_KINDS.includes(action.assetKind)) {
+        buildOnlyNote = ` — the Syndicate does not sell ${action.assetKind}, it is guild-build-only; commission it at a dockyard`;
+      }
       return { valid: false, reason: `${JSON.stringify(action.assetKind)} is not a Syndicate-sellable kind (miner / factory, a cargo transport, or a deep_scan_array / outpost kit)${buildOnlyNote}` };
     }
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {

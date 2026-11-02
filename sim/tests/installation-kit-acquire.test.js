@@ -106,7 +106,8 @@ test('the vocabularies: both kinds join ALL_BILLS, BUILDABLE_KINDS and SYNDICATE
   }
   assert.ok(SYNDICATE_SELLABLE_KINDS.every((k) => BUILDABLE_KINDS.includes(k)), 'sellable ⊂ buildable');
   // ⤳ 16-10-26: spycraft is no longer the ONLY build-only kind — the Prefecture is the second (docs/asset-recipes.md).
-  assert.deepEqual(BUILDABLE_KINDS.filter((k) => !SYNDICATE_SELLABLE_KINDS.includes(k)), [SPYCRAFT, 'prefecture']);
+  // ⤳ 02-11-26: the droid is unsold too — not build-only, just not sold until its flat-tariff slice (docs/droids.md §3).
+  assert.deepEqual(BUILDABLE_KINDS.filter((k) => !SYNDICATE_SELLABLE_KINDS.includes(k)), [SPYCRAFT, 'prefecture', 'droid']);
   assert.equal(TOLL_GATE in ALL_BILLS, false, 'the toll gate has no buildable bill');
   assert.equal(BUILDABLE_KINDS.includes(TOLL_GATE), false, 'the toll gate is not buildable');
   assert.equal(SYNDICATE_SELLABLE_KINDS.includes(TOLL_GATE), false, 'the toll gate is not sold');

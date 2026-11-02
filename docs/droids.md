@@ -5,8 +5,9 @@ computational contract for the droid slice. `design.md` §4 "Droids" holds the n
 headline rulings and points here; this file is the model the build reads. Numbers are
 `[FIRST-CUT]` and live in `docs/phase-1-tuning.md` §Droids — this file names them for orientation
 but that file is their source of truth. Nothing here is built yet. *(⤳ 02-11-26: except the §11 sub-tier reband —
-`drive_module` / `droid_components` → 3-2 — BUILT as **droid engine slice 1** (§12); the entity, sources, boost, decay
-and maintenance are not.)*
+`drive_module` / `droid_components` → 3-2 — BUILT as **droid engine slice 1** (§12); and the §1 entity + the guild
+dockyard build (§3's guild half), BUILT as **droid engine slice 2** (§12). The Syndicate buy, assignment, the boost,
+decay and maintenance are not.)*
 
 **Scope discipline:** 2.6 builds **droids functioning, with these numbers** — the entity, the two
 sources, the boost, decay and the maintenance pool. The **failure mechanism is NOT built here**
@@ -38,10 +39,21 @@ per-droid). Each row:
 - `systemId` — the system it sits in (an idle droid has a location, like an asset).
 - `source` — `'syndicate'` or `'guild'`. Governs durability, cost, maintenance demand and where it
   may be used (§3). **Not** a quality tier — the boost is identical regardless of source (§2).
-- `assignedToVentureId` — nullable; the venture it staffs, or null when idle.
+- `assignedToVentureId` — nullable; the venture it staffs, or null when idle. *(Not built yet — the assignment
+  slice adds it. AS-BUILT slice 2 rows carry only `id`, `systemId`, `source`, `condition`.)*
 - `condition` — a stored fraction in `(0, 1]`, decaying while deployed (§5). **Every mutation
   records its tick** (§15.2).
-- `deployedAtTick` — set on assignment; the anchor decay reads from.
+- `deployedAtTick` — set on assignment; the anchor decay reads from. *(Not built yet — the assignment slice.)*
+
+*(**⤳ AS-BUILT 02-11-26 — droid engine slice 2.** `createDroid` (`sim/state.js`) assembles
+`{ id, systemId, source, condition }`; `condition` is minted at `ASSET_CONDITION_NEW` (1) and is inert. The rows live
+in `guild.droids` and the counter in `guild.droidSerial`, both **omitted when empty / 0**, so a droidless galaxy
+serializes byte-identically (pinned against fb550f7). Ids are `asset_<guild>_droid_NN` from the serial
+(`sim/droids.js`, `nextDroidSerial` / `mintDroid` — the one droid mint). `checkDroids` (`sim/invariants.js`) halts
+on an unknown source, a missing `systemId`, a condition outside [0, 1], an id that does not rebuild from its guild
+and number, a duplicate id, or a live droid above the serial. The snapshot publishes each guild's own droids
+(`{ id, systemId, source, condition }`, omit-when-empty); a rival never sees them. Every droid is idle — nothing
+assigns one yet.)*
 
 **State is derived** (invariant 5): *deployed* iff a venture references it, *idle* otherwise.
 Ownership is containment (the guild whose array holds the row). **Assignment** is an action: an
@@ -93,7 +105,11 @@ Two sources, deliberately asymmetric. The asymmetry is set **now, aware of a fut
   **4 weeks** maintained. **Higher maintenance demand** (the "red tape": `[FIRST-CUT]` twice the
   `droid_components`/week of a guild droid). May be assigned **only to a licensed venture** (§4).
 
-Both sources mint one idle droid row, `source`-stamped, through one helper.
+Both sources mint one idle droid row, `source`-stamped, through one helper. *(⤳ AS-BUILT 02-11-26, droid engine
+slice 2: the helper is `mintDroid` (`sim/droids.js`), and the **guild** path is built — a dockyard build of kind
+`droid` from the lean bill above, `BUILD_TICKS` 360, minting through `mintFinishedKind` (`sim/tick.js`), never
+through the kit mint. The **Syndicate** path is not: a Syndicate buy of a droid is refused at the gate, naming it,
+until the flat-tariff slice.)*
 
 **Why this gap (the rationale to lock):** guild droids out-perform on cost, life and upkeep because
 they will eventually be the *risky, illicit* option; the Syndicate premium (dearer, shorter, more
@@ -183,7 +199,8 @@ Prefecture pattern), with the **golden re-pin + fresh galaxy** proven (only thos
 move — the `rebanded-goods-delta.test.js` template). *(⤳ 02-11-26, the human: these two now ship
 **apart**. The reband, with its golden re-pin + fresh galaxy, shipped alone as droid engine slice 1
 (§12). The bill lift — table row + `BUILD_TICKS` + code, still ONE commit — waits for the acquire
-slice; until then the bill stays a note in `docs/asset-recipes.md`.)*
+slice; until then the bill stays a note in `docs/asset-recipes.md`.)* *(⤳ 02-11-26: the bill lift shipped, in one
+commit, with droid engine slice 2 — the entity + the guild dockyard build (§12).)*
 
 **Out (§7):** all failure/illegality mechanics, the security role, idle-storage cost, in-place
 repair, miner/factory condition, the throttle-below rate cap, anything rival-dependent.
@@ -245,6 +262,12 @@ its production timer — 30 ticks/unit, y = 336/week).
    (`docs/phase-1-tuning.md` §Droids, "AS-BUILT 02-11-26"). Still to come in later engine slices: the
    entity, the two acquire paths (the guild one lifting the bill), assignment, the boost, decay and
    the maintenance pool. How those are split and ordered is not ruled here.)*
+   *(⤳ **Slice 2 — the droid entity + the guild dockyard build — BUILT 02-11-26.** `guild.droids` rows
+   `{ id, systemId, source, condition }` and the `droidSerial` counter (both omit-when-empty), the lean bill lifted
+   into the FINAL table + `sim/asset-recipes.js` (`DROID_BILL`, `BUILD_TICKS` 360) in one commit, and a finished
+   dockyard build minting one idle guild-source droid at the dockyard's system; the `checkDroids` invariant; the
+   snapshot rows. **Still pending:** the Syndicate flat-tariff buy (a droid buy is refused until then), assignment
+   + the licence gate + the cap, the boost, decay and the maintenance pool.)*
 2. **Client** — buy / build / assign / unassign + the boosted-rate and coverage display; renders the
    snapshot, computes no game number.
 

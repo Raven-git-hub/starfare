@@ -1,8 +1,9 @@
 'use strict';
 
-// asset-recipes-final.test.js — the ten FINAL Tier-4 bills and their assembly times
+// asset-recipes-final.test.js — the eleven FINAL Tier-4 bills and their assembly times
 // (docs/asset-recipes.md "Tier-4 asset bills (3→4 recipes) — FINAL", RULED 27-09-26; the tenth, the
-// Prefecture, RULED 16-10-26), as carried by sim/asset-recipes.js.
+// Prefecture, RULED 16-10-26; the eleventh, the Droid, RULED 02-11-26 and lifted into the table by droid
+// engine slice 2), as carried by sim/asset-recipes.js.
 //
 // The tripwires:
 //   - DOC ↔ CODE: every row of the doc's FINAL table is read from the doc itself and checked
@@ -14,6 +15,7 @@
 //   - INSTALLATIONS: the outpost and the deep scan array are buildable and sellable (⤳ 15-10-26);
 //     the Prefecture is buildable but NOT sellable — build-only (⤳ 16-10-26); the toll gate's bill is
 //     still data only, with no build or buy path.
+//   - THE DROID (2.6): buildable, finishing as a droid row (no kit), and NOT sellable this slice.
 //   - AT REST: under the new bills and the 27-09-26 Tier-3 prices, every SELLABLE kind's parts
 //     cost still sits below its purchase baseline, so a fresh galaxy's Syndicate buy prices are
 //     unchanged. (The build-only kinds have no buy price to keep.)
@@ -25,7 +27,8 @@ const path = require('node:path');
 
 const { createState } = require('../state.js');
 const {
-  ASSET_BILLS, VEHICLE_BILLS, INSTALLATION_BILLS, ALL_BILLS, OUTPOST, DEEP_SCAN_ARRAY, TOLL_GATE, PREFECTURE,
+  ASSET_BILLS, VEHICLE_BILLS, INSTALLATION_BILLS, DROID_BILLS, ALL_BILLS, OUTPOST, DEEP_SCAN_ARRAY, TOLL_GATE,
+  PREFECTURE, DROID,
   BUILD_TICKS, BUILDABLE_KINDS, SYNDICATE_SELLABLE_KINDS, INSTALLATION_KIT_BUY_BASELINE, kitKindForBill,
   assetBill, assertBillModulesAreTier3, priceAssetForPurchase, assetPurchaseBaseline,
 } = require('../asset-recipes.js');
@@ -50,6 +53,7 @@ const KIND_OF_ROW = {
   'Toll Gate': TOLL_GATE,
   Outpost: OUTPOST,
   Prefecture: PREFECTURE,
+  Droid: DROID,
 };
 
 // readFinalTable() -> [{ name, assemblyTicks, bill }] for every row of the doc's FINAL table
@@ -69,11 +73,8 @@ function readFinalTable() {
     // cells: ['', name, assembly, bill, '']
     const name = cells[1].match(/^\*\*(.+?)\*\*/)[1];
     const assembly = cells[2];
-    if (name === 'Droid') {
-      // The one row with no bill (design-ahead, no entity yet) — nothing to check.
-      assert.equal(assembly, '—', 'the Droid row has no assembly time');
-      continue;
-    }
+    // ⤳ 02-11-26 (droid engine slice 2): the Droid row used to be the one row with no bill, skipped here.
+    // It now carries its bill and assembly time, so it is read and checked like every other row.
     const time = assembly.match(/^(\d+) (h|d)$/);
     if (!time) throw new Error(`asset-recipes.md: cannot read the assembly time ${JSON.stringify(assembly)} of row ${name}`);
     const assemblyTicks = Number(time[1]) * (time[2] === 'h' ? TICKS_PER_HOUR : TICKS_PER_DAY);
@@ -95,12 +96,12 @@ function readFinalTable() {
 
 // --- 1. doc ↔ code ------------------------------------------------------------------------
 
-test('the doc\'s FINAL table has exactly the ten billed assets', () => {
+test('the doc\'s FINAL table has exactly the eleven billed assets', () => {
   const names = readFinalTable().map((r) => r.name);
   assert.deepEqual(names.sort(), Object.keys(KIND_OF_ROW).sort());
 });
 
-test('each of the ten bills matches the doc exactly — every part and every quantity', () => {
+test('each of the eleven bills matches the doc exactly — every part and every quantity', () => {
   for (const { name, bill } of readFinalTable()) {
     const kind = KIND_OF_ROW[name];
     const inCode = ALL_BILLS[kind] || INSTALLATION_BILLS[kind];
@@ -109,16 +110,17 @@ test('each of the ten bills matches the doc exactly — every part and every qua
   }
 });
 
-test('each of the ten assembly times in the doc is BUILD_TICKS', () => {
+test('each of the eleven assembly times in the doc is BUILD_TICKS', () => {
   for (const { name, assemblyTicks } of readFinalTable()) {
     assert.equal(BUILD_TICKS[KIND_OF_ROW[name]], assemblyTicks, `${name}: the doc's assembly time is BUILD_TICKS`);
   }
 });
 
-test('the code carries exactly the ten bills, split across its three catalogs', () => {
+test('the code carries exactly the eleven bills, split across its four catalogs', () => {
   assert.deepEqual(Object.keys(ASSET_BILLS).sort(), [FACTORY, MINER].sort());
   assert.deepEqual(Object.keys(VEHICLE_BILLS).sort(), [LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT].sort());
   assert.deepEqual(Object.keys(INSTALLATION_BILLS).sort(), [DEEP_SCAN_ARRAY, OUTPOST, PREFECTURE, TOLL_GATE].sort());
+  assert.deepEqual(Object.keys(DROID_BILLS), [DROID]);
   // Every quantity a positive integer (§15.2: integer goods).
   for (const bill of [...Object.values(ALL_BILLS), ...Object.values(INSTALLATION_BILLS)]) {
     for (const [module, qty] of Object.entries(bill)) {
@@ -129,12 +131,13 @@ test('the code carries exactly the ten bills, split across its three catalogs', 
 
 // --- 2. BUILD_TICKS -----------------------------------------------------------------------
 
-test('BUILD_TICKS: the four installation times are present, and the existing six did not move', () => {
+test('BUILD_TICKS: the four installation times and the droid\'s are present, and the existing six did not move', () => {
   // Typed ON PURPOSE (the ruled numbers), not derived from the doc like the test above.
   assert.equal(BUILD_TICKS[OUTPOST], 12960, 'outpost: 9 days');
   assert.equal(BUILD_TICKS[DEEP_SCAN_ARRAY], 10080, 'deep scan array: 7 days');
   assert.equal(BUILD_TICKS[TOLL_GATE], 8640, 'toll gate: 6 days');
   assert.equal(BUILD_TICKS[PREFECTURE], 20160, 'Prefecture: 14 days (RULED 16-10-26)');
+  assert.equal(BUILD_TICKS[DROID], 360, 'droid: 6 hours (RULED 02-11-26, phase-1-tuning §Droids)');
   assert.deepEqual(BUILD_TICKS, {
     [MINER]: 720,
     [FACTORY]: 960,
@@ -146,7 +149,8 @@ test('BUILD_TICKS: the four installation times are present, and the existing six
     [DEEP_SCAN_ARRAY]: 10080,
     [TOLL_GATE]: 8640,
     [PREFECTURE]: 20160,
-  }, 'ten entries: the six existing values unchanged, plus the four installations');
+    [DROID]: 360,
+  }, 'eleven entries: the six existing values unchanged, plus the four installations and the droid');
 });
 
 // --- 3. two installations are buildable, the toll gate is still data only -------------------
@@ -186,6 +190,26 @@ test('the Prefecture: buildable (its bill, finishing as one idle prefecture kit)
   assert.equal(INSTALLATION_BILLS[PREFECTURE].habitation_module, 2);
 });
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 2; docs/droids.md §3): the droid is the eleventh billed kind. A
+// dockyard builds it and it finishes as a droid ROW, not a kit. The Syndicate does not sell it YET — its
+// Syndicate droid is a flat tariff, a later slice — so it has no buy baseline and no purchase quote.
+test('the Droid: buildable from the lean bill, no kit row, NOT sellable this slice, no buy baseline', () => {
+  assert.deepEqual({ ...assetBill(DROID) }, { droid_components: 3, drive_module: 1, power_cells: 2 }, 'the ruled lean bill');
+  assert.equal(ALL_BILLS[DROID], DROID_BILLS[DROID], 'in the buildable catalog');
+  assert.equal(BUILDABLE_KINDS.includes(DROID), true, 'a dockyard builds it');
+  assert.equal(BUILDABLE_KINDS[BUILDABLE_KINDS.length - 1], DROID, 'appended last, so every earlier kind keeps its place');
+  assert.equal(kitKindForBill(DROID), null, 'a droid is not a kit');
+  assert.equal(INSTALLATION_BILLS[DROID], undefined, 'nor an installation');
+  assert.equal(SYNDICATE_SELLABLE_KINDS.includes(DROID), false, 'the Syndicate does NOT sell it this slice');
+  assert.equal(DROID in INSTALLATION_KIT_BUY_BASELINE, false, 'so it has no buy baseline (its tariff is flat, a later slice)');
+  // The load-time Tier-3 tripwire covers the droid bill: both of its 3-2 modules and power_cells are Tier 3 …
+  assert.doesNotThrow(() => assertBillModulesAreTier3(ALL_BILLS));
+  assert.doesNotThrow(() => assertBillModulesAreTier3(DROID_BILLS));
+  // … and it bites on a drifted droid bill, naming the kind and the bad part.
+  assert.throws(() => assertBillModulesAreTier3({ [DROID]: { ...DROID_BILLS[DROID], droid_component: 3 } }),
+    /bill for "droid" names "droid_component", which is not a Tier-3 module good/);
+});
+
 // --- 4. the seam with the Syndicate purchase price ------------------------------------------
 
 test('at rest, every buildable kind\'s parts cost stays below its baseline, so its buy price is unchanged', () => {
@@ -196,7 +220,9 @@ test('at rest, every buildable kind\'s parts cost stays below its baseline, so i
   // has no buy price to keep; its parts at rest (5 deep_scan_mast alone are 100M) are far above the flat floor
   // assetPurchaseBaseline would fall back to, which is why a Prefecture buy must stay refused at the gate.
   const s = createState({ guilds: [], reserve: { reserveLevel: 0 }, syndicate: { ledger: 0 } });
-  for (const kind of BUILDABLE_KINDS.filter((k) => k !== PREFECTURE)) {
+  // ⤳ 02-11-26: and not the droid either — it is not sold yet, and its Syndicate price will be a flat tariff, not
+  // this parts-priced formula (docs/droids.md §3).
+  for (const kind of BUILDABLE_KINDS.filter((k) => k !== PREFECTURE && k !== DROID)) {
     let partsCost = 0;
     for (const [module, qty] of Object.entries(ALL_BILLS[kind])) partsCost += qty * basePriceFor(module);
     assert.ok(partsCost * 0.8 < assetPurchaseBaseline(kind),
