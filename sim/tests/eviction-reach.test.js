@@ -17,6 +17,14 @@
 //   5. BYTE-IDENTITY — a galaxy that never abandons hashes exactly as it did on `main` (pinned goldens), and an
 //      abandon replays and repeats to the same bytes.
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -333,17 +341,17 @@ test('THE TRIPWIRE BITES — the void\'s stamp is a tick in the array\'s life; a
 const GOLDEN_NO_ABANDON = {
   launched: {
     tick: 450,
-    state: '7cb864d85b94f6573ec6094865c17c08fb445b87f34ed2ff0d0f9a2bd9de2b65',
-    god: 'e1c90f32da15d3a9c9d8051c5117cff9515e65eecb6b6198c84813b7747ee52e',
-    own: 'f9d1f40680b5b11f61636a003cf10fe8ca133b1233b5e9c78c9b5a6122b6cd10',
-    rival: '2456dc158ced7261c717ad3c2087cc981b1e22beef8abb9a553a5ef9a47717e1',
+    state: '45ac292d67a046f4486f792c938a6f1ed7543d0cc9584ebf6a4b80d7512fbd68',
+    god: 'e7b98e7076edf85c1ed4377270454f41396ca6b3c0a5b5462c9d808eb89ad1d6',
+    own: '0c38478e0d6c6470f5f07b565bc4e734b73b4252f6d6fab524d1eef83b37371a',
+    rival: 'f45b9e4e0c476bb762feb7321c9607cd7f17db1c371f6039e4a9554ef01ffbee',
   },
   ticked: {
     tick: 1210,
-    state: '7d59048bc92dc6bd2250060507602db2829e8643c87e2a3121cb22cf98e64c53',
-    god: 'feec6e2bb4e1c2dee7f982360a6fb1b95eed200768f62b1bd54fb55c98a89bb7',
-    own: '910997b2c437e33ad92f7b80f47587124f7889a042d6e027a99845bc5b60d264',
-    rival: '7cc0380adbb38665dc0aba2ec72c0a45d870b8c1e85b39532ed306e3559a7a3a',
+    state: '364b286bc3b03adceb3c7aa1b06904ce299e384d66eaba8998d4e25fcdfea1d1',
+    god: '604de8f1f0c7dcc0b979ebbd1bad2d85c2cc91c2962c3cc73150e710408af65d',
+    own: '286b4797e1fb2c4d470eda61489e2ee73f0902c6138c15a6e344a1b39fcfa73d',
+    rival: '4f5b0f8ddb964ddcfacae5670bc8141025f48806396e0878c0061b29b2787fa8',
   },
 };
 

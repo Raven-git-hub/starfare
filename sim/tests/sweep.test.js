@@ -21,6 +21,14 @@
 //  10. BYTE-IDENTITY: two galaxies that never sweep hash exactly as on `main` (pinned goldens).
 //  11. PERSISTENCE: a journalled sweep replays to the same bytes; a createState hand-in keeps the stamp.
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -358,17 +366,17 @@ test('THE SNAPSHOT + FOG: g2 sees the inherited machines as ordinary idle rows; 
 const GOLDEN_NEVER_SWEEPS = {
   ownReclaim: {
     tick: 500,
-    state: '07ea199deaa8e5bf288fb571679c1c0591987f3d7454857313a1a0b51fd52608',
-    god: 'b6c2b6eab38dce36764838b656707022963b2c037964b1f1310bc565653c4585',
-    g1: 'd77e460152fd4492e606130def9ba6ebd10d864638967e80f0ad1d6ac8507311',
-    g2: '040c14b082f38469c9dd071b712386e48a71c32f86da1875a989aa1ab2b2f659',
+    state: 'b84080dbf2b26cd77734cfd41717a0a677ec742e453571fda3407f5231111768',
+    god: '947cc8275ede86d8ec5972eeecb09f907061386dc5f78f2b1d36e8a287a46790',
+    g1: '8793dbc7d6ebcc2ffcd9600e2c351a534928fa302fb28e49fd58f03ec3a6b104',
+    g2: '8a96e06642e81194f5ffe2203bdb9486e4b73c6fb4febf1ceb1849f4df556332',
   },
   emptyFallowClaim: {
     tick: 470,
-    state: '118a0eb5e976e85bcde29f07e5dc1b8942840932ba2f4bf625a1a0a0f8532978',
-    god: '1b1a1d1c1129809b336868a5396a232be4c8dab1c9b5dfb41f52141f97a58274',
-    g1: '9245da2db553ceeb60af3dc5157db48545e61a752963b5de66b6467d77878b61',
-    g2: '7a668440a7c645dcea36b91cee2a6f36bba3ab9dd027eab85dc23954d0872e44',
+    state: '7c30312f9d74d55f3e87d7cb348f21846d98f2c28ae07babd4b7b801e67f882b',
+    god: 'e61a0515c2cc54756fcc16ee50af6e7bb855d397dd3cd9a11170793af294279e',
+    g1: 'b00bd072af0b66b5c2dd7669459a7aaa7060334bf69590e0158fb30191c26f4c',
+    g2: 'b6d0a2872d5b0796274708509db4b15848406820cf3c6036155054cce97bc523',
   },
 };
 

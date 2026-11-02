@@ -4,7 +4,9 @@
 computational contract for the droid slice. `design.md` §4 "Droids" holds the narrative and the
 headline rulings and points here; this file is the model the build reads. Numbers are
 `[FIRST-CUT]` and live in `docs/phase-1-tuning.md` §Droids — this file names them for orientation
-but that file is their source of truth. Nothing here is built yet.
+but that file is their source of truth. Nothing here is built yet. *(⤳ 02-11-26: except the §11 sub-tier reband —
+`drive_module` / `droid_components` → 3-2 — BUILT as **droid engine slice 1** (§12); the entity, sources, boost, decay
+and maintenance are not.)*
 
 **Scope discipline:** 2.6 builds **droids functioning, with these numbers** — the entity, the two
 sources, the boost, decay and the maintenance pool. The **failure mechanism is NOT built here**
@@ -178,7 +180,10 @@ tariff) + licence-gated assignment of Syndicate droids + the boost in `stepProdu
 the sub-tier classification of `drive_module` / `droid_components` (→ 3-2) and the lean guild bill
 lifted into `sim/asset-recipes.js` — the table row + `BUILD_TICKS` + code in ONE commit (the
 Prefecture pattern), with the **golden re-pin + fresh galaxy** proven (only those two goods' rows
-move — the `rebanded-goods-delta.test.js` template).
+move — the `rebanded-goods-delta.test.js` template). *(⤳ 02-11-26, the human: these two now ship
+**apart**. The reband, with its golden re-pin + fresh galaxy, shipped alone as droid engine slice 1
+(§12). The bill lift — table row + `BUILD_TICKS` + code, still ONE commit — waits for the acquire
+slice; until then the bill stays a note in `docs/asset-recipes.md`.)*
 
 **Out (§7):** all failure/illegality mechanics, the security role, idle-storage cost, in-place
 repair, miner/factory condition, the throttle-below rate cap, anything rival-dependent.
@@ -234,6 +239,12 @@ its production timer — 30 ticks/unit, y = 336/week).
    sub-tier classification of `drive_module` / `droid_components` and the lean droid bill lifted into
    the FINAL table + `sim/asset-recipes.js` (one commit), with the golden re-pin + fresh galaxy
    proven. All §9 tripwires. **No failure mechanism** (§7).
+   *(⤳ 02-11-26, the human: the engine is built in **several slices**, not one. **Slice 1 — the
+   Tier-3 reband — BUILT 02-11-26:** `drive_module` / `droid_components` → 3-2 (price band and
+   30-tick timer), the golden re-pin and the fresh-galaxy requirement, nothing else
+   (`docs/phase-1-tuning.md` §Droids, "AS-BUILT 02-11-26"). Still to come in later engine slices: the
+   entity, the two acquire paths (the guild one lifting the bill), assignment, the boost, decay and
+   the maintenance pool. How those are split and ordered is not ruled here.)*
 2. **Client** — buy / build / assign / unassign + the boosted-rate and coverage display; renders the
    snapshot, computes no game number.
 

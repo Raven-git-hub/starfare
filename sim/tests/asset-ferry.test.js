@@ -19,6 +19,14 @@
 //   8. PERSISTENCE + DETERMINISM: a journalled ferry replays to the same bytes; two loads racing in one batch.
 //   9. THE OPERATOR CLI against a real server process: salvage-load / salvage-unload exit 0, and 1 on a refusal.
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -432,10 +440,10 @@ test('systemId MOVES ONLY THROUGH THE FERRY — the engine writes `.systemId =` 
 // is unstripped — the window is fogged from it, so it never moved.)
 const GOLDEN_NO_SALVAGE = {
   tick: 930,
-  state: 'ffa1f9559d2a4b0814f17e27ab81e77903dda5bcfc98be0a17607965f791f166',
-  god: 'cb85db9bbbbefeb5e2cd2eb980a07855d4336044a0aa7163dfb293dfeda14c95',
-  own: '3b01bf2d3dad823ad84ed0d968fbf2807350bea8ceea80fce8517e43f6b46072',
-  rival: '729582374e4d9dc30c8479b03168438f9b4f8b5af3963ace977063c14da0bd5e',
+  state: 'd5d6c0293ac87f679d634461e2f61ed6a8e826882a9b80fcc0dc3d11976efcec',
+  god: '9fbd34a455db3daa16e268325e70c08103c636311057b31de7144761253e1fb4',
+  own: '944934801e0345a910b2ad1aa7e8b4a6bfe77c50c9c972d52459f9cf8725493a',
+  rival: '6a31a2179b6d2d4ca7a36a2e702190bcbcd7651701af2ec19e8619773461bf79',
 };
 
 test('BYTE-IDENTICAL: a galaxy that strands machines but never salvages serializes exactly as it did before this slice (state and every view) — bar the salvage window, which is the only delta', () => {

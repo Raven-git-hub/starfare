@@ -45,6 +45,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -121,11 +129,11 @@ function ok(state, actions) {
 // bytes GET /snapshot serves). If one of these moves, the operator lens changed: that is never a
 // side effect of fog, so find out why before re-pinning.
 const GODS_EYE_ON_MAIN = {
-  zero: '9e61bfaeb8bf9280811c4d19a9830b1b3e8773ea3c955b3cfc9fec7749fdc8ce',
-  founded: '4bdb000f53210a82ee59e3359c8f7feed6fd7411b7129c7d22109c7b47d8443d',
-  rivalVentures: '42bf0d8fe9ba642171dd093a5582cbcc30c007fe37bad03f154e7a61779dae5b',
-  withShipments: '2369e5477b1f1a23daa591de520902d193f38cb9d43ce92f0d3a609becd04c6c',
-  afterClosure: 'c792a9a523a3725a24e834ad13d32acba8769d70d8b771885a7d8d90ed366461',
+  zero: '0e20f585e9405efdf85afa882c9ad0a82163e1267ecadc2f2784d9d368d46f1b',
+  founded: '6e400a2c53705bdbf9d93ec65a769fe820f10531ef278b2b4007f908070a767b',
+  rivalVentures: '7319859995ba7445ec376e78ba454616668bb3c4078dbe68de4e402047443c00',
+  withShipments: '1efdb36513ea418c1a5435ae231ee8c6523bc49bb9ccfdaa4b8705aaec24df66',
+  afterClosure: '4db0f5b5699bbd6a7db312264ca5ff9d1a12ce24924b6921e84c473476daad37',
 };
 
 // The script those hashes came from: a bot rival with a licensed and an unlicensed mine, two buys,

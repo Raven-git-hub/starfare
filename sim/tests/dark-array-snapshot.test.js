@@ -13,6 +13,14 @@
 //   4. BYTE-IDENTITY — a galaxy with no dark array serves exactly `main`'s bytes (pinned at 1c28fe4); one with a dark
 //      array serves `main`'s bytes once its `dark` keys are taken out, so the field is the only byte this slice moves.
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -146,31 +154,31 @@ function digest(s, strip) {
 const ON_MAIN = {
   'outpost, standing': {
     tick: 0,
-    state: 'cb07a79eae185fc0c89f0a9af3df3be9d54c51d014f6cec580d3a44723024f5d',
-    god: 'c9103693d0d9514c4eaa8cd9384ec7695b7b81a873baee6b1ffd2d64fa5c88f1',
-    g1: 'cfc6fe543016c0ea2082f0526d40310aad0f6ae7b1eb020544080796fdfa6124',
-    g2: '2ca1ebc85021c50eb4d1f1aa50d3f947cc68a199d8093fb819a61eead54b134f',
+    state: 'b48c215f5d98335988fc2fd19c85d35771a645c13dd51c21e974b27be3533435',
+    god: '33e2c3573f6fdd9a177d1c548b637dc1e821d79d61a8f12ba6f0b51aafcdfc7b',
+    g1: 'fda927de600362483ed324cc8ad22bbadcaf963a9718d0959e962e3c5f65e0a2',
+    g2: 'ab19da9b6c6182bb0719e847b54bdc76cd9a7bd9b415e0525f68055a27f90326',
   },
   'reach, re-planted': {
     tick: 450,
-    state: '3c7116bf153171a01db3e07a6adc6a86160d3f7688dfe2b0ff5350ac9f7d7bd9',
-    god: '59002c427621d6e877849f0579dd68d74d989150176ea23fa550fd33e8e02a32',
-    g1: '22c2a42bb82528364cf6282a93b3335c33fca2e59d7a20e89b8851e59aed968e',
-    g2: '3c9a9966a4d34a76b1cb1742253451c66ccbdca1687fac63a633d9e8829c9bdc',
+    state: '6e9d04a121a95d46620f674920209da1f71fc78b9fbbd5dd94395ffe2420c48a',
+    god: '183e1c3f3f1512f0adca5876bf933288ec448dbe8fecc58a41319027db273cf2',
+    g1: '4a6ddf9882fc8f1a4cb414a2e23027bf7b2a9ed21b27c5dc73e9d3da11efa840',
+    g2: '0e17558ff053d493fd0a2b20e5c1617d79c32fab67aa107bba9c653ad112b087',
   },
   'reach, abandoned': {
     tick: 450,
-    state: '8b2d47c67b0fe9a0480fcd416f7fa56f817a8a6337e1efd5dc8a18b434449ef0',
-    god: '5af2b151a5a2e3f907327a68a2027b652983b5933db9392cc5fa4f20c3791033',
-    g1: '7ce633b5c08105f40d11e3e833074be490e2b1b67382f392170e5338f9df246c',
-    g2: '10e9ac9b9dfee4f0c08c88147ee3d268fa9314dd3838ec90876f846b30299d0b',
+    state: '0225f6b37f829d02bf92e4265a202bd47e60dab664e0b71020831430df834cbb',
+    god: '3d0f06c70b966bab041a13838a4f51d541218d76d7468da4e504c30a29928776',
+    g1: '0272e512755555b1ef72aab04ed9a97c43a88ad7a14bda7a1c3eb8bad10050bd',
+    g2: 'b4ba3e9dcff2f8cce5de459ded7bea2397c3c6c4922328f16b0afb62ecab519c',
   },
   'outpost, removed': {
     tick: 0,
-    state: 'bec373f81e49fe74039e6aa0c701fb8f9841cd1ce5d7d5f0475d913599cbaa3b',
-    god: '5f7e03e7906bb1f04a57ddc5712ae955b96b3c406d9d04dc588b7b12592c63ba',
-    g1: 'e95481b2d671358ba0f9fc4ab23ea0998184dbffa85f75a96cd739a31ce4269a',
-    g2: 'c75722cffd2399bd9245bb0e98ddce1db5ab0654c5486ac403602a8e6b438d96',
+    state: 'ea0e680ad950d829e0815c28cbf28757030eb758a6132814e96c730daa29f7f9',
+    god: '6d50236748cae7d3b5c37a8f4068363eb3b1b0acff338ca5745a97bff4e1a229',
+    g1: 'e6fa48823f5f56d7eca6900b39b3af44524d1e81b9717bce57aa8f2a9e635235',
+    g2: 'ecc9e53f287ed5cfe429855d2d2950784e9a87e2e9f3501d4eea1acd7fd30faf',
   },
 };
 

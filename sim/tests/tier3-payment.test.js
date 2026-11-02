@@ -31,6 +31,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -437,8 +445,8 @@ test('determinism: a galaxy of committed timed factories (carries, equity, a sta
 // (2.33 → 2). Checked against HEAD c99005b snapshot by snapshot: with those three goods' rows
 // removed, every snapshot is byte-identical, and every other hash here did not move.
 // Before: ba0913ac…eb3a.
-const ISO_ONE_STATE = '7d67ccda3970ccedd606dac7b367cadaf62669e2b6052b6983184d1c3868557b';
-const ISO_ONE_SNAPSHOTS = '2d5db51d9eb449a69705966dbdedd23b45b0ba36c1004de1677ac26a697392a9';
+const ISO_ONE_STATE = '8437df7f724ab8c2af352e16c828c59e7413ef8bb47a6aef8d1bb942223ea8b2';
+const ISO_ONE_SNAPSHOTS = '9599785e13063423b631c4f9869701e571d5e3e27e022b68d2f32fd1f4deea28';
 // ⤳ RE-PINNED 28-09-26 by the Tier-3 whole-week retime, and for a different reason: ISO_TWO_T12_GUILD
 // too. TWO's t3 guild commits a heavy engine at x = 3, and its y went 3.5 → 4, so the ratio x / y went
 // 6/7 → 3/4 and t3's signing bump fell (its heavy venture's RP 514 → 450). That lowers t3's issuance

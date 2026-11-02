@@ -25,6 +25,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -60,7 +68,7 @@ const SYS = 'sysA';
 const WEEK = 10080;   // docs/tier3-timed-production.md: "exactly one 7-day window (10,080 ticks)"
 const DAY = 1440;     // docs/cycle-and-calendar.md: the ruled day
 
-// The 23 timed Tier-3 goods (21 until 16-10-26), and `y` typed from the doc's formula (not read off the code).
+// The 25 timed Tier-3 goods — every one (21 until 16-10-26, 23 until 02-11-26), and `y` typed from the doc's formula (not read off the code).
 const TIMED = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
 const yOf = (good) => WEEK / ticksPerUnitFor(good);
 
@@ -421,7 +429,7 @@ test('(c) TRIPWIRE: the Tier-3 re-offer reads standing for the Strong discount O
     { committedOutputPct: 3 / 4, basicFee: 8000000, discountedFee: 6500000, feeDiscountApplied: false }, 'one RP short of Strong: full fee');
 });
 
-test('(c) every legal x survives the re-lock unchanged — all 23 timed goods, every x from 0 to floor(y), at every standing', () => {
+test('(c) every legal x survives the re-lock unchanged — all 25 timed goods, every x from 0 to floor(y), at every standing', () => {
   let checked = 0;
   for (const good of TIMED) {
     const basis = licenceBasisForGood(good, DAY);
@@ -441,7 +449,9 @@ test('(c) every legal x survives the re-lock unchanged — all 23 timed goods, e
   // stealth module (3 → 3) and deep scan mast (2 → 2) kept theirs.)
   // (⤳ 16-10-26, the Prefecture slice: 5,140 → 5,646. claim_beacon (3-2, y = 336) and habitation_module (3-3,
   // y = 168) became timed, adding 337 + 169 = 506 pairs.)
-  assert.equal(checked, 5646, 'every (good, x) pair');
+  // (⤳ 02-11-26, droid engine slice 1: 5,646 → 6,320. drive_module and droid_components (both 3-2, y = 336)
+  // became timed, adding 337 + 337 = 674 pairs.)
+  assert.equal(checked, 6320, 'every (good, x) pair');
 });
 
 // --- 4. (d) TIER 1/2 UNCHANGED -----------------------------------------------------------------
@@ -502,8 +512,8 @@ test('(d) HEADLINE: a Tier-1/2 licence still commits a percentage, picks a 7–4
 // 4,666,667 → 4,000,000 (2.33 → 2). Checked against HEAD c99005b snapshot by snapshot: with those
 // three goods' rows removed, every snapshot is byte-identical, and every other hash here did not
 // move. Before: 240ee2aa…b6af6.
-const ISO_STATE_EVERY_TICK = 'fd341bc56affb17a7aff00e02e83656f6902f05b5972758d9114f0673771049c';
-const ISO_SNAPSHOTS_AND_RESULTS = '9348cbaf7653de613f5ade6458d4c3191629e5b1e239427e08b39c1f4e81ce30';
+const ISO_STATE_EVERY_TICK = 'b09fe804fe29fa8cedfeec41c78126a233019bc8540e57c51ce5fbebcd1d59bd';
+const ISO_SNAPSHOTS_AND_RESULTS = '3b8f0e870e2312d88de3e75af0d3df59c27f0dd6bd03af35b09a32d9822a95d7';
 // The snapshot hash is taken WITHOUT `tier3Contract`, the additive top-level key the Tier-3
 // Establish-popup slice added (sim/snapshot.js). That key is the same rules-derived map in every
 // snapshot, and it did not exist when the pinned hash was computed on the pre-slice engine. Stripping

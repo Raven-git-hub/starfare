@@ -30,6 +30,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -364,8 +372,8 @@ test('determinism: the same committed Tier-3 galaxy run twice gives the same byt
 // `reord` turns Syndicate Top-Up on, so the rescue no longer fires and their short days breach
 // again. The run is once more the pre-rescue engine's to the byte: the two hashes are the original
 // ones above, unchanged. Slice A's were 103ed0e1…b195 and bd81549e…48a1.
-const ISO_FINAL = '03d016f9876ae166044738e84225f64fe0586f2a51a6b84a2364532bfaf60394';
-const ISO_EVERY_TICK = 'c5b6f34a70493d5f2b4da346ecc05a63de45d7151b40f84036cdd5b6ef83e063';
+const ISO_FINAL = '4534d3fc79a69368589b6607db624fea9405fc42974f7017d820d9c1cc37f212';
+const ISO_EVERY_TICK = 'db67fc63f0ebeb83084fe244df880a1ba482004f59cd386bceebbe88460961eb';
 
 function isolationRun() {
   const crypto = require('node:crypto');

@@ -23,6 +23,14 @@
 //      none; a galaxy that evicts nothing crosses a boundary byte-identical to `main`.
 //   7. THE INVARIANTS BITE (checkSalvageReminders): each rule red on a forced row, and the harness halts on it.
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -368,10 +376,10 @@ test('THE VIEW: the owner sees its reminders (with their calendar day, and count
 // galaxy that evicts nothing crosses a boundary without a byte of difference — state and every view.
 const GOLDEN_NEVER_EVICTS = {
   tick: 1440,
-  state: 'b7a0097053e02aeb2ac8bdd52052ced6e4bd40dd9b4df3fe7af0fc3ab121bf09',
-  god: '95201fd494ea28f598e9c7d93b2a3f81fde1d0d42e610d7229b8ee08fc19399b',
-  g1: '27f360831f1a188f9a01886e9bdb252f1717c8a2b7674ddaa6b505eb6e9a931a',
-  g2: 'c09f56ae1c927268bff7fdc8846b250c41ceb72279c2c5f3e2f09404af3fdabe',
+  state: 'f27a685806a8fe349c58c8441f15ad6f56b2746d00fb0edcbc6958619b42cd9e',
+  god: 'f61b673cfb6a1c8b991ebc0e4d76d95b817379ea64d2e418208be0653e6a844c',
+  g1: '0e484bb98c4b30181a6cb79f4361a96ee7f19538d3a3279646b97d6669619920',
+  g2: 'c504f39037e324232edb2118c80720dccc54332e3903255cfc3e0bfbfbd686a8',
 };
 
 test('BYTE-IDENTITY: a galaxy that evicts nothing crosses midnight with no reminder, hashing exactly as it did on main', () => {

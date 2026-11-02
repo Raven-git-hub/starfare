@@ -176,13 +176,13 @@ const TICKS_PER_UNIT = Object.freeze({
 // production resolver, the price engine's capacity and the invariants all ask it, so they can
 // never disagree about a good (a good is all-timed or all-continuous — never both).
 //
-// NULL for the two UNCLASSIFIED modules (drive_module, droid_components). The ruling makes every
-// Tier-3 good timed, but their timer depends on the sub-tier they have not been given yet (the
-// same open question that keeps them on the old uniform price band). Picking one would invent a
-// number, so they stay CONTINUOUS — their status quo — until their sub-tier is ruled; then they
-// become timed with no code change. This is on docs/roadmap.md's decision checklist. (⤳ 16-10-26:
-// claim_beacon and habitation_module were the other two. The Prefecture bill gave them sub-tiers
-// 3-2 and 3-3, so — with no code change, as promised — they are timed now: 30 and 60 ticks/unit.)
+// NULL for an UNCLASSIFIED module — and since 02-11-26 there is none, so every Tier-3 good is
+// timed, as ruled. The class was for modules no bill used yet: their timer depends on a sub-tier
+// they had not been given, so picking one would have invented a number, and they stayed
+// CONTINUOUS (their status quo) until it was ruled; then each became timed with no code change.
+// claim_beacon and habitation_module went 16-10-26 (the Prefecture bill: 3-2 and 3-3, 30 and 60
+// ticks/unit); drive_module and droid_components went 02-11-26 (the droid ruling: both 3-2, 30
+// ticks/unit, 336 a week).
 function ticksPerUnitFor(good) {
   if (!Object.prototype.hasOwnProperty.call(TIER3_PRICE_CLASS, good)) return null; // not Tier 3
   const priceClass = TIER3_PRICE_CLASS[good];

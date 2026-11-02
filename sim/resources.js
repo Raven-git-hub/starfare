@@ -134,8 +134,8 @@ const TIER3_GOODS = Object.freeze([
 //
 // Every Tier-3 module -> its class: one of the three sub-tiers ('3-1' bulk parts, '3-2'
 // standard gear, '3-3' complex systems), SPECIALIST (a part priced to the one asset it
-// defines), or UNCLASSIFIED (no asset bill uses it yet). `tierOf` only knows "tier 3"; this is
-// the finer answer.
+// defines), or UNCLASSIFIED (no asset bill uses it yet — no good has been in it since 02-11-26,
+// see the end of the table). `tierOf` only knows "tier 3"; this is the finer answer.
 //
 // TWO READERS, and that is why it lives here in the vocabulary rather than in one of them:
 //   - the PRICE BAND (sim/prices.js `bandFor`) — a sub-tier's band, or a specialist's own row;
@@ -148,7 +148,9 @@ const TIER3_GOODS = Object.freeze([
 // shared answer had to sit below both. prices.js re-exports it, so every existing import of it
 // still works. The name keeps its Slice-1 spelling for the same reason.
 
-// The two classes that are not a sub-tier. Spelled once, here.
+// The two classes that are not a sub-tier. Spelled once, here. UNCLASSIFIED is kept, though no
+// good uses it now, because the price band and timer code still read it (and tests drive it with
+// a hand-built classifier). Whether to retire it is on docs/roadmap.md's decision checklist.
 const SPECIALIST = 'specialist';
 const UNCLASSIFIED = 'unclassified';
 
@@ -163,6 +165,8 @@ const TIER3_PRICE_CLASS = Object.freeze({
   // 3-2 — standard gear
   claim_beacon: '3-2',          // RULED 16-10-26 — a signalling device, by analogy to comms_array (the Prefecture bill)
   comms_array: '3-2',
+  drive_module: '3-2',          // RULED 02-11-26 — by analogy to comms_array (the droid bill + maintenance, docs/droids.md)
+  droid_components: '3-2',      // RULED 02-11-26 — by analogy to comms_array (the droid bill + maintenance, docs/droids.md)
   photovoltaic_array: '3-2',
   reactor_housing: '3-2',
   small_reactor_engine: '3-2',
@@ -182,11 +186,11 @@ const TIER3_PRICE_CLASS = Object.freeze({
   interdiction_projector: SPECIALIST,
   medium_reactor_engine: SPECIALIST,
   stealth_module: SPECIALIST,
-  // unclassified — no asset uses them yet (see UNCLASSIFIED_TIER3_BAND in prices.js). claim_beacon and
-  // habitation_module left this group 16-10-26, when the Prefecture bill became their first consumer
-  // (design.md §19 #68; docs/phase-1-tuning.md). The Droid's two parts stay: the Droid is design-ahead.
-  drive_module: UNCLASSIFIED,
-  droid_components: UNCLASSIFIED,
+  // unclassified — NONE. This group held the modules no asset bill used yet (see UNCLASSIFIED_TIER3_BAND
+  // in prices.js). claim_beacon and habitation_module left it 16-10-26 (the Prefecture bill), and the
+  // Droid's two parts, drive_module and droid_components, left it 02-11-26 (the droid ruling,
+  // docs/phase-1-tuning.md §Droids) — so every Tier-3 good now has a sub-tier or a specialist row, and
+  // so a production timer. A test pins the group EMPTY: a new module may not be parked here.
 });
 
 // The goods that may key a guild stockpile and appear as a galactic-supply row:

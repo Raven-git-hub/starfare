@@ -133,15 +133,19 @@ const SPECIALIST_BANDS = Object.freeze({
   interdiction_projector: Object.freeze({ base: 20_000_000, floor: 4_000_000, ceiling: 2_000_000_000 }),   // toll gate
 });
 
-// The band of the two UNCLASSIFIED modules — drive_module, droid_components (claim_beacon and
-// habitation_module left it 16-10-26 for sub-tiers 3-2 and 3-3, when the Prefecture bill placed
-// them). No asset bill uses these two yet, and the ruling says they "default to a
-// sub-tier when first placed in a bill" WITHOUT saying which one. Picking a sub-tier here
-// would be inventing their price, and leaving them with no band would crash every galaxy
-// (they are priced goods, so a fresh galaxy seeds them). So they keep their STATUS QUO: the
-// uniform Tier-3 band every module had before this ruling. These are not new numbers — the
-// same move DEUTERIUM_BAND makes. Choosing their sub-tier is on the roadmap's decision
-// checklist.
+// The band of an UNCLASSIFIED module — and NO real good is unclassified now (02-11-26).
+//
+// It was built (27-09-26) for four modules no asset bill used yet: the ruling said they "default
+// to a sub-tier when first placed in a bill" WITHOUT saying which one. Picking a sub-tier would
+// have invented their price, and leaving them with no band would crash every galaxy (they are
+// priced goods, so a fresh galaxy seeds them). So they kept their STATUS QUO: the uniform Tier-3
+// band every module had before the sub-tiers. Not new numbers — the same move DEUTERIUM_BAND makes.
+// They have all been placed since: claim_beacon and habitation_module 16-10-26 (the Prefecture
+// bill), drive_module and droid_components 02-11-26 (the droid ruling, both → 3-2).
+//
+// It is kept, holding no good, because TIER3_PRICE_CLASS still names the UNCLASSIFIED class.
+// Retiring both is on docs/roadmap.md's decision checklist. A Tier-3 good with NO band still
+// throws — at load and in bandFor (assertTier3Classified, below).
 const UNCLASSIFIED_TIER3_BAND = Object.freeze({ base: 100, floor: 20, ceiling: 100_000 });
 
 // THE TIER-3 CLASSIFIER — `TIER3_PRICE_CLASS` (every Tier-3 module -> '3-1', '3-2', '3-3',

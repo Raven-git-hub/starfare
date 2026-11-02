@@ -38,6 +38,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -441,17 +449,17 @@ function isolationRun(switchOn) {
 // by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
 // other hash here did not move. Before: 556532c4…cd12c and b755a87f…1264.
 const ISO_ON_IS_THE_OLD_RESCUE = {
-  final: '293d8136627f41d765da7c7d676af323d93ab2e63d2c55ab82ff7909e82eb442',
-  everyTick: '3ae2c56c4d1627240a73da53a374fe85f18514a49ea57072850b95290bb640c3',
+  final: '42515b1625e29019b41453ac5692ca7e3673b8465a8442369233330506d8832b',
+  everyTick: '71113b07b91380120a9bebabb56c8a0b1ad9607ab20f82655d6da2e43857dbeb',
   previews: 'da5c423a39ec00cfb992e0f4d36579aeff84f9ac454d3df8b3652e85d8528aad',
-  snapshots: '5b0a253c02bd024a4576a7f04235f1ee318a14f03e9e338c900c87e1f38f9b3e',
+  snapshots: 'a06e24333d3173ee8dc1ae915b501db983b0ba8293fdca0a3de854ea5888de84',
   counts: { rescued: 104752, met: 21, breach: 2 },
 };
 const ISO_OFF_IS_NO_RESCUE = {
-  final: '0f5e2d3a55252dc17f756dced6b05f3ab03586483125c27a72eaafe97f565a5e',
-  everyTick: '5f2df9c11b52bd5115285cea214ba8ba0da7045938ebd9f36c7865104a98ab9b',
+  final: '3b3914754e3fd043f11001ba0497f9e820afad8a1686855ae1f2357832079259',
+  everyTick: '35739cd1f3db4675c01deccbb119b6a8d04213342ea7432b016c6de59732a712',
   previews: 'ce91994da972a1ae281ed8df18c7053bb5bb43e5b2417b35fddd3fbd9c04222c',
-  snapshots: '772dad8766a448763129534a52cbc1135c818b9f29cc1d284dfb7e063ce41d2d',
+  snapshots: '07a6e8693e578b1f576fe134c6664f63af803459ae3b16e00a50ec3c1fb2fbbd',
   counts: { rescued: 0, met: 0, breach: 23 },
 };
 
