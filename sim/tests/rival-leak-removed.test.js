@@ -41,6 +41,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -77,77 +85,77 @@ const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 // god's-eye lens, and each guild's view with `withoutRivalGround` applied (JSON.stringify(buildSnapshot)).
 const ON_MAIN = {
   founded: {
-    state: 'a6a22d60f68a9bdf59273df6ac831327fbe0317c87474328c1131a4b69bd1168',
-    strippedState: 'a6a22d60f68a9bdf59273df6ac831327fbe0317c87474328c1131a4b69bd1168',
-    godsEye: 'b1bd00dafa58a4f6e71fc24a025930a8d846f6c5d7fe74906a72d6c088006659',
+    state: 'da04ae04b6a8320e3abef64fb2e54df38024b0140814072a56866629d30afc8c',
+    strippedState: 'da04ae04b6a8320e3abef64fb2e54df38024b0140814072a56866629d30afc8c',
+    godsEye: 'b20f584c39a20396bc02fb3264455910a4cd24085ecd4d6242d7a80245156fab',
     strippedView: {
-      [A]: '96f28fd9153c186220994f340fc152bd7107f2399b4f342bc2e14b512792871d',
-      [B]: '3e9fc7db7f7b697ebf64e6129fde9302a184ca1720f256d6ea485c57ce62d80e',
+      [A]: '450ec241cdbfa7d5921b0d042189e61ab62125b29891e73c095c9e3e7bc856c3',
+      [B]: 'b34dc5ff4d94430c2bb5959b66f652449ea4bd1900607efa0c3f8b2b18be0eae',
     },
   },
   licensed: {
-    state: 'f3420df7f7c2866daa9f46d1c2bec8c9354eaf88b9b46cf4124dff9fb04ce642',
-    strippedState: '0d6777073976230aefa3971a41bdc657a9274d561ce5a3aaace28001114290b7',
-    godsEye: '637bbe74d4278495797a8f3640503323e5b7c3a0e9deb10c02fa8375f409718d',
+    state: 'ed3b38028b9375c14eb78000a352c6a73503ca34f5cfd267c69c2464aba5e523',
+    strippedState: '65e94a4665ea321c1b60e24958282f0d7c8988bea94236b1a4338002306d1fed',
+    godsEye: '7b380db33ba6974fd471b5764faf2d29456a5ee3bbd703c45ae229297373796c',
     strippedView: {
-      [A]: 'da407aaddcc42aab5fa82ee6c98d5441ceea24f523686903c18c448b9f9b5515',
-      [B]: '60d9825f772e8f7a3ebf24fcf5193a8591c98a36c03b376890704978c9024a3c',
+      [A]: '0b75590c4ca91f200a11b6f017793792ca871ddb374f60915893d1d1af33cefb',
+      [B]: '98f8126b24cba76c6904005a820c5ce00dc1986b84c7fe80c856b9247553b13b',
     },
   },
   closed: {
-    state: '7a38792fb2c8d0e6ac37dc6a08df1cf089a37e2292cb2d4679ac40685edd2718',
-    strippedState: '20be450b3271e778167456e9b65dc904111a952e305ab70251097e4d3e98f794',
-    godsEye: '637d7260d995ed57f272987d483d08c0f0a294749039fd42f6b212df43f0754b',
+    state: '55c1dddab2097e5ac8c7b030737dbbfcd0558584edfe5ff03005e83a044b4443',
+    strippedState: 'd5a831d8760d56fa1aacbe11a3a1da58b4c76e2ab0366cf371ce2f9f7e4af80e',
+    godsEye: '9e4ff071ea8d34be5d314374c3b57df19ba6274844b060ad454417a03745d9fe',
     strippedView: {
-      [A]: '5b2ec2dbb410783a4c8c1ee2ff7e95b8c4a14b8c7a1298867788ff6bd5d4e11c',
-      [B]: 'e1bddbe5d9ace326cc0fa0e0b28c7296f3e720c1808d5b7b554b2d13b63cd7e0',
+      [A]: 'ba8181f87f479cdf96d2902620ffdd2a5a597dc281cd07c093991308129bad4d',
+      [B]: '69346a07491679b33d9f922651407e0169a34a34c764ffbdf3e39e3dab7fadd3',
     },
   },
 };
 const SOLO_ON_MAIN = {
-  state: '024c792061ec079048cc4dfadb2c7d1204df207c7ea9d2d0bcc1dd73dd0f4a4f',
-  godsEye: '6a9d145924522e29bf1a33f722b232997e468ee262671e9fee4a42ad70f25abe',
-  view: '64072254112eb4aea21ed9305a9048231f7c5aa215ff6e0f1d0ca2edd129e0ce',
+  state: '5594ca3356c23d7fc53c100c18e3d70784fcce360f47561d042384892341f97d',
+  godsEye: 'f4737bfbcf8c9a2657877e9bc5039a5803d6b15c2ab8ab111064fecc8b6ea02a',
+  view: '46390e70553bffaa030869371d8a10b5d1e57a85eef2a64777475bd7641962eb',
 };
 
 // The full per-guild views after the cleanup, recorded 08-10-26. Each shows the rival's home at full L2.
 // ⤳ 09-10-26: now the views with `known`'s slots stripped (the full views are WITH_SLOTS, below).
 const VIEWS_AFTER = {
   founded: {
-    [A]: '6a09441a6f893d5c62a6b2d66086461ee0230d8c49a53f46346282fb88ee7c38',
-    [B]: 'd92eaa4f5335402b58d7f6505e75fae440998dfcb88252751bef758fd69030a1',
+    [A]: 'fd5a6f2a56c3077e993603d7e7ff0bf101d0cea04420923d2026be6a1551f19a',
+    [B]: '366f9c2a2db703a61e5f4b242a5fdd5a56478512f73dd09cae39af3e37eca943',
   },
   licensed: {
-    [A]: 'a5f6be5be2ae750a2da243da5e7ef61f6da1761b4d96e228e7c210d017bdecad',
-    [B]: '8bba7fd8667afee2f723da84d7c3ed04f4220f9586bb793a7aff3a34cbd337c8',
+    [A]: '4bc3c874ff47a7ebe590cfcb2287fc3afcd65d4e3e4fb8f169dd96377c51bd5e',
+    [B]: 'eb99c723513cf77a74ed54537d2303d99af64a8d006d0ad590cdd255171f0d69',
   },
   closed: {
-    [A]: 'b0f4e10c51fbadd3758dda6819fa0f2e1026eead249b0aac307bee9c451f19ca',
-    [B]: 'f73275cb34feac833201e130f44aaa0ace794eb15c72ac70ef0c021b9b53a36c',
+    [A]: '7a1a5ef253664205e24c39d29891013b270a0c858af3f262764d0c0bbf88d576',
+    [B]: 'f9957f00e08b878b175bab62887ba08a1c7e6364b88dee79a23270a99f8b6bdf',
   },
 };
 
 // After the settlement-surface slice, recorded 09-10-26: the full states and per-guild views of the same steps.
 const WITH_SLOTS = {
   founded: {
-    state: '85e9d89951e45de79b5377bc608039eba69374335a605b91a474ad269b150496',
-    [A]: '53f437946836efb9f5e6dd53b5f37be1178fb4fe8c2d45870a32b5558930aa79',
-    [B]: '58ce4ce68266ee1872de1563c95000db8c89d77e3e1284b30c22b5b62fe5d407',
+    state: '17bd81c6b49fe866b6dc5a0ef537bdc18cfe97f3434228a565e771b74d2b9907',
+    [A]: '90c22f1284cb80229d466650ee887f13e6f7bcd06400ac50e3396f72f7bcdd5d',
+    [B]: 'c609f3da53136fc361fa8291754f8bc465148172baed5f29734095a496aa6038',
   },
   licensed: {
-    state: '6187e12c938b267a703a11dac5f0775365bf08f1d23a77dd57d86141e617f36a',
-    [A]: 'b434c15f8b69102770c1a2f81bf672f5530c4438be947bdd2cfc3d9655cd83bb',
-    [B]: 'd0df1c77b81c54be8a3ed415fac612192d5af2be3510259e735402b6787489ae',
+    state: '83a16e83eade0ee2999fd74b8c518de14c52f2b6288a8f1790e0d222ac12fe33',
+    [A]: 'a524eb9a45976cb8f4963cd3f032010681bbd42c80aeb38df6f3ebcb4adf03d0',
+    [B]: 'db6455c7547bbbbbe7efbaddd44dd510a709aef2bcae3ca3109a031ab9770eb6',
   },
   closed: {
-    state: '462cfd2f59ab7c7e3078b295507ea4b8f333901b6cd81055640cabe4bc49ee5d',
-    [A]: '407e43a7a276274cf2048faf08f4652d7e6564ca1cbee9ab89b65eba41ba3537',
-    [B]: '789f9291dbbd9e1f5234b116149cf8338694e44a69fb5a2ba9aa7ff99ccfb804',
+    state: '83e67fd7b22a5eb4a004439632264d74072e87cde55a669714548135c0b712bf',
+    [A]: '3806582115fab26e9fdc9e1de316ca9846b2c92b5bf7065ab3c996c1f92c4473',
+    [B]: 'a448b35c71e502c112825497e7e7c9a2b5c3e6d5f8ad9d3096c6c1f506602079',
   },
 };
 const SOLO_WITH_SLOTS = {
-  state: 'c4e0600b45aaba8bcb1113788b86507cced6cb8120f3d09da7d25b4006688404',
-  view: '3a2e80e099e69c64a712a1f51cfc329408ca6c7c50763eb3273686cdd54e8737',
+  state: 'aefc81a07b46dcc324feab31e491ab2804a903860720501dfdeb991dc7f04552',
+  view: '5b0f1f075b1ae353376afd3c8350d9cc72ac9f16bf638b1187721a8c06c8d8ef',
 };
 
 // After the L0-board slice: the per-guild views of the same steps, with no `geography.systems`. Recorded on
@@ -155,19 +163,19 @@ const SOLO_WITH_SLOTS = {
 // SOLO_WITH_SLOTS) and hashing the rest; the slim view must hash to exactly that. The states did not move.
 const SLIM = {
   founded: {
-    [A]: 'fea29dd814b9e2192921b986b982b1fe9aa54e766f58cb0fae1d099dec7afc3b',
-    [B]: '708d0c9fbbedfc491fb5fc6ffec952d44ba6e981d4cb86d70bcbce98009f6417',
+    [A]: 'f2658bf6a9ee94a63072de5f653dd206849454f10a30e6cea62678f3175c1984',
+    [B]: '2850d3478f17cb0c433a876a8b6d9e6f21dcb260e847b5694879b0c29c274e51',
   },
   licensed: {
-    [A]: '047e798950e93cd8a71596e7ece2054591580b750ede6b7a2358ece6bf9ef387',
-    [B]: '7594f5f0b103783abb1a81321f66bdf4ceca9c172311c02337116cca36599150',
+    [A]: '27240ebcbabed36eb6d4a77232381604496a97280f9fcdbf9b66aec1ba8bbca7',
+    [B]: '2f1bb82bf401a2aa936cf0b43bacabd49826126726c7087de248956fc3d0ee2b',
   },
   closed: {
-    [A]: 'e9deaa3744f6fa12ca830693053807c06054e55deafb6f51f4999bc74d9c4aad',
-    [B]: '5628a00bab799c6168de8a3820709e4041ea20f1a2488d749e775279d737ff5a',
+    [A]: '6e64d180856789e09b850310b84ac39e412a70a40ad822d33e83e02625178efc',
+    [B]: '4fb2ab699fe07f14f02aa4f128ce86e2b79ddb32b039a54f1f23b1fb2bd19541',
   },
 };
-const SOLO_SLIM = { view: '9778b70c9d96c88ed9129698ea496ba8356d2ff0b5a6f70ce2514e31cae28ef3' };
+const SOLO_SLIM = { view: 'f7b2873ba45b1dde1f7fca8d31ba1a50eb948bc0cc4aa6f46f3e8a01ca87b148' };
 
 // legacyObservePublicRegister(state) — the REMOVED end-of-tick step, copied from main at 41fe84c
 // (sim/exploration.js `publicRegisterFacts` + `observePublicRegister`) for ONE purpose: rebuilding main's bytes

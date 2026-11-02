@@ -531,11 +531,12 @@ test('a good that is not priced has no band and no base — null, as before', ()
   assert.equal(basePriceFor('no_such_good'), null);
 });
 
-test('a fresh galaxy seeds each good at its own base: T1 1, T2 10, a 3-3 module 10,000', () => {
-  // ⤳ 27-09-26: chassis is a 3-3 module (10,000); drive_module is one of the four
-  // unclassified modules and keeps the old uniform T3 base (100) as its status quo.
+test('a fresh galaxy seeds each good at its own base: T1 1, T2 10, a 3-2 module 1,000, a 3-3 module 10,000', () => {
+  // ⤳ 27-09-26: chassis is a 3-3 module (10,000). drive_module was then one of the four
+  // unclassified modules, on the old uniform T3 base (100) as its status quo; ⤳ 02-11-26 it
+  // took sub-tier 3-2 (the droid ruling, docs/phase-1-tuning.md §Droids), so it seeds at 1,000.
   const s = sysState();
-  const cases = { titanium: 1, silica: 1, titanium_alloy: 10, silicon_wafer: 10, chassis: 10000, drive_module: 100 };
+  const cases = { titanium: 1, silica: 1, titanium_alloy: 10, silicon_wafer: 10, chassis: 10000, drive_module: 1000 };
   for (const [good, base] of Object.entries(cases)) {
     assert.equal(s.prices[good].posted, base, `${good} posts ${base}`);
     assert.deepEqual(s.prices[good].pending, new Array(PUBLISH_LAG).fill(base), `${good}'s pipeline is seeded at ${base}`);
@@ -621,7 +622,9 @@ test('a price driven down with no support stops at its own floor: 0.2, 2, and 2,
 const RULED_SUBTIERS = {
   '3-1': ['fuel_tank', 'power_cells', 'hull_plating', 'cargo_module'],
   // ⤳ RULED 16-10-26 (docs/phase-1-tuning.md, the Prefecture bill): claim_beacon → 3-2, habitation_module → 3-3.
-  '3-2': ['small_reactor_engine', 'reactor_housing', 'photovoltaic_array', 'comms_array', 'claim_beacon'],
+  // ⤳ RULED 02-11-26 (docs/phase-1-tuning.md §Droids, the droid bill): drive_module → 3-2, droid_components → 3-2.
+  '3-2': ['small_reactor_engine', 'reactor_housing', 'photovoltaic_array', 'comms_array', 'claim_beacon',
+    'drive_module', 'droid_components'],
   '3-3': ['control_module', 'life_support_module', 'chassis', 'sensor_suite', 'cargo_handling_system', 'defence_system', 'habitation_module'],
 };
 const RULED_SPECIALIST_BASES = {
@@ -634,7 +637,8 @@ const RULED_SPECIALIST_BASES = {
   interdiction_projector: 20000000,
 };
 // ⤳ 16-10-26: four became two — claim_beacon and habitation_module left when the Prefecture bill placed them.
-const RULED_UNCLASSIFIED = ['drive_module', 'droid_components'];
+// ⤳ 02-11-26: two became NONE — drive_module and droid_components took 3-2 (the droid ruling). The roadmap's
+// "four unclassified modules" checklist item is closed; a test below pins the group empty.
 
 test('the Tier-3 sub-tier and specialist bands carry the ruled numbers exactly', () => {
   assert.deepEqual(TIER3_SUBTIER_BANDS, {
@@ -667,16 +671,20 @@ test('the Tier-3 classifier names every Tier-3 module exactly once, and nothing 
   for (const good of Object.keys(RULED_SPECIALIST_BASES)) {
     assert.equal(TIER3_PRICE_CLASS[good], SPECIALIST, `${good} is a specialist`);
   }
-  for (const good of RULED_UNCLASSIFIED) {
-    assert.equal(TIER3_PRICE_CLASS[good], UNCLASSIFIED, `${good} is not classified yet`);
-  }
-  // 4 + 4 + 6 + 7 + 4 = 25: the typed tables above cover the whole classifier.
-  const typed = Object.values(RULED_SUBTIERS).flat().length
-    + Object.keys(RULED_SPECIALIST_BASES).length + RULED_UNCLASSIFIED.length;
+  // 4 + 7 + 7 + 7 = 25: the typed tables above cover the whole classifier, with nothing left over.
+  const typed = Object.values(RULED_SUBTIERS).flat().length + Object.keys(RULED_SPECIALIST_BASES).length;
   assert.equal(typed, TIER3_GOODS.length, 'the ruled tables account for every module');
 });
 
-test('every Tier-3 module resolves to a band — its sub-tier\'s, its own specialist row, or the unclassified one', () => {
+test('NO Tier-3 module is unclassified (02-11-26): every one has a sub-tier or a specialist row', () => {
+  // The UNCLASSIFIED class was the parking place for modules no bill used yet. Since the droid ruling
+  // put drive_module and droid_components in 3-2 it is empty, and it must STAY empty: the ruling is that
+  // ALL Tier-3 goods are timed, and an unclassified module would quietly fall back to continuous
+  // production on the old uniform band. A new module gets its sub-tier ruled, not parked here.
+  assert.deepEqual(TIER3_GOODS.filter((good) => TIER3_PRICE_CLASS[good] === UNCLASSIFIED), []);
+});
+
+test('every Tier-3 module resolves to a band — its sub-tier\'s or its own specialist row', () => {
   for (const good of TIER3_GOODS) {
     const band = bandFor(good);
     assert.ok(band, `${good} has a band`);
@@ -688,12 +696,19 @@ test('every Tier-3 module resolves to a band — its sub-tier\'s, its own specia
   }
 });
 
-test('the two unclassified modules keep the old uniform Tier-3 band (100 / 20 / 100,000) — deferred, not guessed', () => {
-  // The ruling says they "default to a sub-tier when first placed in a bill" but not which
-  // one, and no bill uses them yet. So they keep their status quo — the band every module
-  // had before 27-09-26 — rather than an invented sub-tier (on the decision checklist).
+test('the unclassified band keeps its numbers (100 / 20 / 100,000) but no real good is on it — the droid parts left for 3-2', () => {
+  // It was the status quo of the modules no bill used yet (27-09-26). ⤳ 02-11-26: the last two,
+  // drive_module and droid_components, took sub-tier 3-2 (the droid ruling), so they are on the
+  // 3-2 band now (1,000 / 200 / 100,000) and nothing is left on this one.
   assert.deepEqual(UNCLASSIFIED_TIER3_BAND, { base: 100, floor: 20, ceiling: 100000 });
-  for (const good of RULED_UNCLASSIFIED) assert.equal(bandFor(good), UNCLASSIFIED_TIER3_BAND, good);
+  assert.deepEqual(TIER3_GOODS.filter((good) => bandFor(good) === UNCLASSIFIED_TIER3_BAND), [], 'no Tier-3 good is on it');
+  for (const good of ['drive_module', 'droid_components']) {
+    assert.equal(bandFor(good), TIER3_SUBTIER_BANDS['3-2'], `${good} is on the 3-2 band`);
+    assert.deepEqual(bandFor(good), { base: 1000, floor: 200, ceiling: 100000 }, `${good}: the ruled 3-2 numbers`);
+  }
+  // The class itself is kept (retiring it is on the decision checklist), so a hand-built classifier
+  // that names it still resolves to this band rather than throwing.
+  assert.doesNotThrow(() => assertTier3Classified(['drive_module'], { drive_module: UNCLASSIFIED }));
 });
 
 test('a fresh galaxy seeds every Tier-3 module at its own base: 3-1 at 100, 3-2 at 1,000, 3-3 at 10,000, each specialist at its own', () => {
@@ -708,7 +723,6 @@ test('a fresh galaxy seeds every Tier-3 module at its own base: 3-1 at 100, 3-2 
     for (const good of goods) seededAt(good, SUBTIER_BASE[subTier]);
   }
   for (const [good, base] of Object.entries(RULED_SPECIALIST_BASES)) seededAt(good, base);
-  for (const good of RULED_UNCLASSIFIED) seededAt(good, 100);
   assert.deepEqual(checkInvariants(s, s.tick), [], 'a fresh galaxy is inside every good\'s own band');
 });
 
@@ -761,11 +775,12 @@ test('the price tripwire checks each Tier-3 good against ITS OWN band', () => {
   assert.deepEqual(checkInvariants(dearBulk, 0).map((v) => v.detail),
     [{ value: 50000, floor: 20, ceiling: 10000 }], 'a 3-1 module above 10,000 is caught');
 
-  // The same 50,000 on a 3-3 module and on an unclassified one is legal.
+  // The same 50,000 on a 3-3 module and on a 3-2 one is legal. (⤳ 02-11-26: drive_module was the
+  // unclassified case here; it is 3-2 now, whose 100,000 ceiling also admits 50,000.)
   const legal = JSON.parse(JSON.stringify(s));
   legal.prices.sensor_suite.posted = 50000;
   legal.prices.drive_module.posted = 50000;
-  assert.deepEqual(checkInvariants(legal, 0), [], '50,000 is inside the 3-3 and the unclassified bands');
+  assert.deepEqual(checkInvariants(legal, 0), [], '50,000 is inside the 3-3 and the 3-2 bands');
 });
 
 test('FAIL LOUD: a Tier-3 good with no band throws, naming the good', () => {
@@ -783,4 +798,30 @@ test('FAIL LOUD: a Tier-3 good with no band throws, naming the good', () => {
   assert.throws(() => assertTier3Classified(['fuel_tank'], { fuel_tank: 'toString' }), /"fuel_tank"/);
   // A "specialist" with no specialist row.
   assert.throws(() => assertTier3Classified(['chassis'], { chassis: SPECIALIST }), /"chassis".*"specialist"/);
+});
+
+test('FAIL LOUD AT LOAD: prices.js will not even load while a Tier-3 good has no band', () => {
+  // The test above hands the guard a broken classifier. This one proves the guard really RUNS when
+  // prices.js is required — the job the old unclassified fallback band used to quietly absorb. Load a
+  // FRESH prices.js against a resources.js whose classifier has lost drive_module (as if its 02-11-26
+  // sub-tier had never been written), and the require itself must throw, naming the good. (bandFor
+  // asks the same assertTier3Classified per good, so a galaxy can never get as far as pricing it.)
+  const resourcesPath = require.resolve('../resources.js');
+  const pricesPath = require.resolve('../prices.js');
+  const savedResources = require.cache[resourcesPath];
+  const savedPrices = require.cache[pricesPath];
+  const real = require('../resources.js');
+  const { drive_module: driveClass, ...withoutDrive } = real.TIER3_PRICE_CLASS;
+  assert.equal(driveClass, '3-2', 'the fixture really removed a classified module');
+
+  require.cache[resourcesPath] = { ...savedResources, exports: { ...real, TIER3_PRICE_CLASS: Object.freeze(withoutDrive) } };
+  delete require.cache[pricesPath];
+  try {
+    assert.throws(() => require('../prices.js'), /Tier-3 good "drive_module" has price class undefined, which resolves to no band/);
+  } finally {
+    require.cache[resourcesPath] = savedResources;
+    require.cache[pricesPath] = savedPrices;
+  }
+  // …and the real module is unharmed by the surgery.
+  assert.equal(require('../prices.js').bandFor('drive_module').base, 1000);
 });

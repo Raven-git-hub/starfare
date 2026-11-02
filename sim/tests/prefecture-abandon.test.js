@@ -25,6 +25,14 @@
 //      The rest of the eviction's reach (every guild's lanes, the dark arrays, the Outposts) is eviction-reach.test.js.
 //   9. THE OPERATOR CLI against a real server process: exit 0 on an abandon, exit 1 on a refusal.
 
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -391,10 +399,10 @@ test('THE SNAPSHOT: `stranded` rides on the guild\'s own asset rows (and the god
 // omit-when-absent, and claims / stockpiles / prefectures are touched only by an abandon.
 const GOLDEN_NO_ABANDON = {
   tick: 490,
-  state: '79ed47214b47ac8c4454893800b87dd8de128437d7bf129d107015b26090db8c',
-  god: '0b4c0ef26fcc7763f3f269b3e9d4fb44b07972f0cd79a839ce2a3acbea9bae5e',
-  own: '86b29de3a10c0806ed46bce7244a6b78c263bc1dc4c390bf2674893ca76533fc',
-  rival: '8fc7a0530d3d4a4d61d157cd4382f3e7aa22e77a158a65e7d84d8b4b65635618',
+  state: '811e8067102ec7806e75c6aeee3cd190cac4c715ff0a29b4f14f3c8f76db3bc2',
+  god: '0254efade578b0accf9e59241533fecf7e6492806eaea67af8c581f431f7466f',
+  own: '8a92055eb58bc8c99b7e5accac5f15b20b05a4a03a728d76b3e9e4c83cb33ebe',
+  rival: 'bf6252d4c2b0197b0c01e95c2f43bfc1896be794107aaea9c542803e01b5ffc6',
 };
 
 test('BYTE-IDENTICAL: a galaxy that never abandons serializes exactly as it did before this slice (state and every view)', () => {

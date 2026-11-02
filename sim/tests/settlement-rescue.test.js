@@ -42,6 +42,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -520,15 +528,15 @@ function shortNoSpare() {
 // by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
 // other hash here did not move. Before: 4ddd45b9…85acb and 8c380524…5ce8.
 const ISO_NO_SHORTFALL = {
-  final: '97ecfffe5048dba31369d33b1c1cbab3a09a27e45e75aaa6773452d085cff578',
-  everyTick: 'bd3a05ccfc95ce8edc8cb9a1893b8bd648c52654cb542fdb80d4a9a1eb380a4c',
-  snapshots: 'd6da9c43760fb1eaecb8f28d041b8ce683185eefd4becd37ad46c3653fecc546',
+  final: '1443c5b41dda126387a9b5e399a63ee28267f6c2cd8f777887f6aef215e84944',
+  everyTick: 'e6b10091b671ae0bfce20fec87cc31c44b0c43ed19eb2db334f4393b299dc918',
+  snapshots: '365c207a4ba3b01d7371b512cccca93f34612fbbd32b94cf6a4fdcbe9b851dbc',
   verdicts: { met: 23, breach: 0 },
 };
 const ISO_SHORT_NO_SPARE = {
-  final: '4139974629f0f11dfc02e4cf0b8c484f88d2b47dff3f1efe742a507c21dcf786',
-  everyTick: 'd7d49b0b0f6f0f3b85bcdbfcf7d63768021f99dcc28bfc74d3588b2eec3b5e65',
-  snapshots: 'b2cdf1b979e7f5b0661bea2db42e9d567eded1e2fb32103bf43daecef10994bd',
+  final: 'f45c3e895197f7f08794fb2a55bdf5d487699aacf40bd4bd40625e45cafd5851',
+  everyTick: '1f76bf653dddae4479112d99947dd6159c17036d80e6664c3442219ae39aad70',
+  snapshots: '690116e044e4342bd2be74968c4bdc5d8bdd1ab143132317a4a1ca61c1fc2846',
   verdicts: { met: 0, breach: 34 },
 };
 

@@ -40,6 +40,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -72,8 +80,8 @@ const SYS = 'sysA';
 const WEEK = 10080;   // docs/tier3-timed-production.md: "exactly one 7-day window (10,080 ticks)"
 const DAY = 1440;     // docs/cycle-and-calendar.md: the ruled day, 24 h × 60 ticks
 
-// The timed Tier-3 goods — every Tier-3 good with a ruled timer (the two unclassified modules
-// have none and stay continuous, docs/roadmap.md decision checklist).
+// The timed Tier-3 goods — every Tier-3 good with a ruled timer. Since 02-11-26 that is ALL of
+// them: the last unclassified modules (drive_module, droid_components) took sub-tier 3-2.
 const TIMED = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
 // y — the ruled timed weekly output, typed from the doc's formula, not read off the code under
 // test: 10,080 ÷ TICKS_PER_UNIT (every timed recipe makes one unit — tier3-timed-production.test.js).
@@ -129,15 +137,15 @@ const ventureOf = (s, gid, vid) => guildOf(s, gid).ventures.find((v) => v.id ===
 test('the Tier-3 week is 10,080 ticks — exactly 7 ruled days — and only a TIMED good settles on it', () => {
   assert.equal(TIER3_WINDOW_N, WEEK, 'docs/tier3-timed-production.md "Contract & settlement"');
   assert.equal(TIER3_WINDOW_N, 7 * DEFAULT_WINDOW_N, 'seven of the ruled 1,440-tick days');
-  assert.equal(TIMED.length, 23, 'the 23 classified Tier-3 modules (21 until 16-10-26)');
+  assert.equal(TIMED.length, 25, 'all 25 Tier-3 modules (21 until 16-10-26, 23 until 02-11-26)');
   for (const engineN of [DAY, 60, 24]) {
     for (const good of TIMED) assert.equal(windowNForGood(good, engineN), WEEK, `${good} settles weekly`);
     for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS]) {
       assert.equal(windowNForGood(good, engineN), engineN, `${good} (Tier 1/2) keeps the galaxy's day`);
     }
-    for (const good of TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null)) {
-      assert.equal(windowNForGood(good, engineN), engineN, `${good} (unclassified, continuous) keeps the day`);
-    }
+    // An unclassified (continuous) module kept the day too — until 02-11-26, when the last two took
+    // sub-tier 3-2. None is left, so every Tier-3 good is in TIMED above and settles weekly.
+    assert.deepEqual(TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null), [], 'no Tier-3 good is continuous');
   }
 });
 
@@ -512,10 +520,10 @@ test('invariants hold at every day boundary of the week, for every guild', () =>
 // Syndicate Top-Up on, so the rescue no longer fires and its short days breach again. Both runs are
 // once more the pre-rescue engine's to the byte: the four hashes are the original ones above,
 // unchanged. Slice A's were 2c8c6dca…1b28, eb586384…f429, 3d674731…63e3 and 5785bc09…1ee8.
-const ISO_FINAL_N60 = '9bf3aed0bc9f820fcf674802713cc5681f11478b1fda7b41f3d458ff7f54c072';
-const ISO_EVERY_TICK_N60 = '1436b5a5900ffcf43fe4173d178e868dc81f3a67e1dc8226ecaa250dd8d35146';
-const ISO_FINAL_N50 = '16589ff1de179665dca0fa254733b9128e8b11b4293e77cef579a136b6633e9b';
-const ISO_EVERY_TICK_N50 = '7cc5c204f58b11f90b1de944e6fa45ee6f1cb3028c02f36718f60f6ea371d217';
+const ISO_FINAL_N60 = 'cf7cf9ea6bb9e33d22dd4d271ec753133f351255daa5e00d65ecb19c0ea04581';
+const ISO_EVERY_TICK_N60 = '1d8cc086e788bd446d8ca5e57f1de5576b5a5459df21ff22fca22bb7e0f15ba7';
+const ISO_FINAL_N50 = '51ae3168ca20252d2d42a7f6f6e378213e803b2d0ef596414442141b5738e343';
+const ISO_EVERY_TICK_N50 = '0b73f1a58727e7cd9787214eb5ab491eaa10b435f984da2d030e73e7b309bdab';
 
 function isolationRun(windowN) {
   const crypto = require('node:crypto');

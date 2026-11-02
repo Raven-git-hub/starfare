@@ -86,7 +86,9 @@ const TIER3_WINDOW_N = 10080;
 function assertWholeWeeklyOutput(goods, timerOf) {
   for (const good of goods) {
     const ticksPerUnit = timerOf(good);
-    if (ticksPerUnit === null) continue; // continuous (an unclassified module) — no weekly y
+    // Continuous (not a timed good) — no weekly y. No Tier-3 good is continuous since 02-11-26,
+    // when the last unclassified modules took sub-tier 3-2; a hand-built list may still hold one.
+    if (ticksPerUnit === null) continue;
     if (TIER3_WINDOW_N % ticksPerUnit !== 0) {
       throw new Error(`windows: Tier-3 good "${good}" has a TICKS_PER_UNIT timer of ${ticksPerUnit} ticks, which does not divide the ${TIER3_WINDOW_N}-tick week — its weekly output y = ${TIER3_WINDOW_N} ÷ ${ticksPerUnit} = ${TIER3_WINDOW_N / ticksPerUnit} is not a whole number (RULED 28-09-26: y must be whole). Retime it in sim/baseline.js to a divisor of ${TIER3_WINDOW_N}`);
     }

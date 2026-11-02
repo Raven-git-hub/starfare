@@ -272,6 +272,10 @@ a level of 2,880, a target of 2.9B, and the price pinned at its 2B ceiling. The 
   until a sub-tier is ruled; then they become timed with no code change. *(⤳ 16-10-26: two of them were — the
   Prefecture bill placed claim_beacon in 3-2 and habitation_module in 3-3, and both became timed (30 / 60 ticks) with no
   code change, as promised. drive_module and droid_components stay continuous. `docs/phase-1-tuning.md`.)*
+  *(⤳ 02-11-26: and the last two — the droid ruling placed drive_module and droid_components in 3-2, and droid
+  engine slice 1 built it: both are timed (30 ticks a unit, y = 336 a week) with no code change but the class. So
+  **every Tier-3 good is timed now** (23 → 25), as this design's scope ruled, and this gap is closed.
+  `docs/phase-1-tuning.md` §Droids.)*
 - **A timed factory's throttle is on/off.** 0 stops a new unit starting (a unit on the line still
   finishes); anything above 0 runs the timer at full pace. Whether a partial throttle should slow
   the timer is unruled.

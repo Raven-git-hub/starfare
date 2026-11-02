@@ -5,8 +5,9 @@
 // (docs/tier3-timed-production.md; numbers in docs/phase-1-tuning.md "Tier-3 production timers").
 //
 // What this file proves, in order:
-//   1. THE NUMBERS — TICKS_PER_UNIT is the ruled table, every classified Tier-3 good resolves to
-//      its timer, and Tier-1/2 goods (and the two unclassified modules — four until 16-10-26) stay continuous. Every
+//   1. THE NUMBERS — TICKS_PER_UNIT is the ruled table, every Tier-3 good resolves to its timer
+//      (the unclassified modules, four until 16-10-26 and two until 02-11-26, are all placed now),
+//      and Tier-1/2 goods stay continuous. Every
 //      timer divides the week, so every weekly output y is WHOLE (RULED 28-09-26), and the
 //      load-time tripwire that enforces it bites on a timer that does not.
 //   2. THE TIMER — a factory mints exactly one whole unit every TICKS_PER_UNIT ticks, 0 between.
@@ -99,15 +100,16 @@ test('WHOLE WEEKS: every timed good\'s weekly output y = 10,080 ÷ TICKS_PER_UNI
     extraction_head: 28, fabrication_line: 21, medium_reactor_engine: 14, interdiction_projector: 7,
     heavy_reactor_engine: 4, stealth_module: 3, deep_scan_mast: 2, // the three retimed 28-09-26
     claim_beacon: 336, habitation_module: 168, // ⤳ 16-10-26: placed in sub-tiers 3-2 / 3-3 by the Prefecture bill
+    drive_module: 336, droid_components: 336, // ⤳ 02-11-26: both placed in sub-tier 3-2 by the droid ruling
   };
   for (const [good, y] of Object.entries(typedY)) {
     assert.equal(TIER3_WINDOW_N / ticksPerUnitFor(good), y, `${good}: 10,080 ÷ ${ticksPerUnitFor(good)} = ${y}`);
   }
-  // Every timed good — not only the twelve typed above — divides the week with nothing left over, and
+  // Every timed good — not only the fourteen typed above — divides the week with nothing left over, and
   // the y the ENGINE derives for a licence (pace × week, off the signing's own basis) is that same
   // whole number exactly, with floor(y) = y: nothing is left for the ceiling to cut off.
   const timed = TIER3_GOODS.filter((g) => ticksPerUnitFor(g) !== null);
-  assert.equal(timed.length, 23); // 21 until 16-10-26
+  assert.equal(timed.length, 25); // 21 until 16-10-26, 23 until 02-11-26 — now every Tier-3 good
   for (const good of timed) {
     const t = ticksPerUnitFor(good);
     assert.equal(TIER3_WINDOW_N % t, 0, `${good}: the ${t}-tick timer divides the week`);
@@ -133,23 +135,27 @@ test('WHOLE WEEKS: the load-time tripwire FIRES on a timer that does not divide 
   // The other two original timers are caught the same way.
   assert.throws(() => assertWholeWeeklyOutput(['stealth_module'], () => 2880), /"stealth_module".*2880/);
   assert.throws(() => assertWholeWeeklyOutput(['deep_scan_mast'], () => 4320), /"deep_scan_mast".*4320.*2\.3333/);
-  // A good with NO timer (null) is continuous and has no weekly y, so it is skipped — this is how
-  // the two unclassified modules pass.
+  // A good with NO timer (null) is continuous and has no weekly y, so it is skipped. (This is how the
+  // unclassified modules passed until 02-11-26; no Tier-3 good is continuous now, but the skip is
+  // still what lets a hand-built list hold one.)
   assert.doesNotThrow(() => assertWholeWeeklyOutput(['drive_module', 'titanium'], () => null));
 });
 
-test('every classified Tier-3 good resolves to its timer; Tier-1/2 and the two unclassified modules stay continuous', () => {
+test('every Tier-3 good resolves to its timer — none is unclassified now; Tier-1/2 stay continuous', () => {
   for (const good of TIER3_GOODS) {
     const cls = TIER3_PRICE_CLASS[good];
     const expected = cls === UNCLASSIFIED ? null : TICKS_PER_UNIT[cls === SPECIALIST ? good : cls];
     assert.equal(ticksPerUnitFor(good), expected, `${good} (${cls})`);
   }
-  // The two no bill uses yet have no sub-tier, so no ruled timer: continuous, their status quo
-  // (on the decision checklist — not guessed). ⤳ 16-10-26: claim_beacon (3-2, 30 ticks) and habitation_module
-  // (3-3, 60 ticks) left this list when the Prefecture bill gave them sub-tiers — timed now, with no code change.
-  assert.deepEqual(TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null), ['drive_module', 'droid_components']);
+  // Modules no bill used had no sub-tier, so no ruled timer: continuous, their status quo, until
+  // their sub-tier was ruled — then timed with no code change. ⤳ 16-10-26: claim_beacon (3-2, 30 ticks)
+  // and habitation_module (3-3, 60 ticks) left this list (the Prefecture bill). ⤳ 02-11-26: drive_module
+  // and droid_components (both 3-2, 30 ticks) left it too (the droid ruling), so it is EMPTY.
+  assert.deepEqual(TIER3_GOODS.filter((g) => ticksPerUnitFor(g) === null), [], 'every Tier-3 good is timed');
   assert.equal(ticksPerUnitFor('claim_beacon'), 30, 'claim_beacon is 3-2: 30 ticks a unit, 336 a week');
   assert.equal(ticksPerUnitFor('habitation_module'), 60, 'habitation_module is 3-3: 60 ticks a unit, 168 a week');
+  assert.equal(ticksPerUnitFor('drive_module'), 30, 'drive_module is 3-2: 30 ticks a unit, 336 a week');
+  assert.equal(ticksPerUnitFor('droid_components'), 30, 'droid_components is 3-2: 30 ticks a unit, 336 a week');
   for (const good of [...RAW_RESOURCES, ...PROCESSED_GOODS]) {
     assert.equal(ticksPerUnitFor(good), null, `${good} is continuous (Tier 1/2 unchanged)`);
   }
@@ -158,7 +164,7 @@ test('every classified Tier-3 good resolves to its timer; Tier-1/2 and the two u
 
 test('every timed recipe outputs exactly ONE unit per batch — the model\'s "one whole unit"', () => {
   const timed = listRecipes().filter((r) => ticksPerUnitFor(r.output.good) !== null);
-  assert.equal(timed.length, 23, 'the 23 classified Tier-3 modules (21 until claim_beacon and habitation_module were placed, 16-10-26)');
+  assert.equal(timed.length, 25, 'all 25 Tier-3 modules (21 until 16-10-26, 23 until drive_module and droid_components were placed, 02-11-26)');
   for (const r of timed) assert.equal(r.output.qty, 1, `${r.id} makes one unit`);
 });
 
@@ -190,6 +196,31 @@ test('a specialist runs its own, slower timer: a heavy reactor engine lands on t
   assert.equal(firstMint, 2520, '42 hours of work, then one engine');
   assert.equal(held(s, 'heavy_reactor_engine'), 1);
   assert.deepEqual(checkInvariants(s, s.tick), []);
+});
+
+test('the droid parts are TIMED (02-11-26): drive_module and droid_components each mint one whole unit every 30 ticks', () => {
+  // Until the droid ruling put them in sub-tier 3-2 (docs/phase-1-tuning.md §Droids) both were
+  // unclassified, so CONTINUOUS: a factory made 5 a tick. Now each runs the 3-2 timer, with no code
+  // change but the class. Two lines in one system; their input sets are summed (both eat
+  // magnetic_assemblies), four units' worth each.
+  const stock = {};
+  for (const good of ['drive_module', 'droid_components']) {
+    for (const [k, v] of Object.entries(inputSets(good, 4))) stock[k] = (stock[k] || 0) + v;
+  }
+  let s = sysState([factory('d', 'drive_module'), factory('c', 'droid_components')], stock);
+  const mintTicks = { drive_module: [], droid_components: [] };
+  for (let i = 1; i <= 120; i += 1) {
+    const before = { drive_module: held(s, 'drive_module'), droid_components: held(s, 'droid_components') };
+    s = tick(s);
+    for (const good of Object.keys(mintTicks)) {
+      const made = held(s, good) - before[good];
+      assert.ok(made === 0 || made === 1, `tick ${s.tick}: ${good} made a whole unit or nothing, never ${made}`);
+      if (made === 1) mintTicks[good].push(s.tick);
+    }
+    assert.deepEqual(checkInvariants(s, s.tick), [], `invariants green at tick ${s.tick}`);
+  }
+  assert.deepEqual(mintTicks.drive_module, [30, 60, 90, 120], 'drive_module: one unit every 30 ticks, exactly');
+  assert.deepEqual(mintTicks.droid_components, [30, 60, 90, 120], 'droid_components: one unit every 30 ticks, exactly');
 });
 
 // --- 3. INPUTS UP FRONT -------------------------------------------------------------------
@@ -233,15 +264,20 @@ test('the whole input set is taken on the START tick, and nothing more while the
 });
 
 test('a timed factory shares its inputs through the gates: an earlier line is fed first and the timed one waits, drawing nothing', () => {
-  // drive_module is UNCLASSIFIED, so continuous — at rate 5 it asks for 10 magnetic_assemblies a
-  // tick. It was established first, so under FCFS it takes 10 of the 11 in the pool; the timed
-  // small_reactor_engine (needs 2) is handed 1, cannot start, and leaves that 1 in the pool.
+  // drive_module was established first, so under FCFS it is fed first: it takes its whole set (2
+  // magnetic_assemblies) of the 3 in the pool and starts a unit. The timed small_reactor_engine
+  // (needs 2) is handed the 1 left, cannot start, and leaves that 1 in the pool.
+  // ⤳ 02-11-26: until the droid ruling drive_module was UNCLASSIFIED, so CONTINUOUS (it drew 10 of 11 a
+  // tick at rate 5), and this test raced a continuous line against a timed one. No Tier-3 good is
+  // continuous now, and a Tier-1/2 line never eats a Tier-2 input, so that race cannot happen in the
+  // real vocabulary any more; both lines here are timed (drive_module is 3-2, 30 ticks a unit).
   const stock = {
-    magnetic_assemblies: 11, conductive_material: 100, heat_resistant_alloy: 100, titanium_alloy: 100,
+    magnetic_assemblies: 3, conductive_material: 100, heat_resistant_alloy: 100, titanium_alloy: 100,
   };
   let s = sysState([factory('d', 'drive_module'), factory('e', 'small_reactor_engine')], stock);
   s = tick(s);
-  assert.equal(held(s, 'magnetic_assemblies'), 1, 'the continuous line drew its 10; the timed line drew none');
+  assert.equal(held(s, 'magnetic_assemblies'), 1, 'the first line drew its 2; the second drew none');
+  assert.equal('unitTicksRemaining' in ventureOf(s, 'd'), true, 'the first line started its unit');
   assert.equal('unitTicksRemaining' in ventureOf(s, 'e'), false, 'the timed unit did not start on a partial set');
   assert.equal(held(s, 'titanium_alloy'), 100, 'and none of its other inputs moved either');
   assert.deepEqual(checkInvariants(s, s.tick), []);
@@ -343,7 +379,7 @@ test('SEAM 1 (as of Slice 3d): a committed timed factory DELIVERS lumpily — on
 // read its timer over the 10,080-tick week (`licenceBasisFor`, sim/licence.js — pinned in
 // tier3-settlement.test.js), no longer `baselineOutputFor`. What this test still pins is the part
 // of Seam 2 that stands: `baselineOutputFor` itself is unchanged (a continuous good's fee, the
-// unclassified modules and `productionRate`'s establish stamp still read it), and the capacity
+// `productionRate`'s establish stamp still read it — and, until 02-11-26, the unclassified modules), and the capacity
 // path reads per DAY. Title and comment updated with that slice; the assertions are unchanged.
 test('SEAM 2: baselineOutputFor is unchanged (per TICK); the capacity path reads per DAY', () => {
   for (const good of TIER3_GOODS) {
@@ -460,7 +496,11 @@ test('INVARIANT: the countdown stays in [1, TICKS_PER_UNIT) and lives only on a 
     assert.deepEqual(rulesOf(withTimer(bad)), [RANGE], `${JSON.stringify(bad)} is out of range for a 15-tick part`);
   }
   assert.deepEqual(rulesOf(withTimer(3, factory('r', 'titanium_alloy'))), [ONLY], 'a Tier-2 refinery has no timer');
-  assert.deepEqual(rulesOf(withTimer(3, factory('d', 'drive_module'))), [ONLY], 'nor does a continuous (unclassified) module line');
+  // ⤳ 02-11-26: drive_module was the "continuous (unclassified) module line" here. It is timed now (3-2,
+  // 30 ticks), so a countdown on its line is legal — inside its OWN 30-tick range, not fuel_tank's 15.
+  assert.deepEqual(rulesOf(withTimer(3, factory('d', 'drive_module'))), [], 'drive_module is timed: 3 of 30 is legal');
+  assert.deepEqual(rulesOf(withTimer(29, factory('d', 'drive_module'))), [], '29 of 30 is legal');
+  assert.deepEqual(rulesOf(withTimer(30, factory('d', 'drive_module'))), [RANGE], '30 is out of range for a 30-tick part');
   assert.deepEqual(rulesOf(withTimer(3, mine('m', 'titanium', 5))), [ONLY], 'nor does a mine');
 });
 
@@ -485,5 +525,6 @@ test('determinism (invariant 9): a timed run is byte-identical twice, tick by ti
     b = tick(b);
     assert.equal(hashState(a), hashState(b), `byte-identical at tick ${i}`);
   }
-  assert.ok(held(a, 'fuel_tank') > 0 && held(a, 'chassis') > 0, 'both timers really landed units in the run');
+  assert.ok(held(a, 'fuel_tank') > 0 && held(a, 'chassis') > 0 && held(a, 'drive_module') > 0,
+    'all three timers really landed units in the run (drive_module timed since 02-11-26)');
 });

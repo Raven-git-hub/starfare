@@ -201,6 +201,10 @@ every other price constant, and the capacity and level code are untouched.
   good). So they keep their status quo, like `DEUTERIUM_BAND`. Their sub-tier is on the decision checklist.
   *(⤳ 16-10-26: RULED for two of them — the Prefecture bill placed `claim_beacon` in 3-2 and `habitation_module` in
   3-3 (`docs/phase-1-tuning.md`), so the unclassified band now holds only `drive_module` and `droid_components`.)*
+  *(⤳ 02-11-26: RULED and BUILT for the last two — the droid ruling placed `drive_module` and `droid_components` in
+  3-2 (droid engine slice 1, `docs/phase-1-tuning.md` §Droids), so the unclassified band holds **no real good**. It
+  is kept in code, with the `UNCLASSIFIED` class, but a test pins the class empty; retiring both is on the decision
+  checklist. A Tier-3 good with no band still fails loud, below.)*
 - **Fail loud, twice.** `assertTier3Classified` runs at load time over the whole Tier-3 vocabulary, so a new
   module with no price class halts the process the moment `prices.js` is required, naming the module.
   `bandFor` runs the same check for each Tier-3 good it prices. `basePriceFor` keeps its null contract for
@@ -231,8 +235,8 @@ per-tick output is a fraction, so a per-tick capacity would make `level = stock 
 One finished heavy engine would read as a level of 2,880 and peg its 2B ceiling.
 
 - **`capacityOutputFor(venture)`** is the capacity path's own reader:
-  - A continuous good (all of Tier 1/2, and the four unclassified modules) gets `baselineOutputFor`,
-    per **tick**, unchanged.
+  - A continuous good (all of Tier 1/2, and the four unclassified modules — *⤳ none of them since
+    02-11-26: every Tier-3 good is timed now*) gets `baselineOutputFor`, per **tick**, unchanged.
   - A timed good gets `CAPACITY_PERIOD_TICKS (1,440) ÷ TICKS_PER_UNIT × recipe output`, per **day**.
   - `productionCapacity` sums it. The basis is decided by the good, so no good's capacity can mix
     the two timescales.

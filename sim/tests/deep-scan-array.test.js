@@ -31,6 +31,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -541,9 +549,9 @@ test('DETERMINISM: two runs are byte-identical; save → restore is byte-identic
 // and retreat, and the range / landmark / occupied refusals of both triggers. If one of these moves, the
 // generalisation changed the outpost path: find out why before re-pinning.
 const OUTPOST_PATH_ON_MAIN = {
-  manualDeploy: { state: '01c7137dac86df1ef9d3a8c6721c916b0dcdf29c5c1bceb131d66603b846e483', godsEye: 'baad3c9cdf95ecb2114e8e740ef4939d23751504983d42f637c5e55ef161a9dd' },
-  arrivalDeploy: { state: '42e5a036242198b3a8ab8bb7586f0194c3cd5a3d93bcf4a19a5a8af2b9a395ce', godsEye: '4bff6cbec70782cffe62066a0b78b2057aa0136a15832e2baeca183a0fcc9fdf' },
-  arrivalRetreat: { state: '36ae5b85336d95deb59660a58121993e34989298a4846aaa92b3875e683df5fe', godsEye: '94a908766e3725ab91ffaa780533be814c9e08e1b2dcef59d941aa23ffa42392' },
+  manualDeploy: { state: 'da8dcfa3e4e8d8e084ad5a84f888d2a7844a6374884a4046061a7d5fbb777099', godsEye: 'a96f696e096eb58a4e76c678522c30bf5231015ee40646754e566d342d87843c' },
+  arrivalDeploy: { state: 'a6a0b05f598e545dba65b5cb55327db0884d302441f2fa735ea52380c347231a', godsEye: 'b55c0fe531d0f5f965b501bb7230ee019222155b8f0adf3b2b0d1249bf013fbb' },
+  arrivalRetreat: { state: 'd6a40dc8cd6bf0bec27b21d6275a759b7e28a1a4d8e7d8773d062c2e248b75b8', godsEye: '923d861359c328fe7d2db0a814a21770414e803766ab4e6b5cd9a3b4df245da6' },
   reasons: '73debece18be90a63c6876e2b67908ee3de8c72b86fce6f20b4a744cc4dd2df8',
 };
 // ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): founding now records the home system's
@@ -552,9 +560,9 @@ const OUTPOST_PATH_ON_MAIN = {
 // that the slots are the only thing that moved; the full states are re-pinned here. The god's-eye pins and
 // the refusals did not move (the lens carries no record).
 const OUTPOST_PATH_STATE_WITH_SLOTS = {
-  manualDeploy: 'd4e5813109f8071daf787b050b51679afe2bfcede3e56fe6605d4069ed7dd972',
-  arrivalDeploy: '603046620de47b47d68a46c2d1c2ffc455188a17c80c0e5b7b121ad5160a7364',
-  arrivalRetreat: '0997daabf595f8d658126a9fafedbae0a7984ea0bfad676a2eba532038d921d2',
+  manualDeploy: 'f95a36c72a9c8717d9658b2a7dee52f77674d29613320f00990e610e699cd04c',
+  arrivalDeploy: '1aa44e45cd275b424b0f9b8fef6c2561cfbb459ed503c3cbda025283126ac1cb',
+  arrivalRetreat: 'c7a1b5f0cb3473543f2514878130df2a52c802381e176771617ee1b52a41d17a',
 };
 
 test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placements, anchors, retreat and refusals', () => {

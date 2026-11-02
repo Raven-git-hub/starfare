@@ -2088,7 +2088,8 @@ function buildGodsEyeSnapshot(state) {
   // computes none of these itself (§5's display rule). A good is listed ONLY when the engine's
   // own test says a licence on it is the Tier-3 contract — `isTimedVenture`, asked about the
   // venture that makes the good, exactly as `licenceBasisForGood` asks — so the client needs no
-  // good list of its own, and an unclassified module (no timer) is simply absent.
+  // good list of its own, and a good with no timer (Tier 1/2 — every Tier-3 good has one since
+  // 02-11-26) is simply absent.
   //   weeklyOutput          — `y`, off `weeklyOutputOf` over the signing's own basis. A WHOLE
   //                           number for every timed good (RULED 28-09-26; a heavy reactor engine
   //                           is 4 a week).

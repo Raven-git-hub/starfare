@@ -16,6 +16,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -412,8 +420,8 @@ const GOLDEN_COMMITTED_WITH_FUEL_PRICE_HISTORY = 'a39d9385eae3cf88b060d0ce8fd10a
 // standing test — the bands are frozen module constants): with every module put back on the old
 // uniform 100 / 20 / 100,000 band and the rest of the slice in place, both previous values
 // (54e3fc2c… and 70b4009c…) came back byte for byte.
-const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = '886ec56aec3570ec65255b79d5f085876de2131378f4210576c76cbd5891db4c';
-const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = '137d7334b0df39f7be11ab65abebc34ca0c4c1da9cbecc71c19817e5d84b1bb8';
+const GOLDEN_UNLICENSED_WITH_TIER3_CATALOG = '9a94d822ec5f11cf39bc46fcca37750bfaff430000a3977b708de828b8fc7fa1';
+const GOLDEN_COMMITTED_WITH_TIER3_CATALOG = 'b062a724f2ba17c18ba3e29116f04083d2cda390ff4ab1bcbee0fb468c060142';
 
 // ── SLICE A′ — STAMP `fuelHoardAtCycleStart` AT FOUNDING (03-09-26 — docs/guild-hall.md §4) ──
 //

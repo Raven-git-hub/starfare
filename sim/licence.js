@@ -425,7 +425,7 @@ function licenceFee({ baselineUnitsPerTick, windowN, lockedPrice, committedOutpu
 // at 5 batches a tick: it makes one whole unit per `TICKS_PER_UNIT`, and it settles weekly.
 //
 // licenceBasisFor(venture, engineWindowN) -> { good, unitsPerTick, windowN } | null
-//   - a CONTINUOUS good (Tier 1/2, and the four unclassified modules): its droidless baseline
+//   - a CONTINUOUS good (Tier 1/2; every Tier-3 good is timed since 02-11-26): its droidless baseline
 //     (`baselineOutputFor`, units/tick) over the galaxy's day — the very numbers the fee has
 //     always read, so every Tier-1/2 fee and commitment is unchanged to the credit.
 //   - a TIMED Tier-3 good: the timer's real pace, `output qty ÷ TICKS_PER_UNIT` units a tick,
@@ -482,8 +482,8 @@ function licenceBasisForGood(good, engineWindowN) {
 // isTimedVenture(venture) -> true when the venture makes a timed Tier-3 good, i.e. its licence
 // is the Tier-3 contract above. The SAME `ticksPerUnitFor` answer that decides timed production,
 // the weekly window and Syndicate-first delivery, so the four can never disagree about a venture.
-// The four unclassified modules have no timer, so they are false here and keep the Tier-1/2
-// licence (their status quo, docs/roadmap.md decision checklist).
+// Every Tier-3 good has a timer since 02-11-26 (the last unclassified modules, drive_module and
+// droid_components, took sub-tier 3-2), so only a Tier-1/2 venture is false here.
 function isTimedVenture(venture) {
   return ticksPerUnitFor(producedGoodFor(venture)) !== null;
 }

@@ -37,6 +37,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -403,18 +411,18 @@ function twoLicencesEqualEquity() {
 // by snapshot: with those three goods' rows removed, every snapshot is byte-identical, and every
 // other hash here did not move. Before: 77749c72…f231a and 32ed9be5…3e86.
 const ISO_ONE_LICENCE_PER_GOOD = {
-  final: '32bd73d3f8f2752527b529a4566d0443295071f997cd61628aa1e82de94342f6',
-  everyTick: 'c3d17278f2875638d16834e428018c247597bbd6a328419f00f28dca68254aaf',
+  final: 'b7b6e146026f8018b407c8afa1cb65b59c3bd221785728175fb869788320aefc',
+  everyTick: 'dd339db3177766971f68ef4c880af11dfa1997e8d056e95643c569e426c4c118',
   previews: '0b2e68aa123c0eb231d26c1850ec63ef01f462cfcba98d3926c3870df1be0235',
-  snapshots: '1397eb3964b510aeef40bb66ce57db132a19beae36eae13aff119a1a3eddbea1',
+  snapshots: 'aa956ead8a8831475646e82b98ace634f3468fab2417993f322ca2d7748112dd',
   counts: { rescues: 23, met: 23, breach: 0 },
   switchesOn: 3,
 };
 const ISO_TWO_LICENCES_EQUAL_EQUITY = {
-  final: '5240ce96f41edea07a031f12054961fd441061ff955f834f581da37c8e651994',
-  everyTick: 'b9fbc89d3978a8d3995441c4806ddc1bad723c1ed31c225a753fbe80080626af',
+  final: '57efa2f7864461a726ea535cd9a57520902dad17b5835747b4fb6600d2df2476',
+  everyTick: '1cbebc7a069271baa6456c6f778f40f79d1055407f14088d2b233811f7b72e40',
   previews: 'addf5c93be7ff5d1edfc3b292fee1e6af27457e85e954c0961cd2fd64a91a6e2',
-  snapshots: '18c9be7843ee8d823f6b56a8a46d7d1d913e9c1d3307b6551aa1084b7eaba262',
+  snapshots: '640d7d8c1f8774f7c2e17befd38ea920ae5ff05408f1ff6c3d81e0a246016a30',
   counts: { rescues: 11, met: 22, breach: 0 },
   switchesOn: 1,
 };

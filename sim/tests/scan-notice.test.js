@@ -22,6 +22,14 @@
 // computes is the one 79807db computed, line for line (checked over all of them at the re-pin); scripted runs
 // keep that proof standing in tests/rebanded-goods-delta.test.js. Where a test below says "byte-identical to
 // main" or "the pre-slice engine", read: apart from those two goods' price rows.
+//
+// ⤳ 02-11-26 (roadmap 2.6, droid engine slice 1 — the Tier-3 reband): digests pinned below were RE-PINNED again. The
+// slice gave the droid's two parts their ruled sub-tier (drive_module → 3-2, droid_components → 3-2;
+// docs/phase-1-tuning.md §Droids), which moves their seeded price rows (prices, price history, the quote ring, the
+// snapshot's price fields and tier3Contract) in every state and view. With those two goods' keys deleted, every digest
+// this file computes is the one 4bf6cbb computed, line for line (checked over all of them at the re-pin); scripted
+// runs keep that proof standing in tests/rebanded-goods-delta.test.js. Read "byte-identical to main" or "the pre-slice
+// engine" below as: apart from the re-banded goods' price rows.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -208,28 +216,28 @@ test('scanTargetName: a system\'s name, a planet\'s designation, the raw id when
 // every step. If a pin moves, the slice changed more than the notice: find out why before re-pinning.
 const SCAN_STEPS_ON_MAIN = {
   l1Done: {
-    state: '6f055b579a6855c48f359931d6a88a45c4a6dfac32ca8b9dcfa15835345fb1b7',
-    godsEye: 'd3d3886f2cafc9be20c8ab15b33c9296054727eaaf513a7b2759922534a78cf2',
-    [A]: 'fb7360434a651e89252d59d96992db9cbd8f2b2fdcea38d4f366796cd242b5fc',
-    [B]: '2da411930a7657871dc44b956c81a612479c4402147f5c0703aa13e6335194c5',
+    state: 'cd326405878bda560bf84a12b54a6e8f62ba8d8129444a6aafcbd7b4817a4220',
+    godsEye: '16e44f9a3dd1a8bdb88746ae877509d1e6cb4fabf7b15854b37c4638481620d0',
+    [A]: '9031c51955759bbd91478c5676d9409d6b9937f6d5bc9791b39f3e458c9c30c0',
+    [B]: 'c018a239a1f50f29fddd46ffd3f68ef4c9042d9b97f73eb9ef3f9e40a644681a',
   },
   l2Done: {
-    state: 'd5f3aa7eeb2ec158a9b6c6c811841b101babb569d9a48474b805dd8242f77e1d',
-    godsEye: 'ac683a7ab4336c2da6d1358697ece73624fa8934cba9a78f57fc2f4afbd1c9c6',
-    [A]: '16b43126e9d24b8fd939ab50290a9b1f3b53c33a701e63b5095cb14c5607befe',
-    [B]: 'ada4f48fba1480601906ce0a95d6efd14dec2ec582ded5a9446c9de158f6bd76',
+    state: '11c898ffb41cb7d4a3c7a8574315b2b82fcf570a985d499706617a57db47972e',
+    godsEye: '7f7b9ef7f28cbaf148e6ca156ced6ea41f759b30d6d9a07523f2efce20377888',
+    [A]: '563a9ea0c062a0fc329ea76e9239269b87ca362f954de576ed6d22d71035527a',
+    [B]: '815c831a8435ba3343444961db751031ba8dc2d4a8b05b3082fc01fdf88bc117',
   },
   repeatDone: {
-    state: '002c3e6c06090acb498aa8b6fefb20944b2c108c5e79e9e992599d10eccbb543',
-    godsEye: '884ab136fa0600ae8034ee5acb11fe88fb924e9c3a05fa94e0c572c8d3d7ba26',
-    [A]: 'd21854d34e43030e65875fb1001c1df327686abc87d79ff62ae459ecf3947e62',
-    [B]: 'c4c07315d497d9efc02027ec214a347ea52510303a6d13aa5df697535708f26b',
+    state: '2ca2568982b0beabbd299510a52fffc84cfd2c88a97d5fee13e1ee26422cbe28',
+    godsEye: '548429dca77b2126c8624fadca1458087f5c33d192730a020e06b81f2514b1a4',
+    [A]: 'cf31643f372871cd0e5b1a7fcea0c4761568bda4f6fadf5ec0f2975591ddb2a6',
+    [B]: 'a9a5bc687bb230804cbbf4c97e34850f2f243d77fa0d18ebd7a55d5e45ebb99c',
   },
   voided: {
-    state: 'cef98d02bd04e340d775f7eff8cb2f2a371f84ef29a5ae90086b14fd607a4b6f',
-    godsEye: '381c50437923dbb5bf76b044f95446e17c2f91cf1febbc2089b2bf51a6673f9b',
-    [A]: 'bd7c50d7d0f07175d63e48720a1781a570506e03875cf1e3be12e2319bc09a2a',
-    [B]: 'e23592c86d7016fd24649c82b078d91a542f51dfb54db55c67a8be2b461a3476',
+    state: 'c2acb774f45a82828a4058049081092764fbccc13a8705d93794c8b546a0dd04',
+    godsEye: 'cd8abf379d81e1a7a674e51b5f71a4510df62d6cf404920cab9c07b174cfb084',
+    [A]: 'dbfca1ab2555312e5a71d6226479168b6a3f4103a02e4caf0f322ad365d8c351',
+    [B]: 'e5c93f6ecadb9e7199dc474dc0ae021635abc5e2d21eb2ab328e8dd146e026a3',
   },
 };
 // How many scan notices each step should have written to A's log, in order.
