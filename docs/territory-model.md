@@ -626,6 +626,8 @@ days × 1,440 ticks) and `SALVAGE_WINDOW_CAP_TICKS = 25920` (18 days), read only
   `deadlineTick`; the next slice) and the `salvage_window_lapsed` card's words; the operator CLI's printout of a window
   (`abandon-prefecture` prints the eviction only). Capture / takeover and the salvage waiver stay with the investment arc.
   *(⤳ 01-11-26: the countdown is BUILT — the next note. The card's words and the CLI printout are still to come.)*
+  *(⤳ 01-11-26: and the owner's daily reminder is BUILT, engine half — "AS-BUILT — the salvage window's daily reminder
+  (engine)", this section's last note.)*
 
 **AS-BUILT — the salvage window (client) (01-11-26; `client/game.html` only; tripwires
 `sim/tests/salvage-window-client.test.js`).** The countdown the engine half published its deadline for, on Operations'
@@ -708,6 +710,44 @@ countdown already read: the owner's `salvageWindows[systemId].deadlineTick` and 
   down and is never teal. Every check was mutation-tested (roadmap). The canvas pixels are not unit-tested. A
   headless look against a live server showed the dial running down and the tag at 1.6×, with zero console errors.
   The human's Playwright pass is the record.
+
+**AS-BUILT — the salvage window's daily reminder (engine) (01-11-26; `sim/eviction.js` `remindSalvageWindows`,
+`sim/tick.js` step 4, `sim/events.js`, `sim/invariants.js` `checkSalvageReminders`; tripwires
+`sim/tests/salvage-reminder.test.js`).** While a lost system's window is open and its owner still has something
+stranded there, the owner gets one `salvage_window_reminder` notice a day, for the whole life of the window — the
+window's third notice, between the eviction's `system_lost` and the lapse's `salvage_window_lapsed`
+(`docs/event-log.md` §16). Engine only; no snapshot, fog or client change; **no new number** — the cadence is the
+galaxy's own day.
+- **When.** At each window boundary — `isWindowBoundary(thisTick, windowN, dayAnchorTick)`, the galaxy's midnight, the
+  test the licence cycle and fuel allocation run on, over the same `windowN` / `dayAnchorTick` read from state. Daily at
+  the production 1,440; once per short day under a test `windowN`.
+- **Where in the tick.** Step 4, *scheduled events* (design.md §15.6), right after the lapse: `stepScheduledEvents` runs
+  the Syndicate builds, then `lapseSalvageWindows`, then — on a boundary only — `remindSalvageWindows`. A boundary is a
+  scheduled time, so it is step 4's work. **After the lapse on purpose:** a window whose deadline falls on a boundary
+  tick has lapsed and closed before the reminder looks, so its owner gets the lapse's notice alone — one notice on the
+  closing day, not two. (With the ruled 3-days-per-asset rate at the production day, every deadline is a whole number
+  of days after its eviction, so this is the case whenever the eviction itself fell on a boundary.) Nothing after step 4
+  touches a window or a stranded flag, so what it reminds is what the tick leaves.
+- **What.** Modelled on the lapse: every open window, in systemId order (invariant 9); each one whose **owner** still has
+  at least one asset flagged `stranded` in its system gets one notice, to the owner only, naming the system, the owner's
+  still-stranded ids (sorted) and the window's stored `deadlineTick`. A window salvaged clean stands until its deadline
+  unreminded (the stranded-present rule the lapse, Operations and the map marker use); a machine aboard a heavy is not
+  stranded and does not count. A rival's asset stranded there — unreachable in play, since every claim recovers or sweeps
+  what lies in a system — is named in nobody's reminder.
+- **A pure addition.** It reads state and appends notices: no asset, no window record, nothing priced. A galaxy with no
+  open window writes nothing, and every existing golden passed unchanged.
+- **The same-day overlap with `system_lost`** is not skipped: an eviction late in a day is followed by a reminder at
+  that midnight, as soon as the next tick. The reminder is the first notice to carry the deadline. Flagged on the
+  roadmap checklist.
+- **Tripwires.** `checkSalvageReminders`: every reminder in a log is well-formed, was written on a window boundary,
+  before its deadline, and names a non-empty sorted list of the guild's own asset ids. `salvage-reminder.test.js` (10)
+  checks every tick of every played run against its own reckoning of what was owed; the main line on the production day
+  (an eviction at midnight → a reminder on each of the next two midnights → the lapse alone on the third); a short day
+  (60 ticks) with a partial and then a full salvage; three windows of two guilds on one midnight, in systemId order
+  whatever the map's key order; the owner's own; the pure addition; the view; byte-identity with `main` for a galaxy that
+  evicts nothing; and each invariant rule red on a forced row. Mutation results are in the roadmap.
+- **Not built:** the client — the notice's row, card, words and voice (the last salvage-window slice; until then the live
+  client reads it as "Licence lapsed — Venture", the engine-first gap). Capture / takeover stays with the investment arc.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

@@ -29,9 +29,11 @@
 // its system goes fallow; and the sweep (sim/eviction.js `sweepStrandedAssets`, docs/event-log.md §15) writes
 // `assets_inherited` to a guild whose plant took a fallow system's stranded machines and `assets_swept` to each
 // guild that lost them. The salvage window's lapse (sim/eviction.js `lapseSalvageWindows`, docs/event-log.md §16)
-// writes `salvage_window_lapsed` to a guild whose stranded assets were destroyed when its window ran out. The
-// storyteller / rival / disaster writers are future work (§5). Renegotiation ACCEPT writes nothing — an accept is a
-// re-lock, not a discrete loss.
+// writes `salvage_window_lapsed` to a guild whose stranded assets were destroyed when its window ran out; and, while the
+// window is still open, its reminder (sim/eviction.js `remindSalvageWindows`, docs/event-log.md §16) writes
+// `salvage_window_reminder` to the window's owner at each window boundary — the galaxy's midnight — for as long as
+// something of the owner's is still stranded there. The storyteller / rival / disaster writers are future work (§5).
+// Renegotiation ACCEPT writes nothing — an accept is a re-lock, not a discrete loss.
 
 // --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13, §14, §15, §16) ----
 //
@@ -59,10 +61,13 @@ const ASSETS_INHERITED = 'assets_inherited';
 const ASSETS_SWEPT = 'assets_swept';
 // the salvage window ran out: the assets a guild still had stranded in its lost system were destroyed
 const SALVAGE_WINDOW_LAPSED = 'salvage_window_lapsed';
+// the salvage window's daily nudge: the guild still has assets stranded in its lost system, and the window is still open
+const SALVAGE_WINDOW_REMINDER = 'salvage_window_reminder';
 
 const EVENT_TYPES = Object.freeze([
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
+  SALVAGE_WINDOW_REMINDER,
 ]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
@@ -150,6 +155,7 @@ function cloneEventPayload(payload) {
 module.exports = {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
+  SALVAGE_WINDOW_REMINDER,
   EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
