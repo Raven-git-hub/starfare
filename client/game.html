@@ -3857,7 +3857,8 @@ select.field{appearance:none; cursor:pointer;}
      Two lanes wear their own character. The fleet / ops lane (§10): a `deploy_failed` notice re-dresses
      this same card with the pilot — eyebrow, portrait and voice — and shows the decision the pilot asks
      for, its two forks Redeploy and Return, beside Dismiss (territory-model.md §5 REVISED). An
-     `outpost_packed` notice (§12) wears the same pilot but shows Show on map alone, no forks. The trade
+     `outpost_packed` notice (§12) wears the same pilot but shows Show on map alone, no forks, and so do the two
+     salvage-window notices (§16), the Chief Pilot reporting on her salvage crews. The trade
      lane (§11): the two delivery notices wear the Trader — eyebrow, portrait and voice — with Dismiss
      alone. The survey lane (§13): the two scan notices wear the scout (spy.jpg, the survey popup's), with
      Dismiss alone. So openNotice sets the eyebrow, the art, the body and the buttons on EVERY open. ===== -->
@@ -3868,7 +3869,7 @@ select.field{appearance:none; cursor:pointer;}
       <div class="reel-eyebrow" id="noticeEyebrow">Syndicate Notice</div>
       <div class="reel-title" id="noticeTitle"></div>
       <div class="reel-body">
-        <!-- One <p> per paragraph: a Syndicate notice is one line (a territory notice two), the pilot's report two beats, the Trader's one or three lines, the scout's one or two. -->
+        <!-- One <p> per paragraph: a Syndicate notice is one line (a territory notice two), the pilot's report two beats (a salvage report one), the Trader's one or three lines, the scout's one or two. -->
         <div id="noticeBody"></div>
         <div class="facts" id="noticeFacts"></div>
       </div>
@@ -3885,7 +3886,7 @@ select.field{appearance:none; cursor:pointer;}
     </div>
     <!-- The uniform guild-adviser portrait — the same asset the reneg popup uses, no per-type
          accent (§9). A Syndicate-specific portrait is the parked domain-character decision (§5).
-         A deploy_failed or outpost_packed notice swaps in the pilot (§10, §12), a delivery notice the Trader (§11),
+         A deploy_failed, outpost_packed or salvage-window notice swaps in the pilot (§10, §12, §16), a delivery notice the Trader (§11),
          a scan notice the scout (§13). -->
     <div class="reel-art" id="noticeArt" style="background-image:url('assets/characters/advisor.jpg')"></div>
   </div>
@@ -7000,6 +7001,9 @@ function openAbandonFor(site){
 
 // countWords(n, one, many) -> a count of rows in words: "no kits", "1 venture", "3 machines". Never "0" or "null".
 function countWords(n, one, many){ return (n ? String(n) : 'no') + ' ' + (n === 1 ? one : many); }
+// Shared with the Guild Hall's notice code (the salvage notices' "1 machine" / "3 machines"), as __fmtETA is shared:
+// one plural helper, not a copy in each script.
+window.__countWords = countWords;
 
 // The write, as sendPlant's. A refusal (the centre-bound craft, or the Prefecture already gone) is shown in the
 // engine's own words, and nothing is pretended: the Prefecture still stands. On success the re-read snapshot repaints
@@ -12612,8 +12616,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The popup title (plain text): "Venture closed — Gold Mine" / "Licence lapsed — Copper Mine" /
   // "Deployment Failed — Outpost" / "No room at the outpost" / "Delivery turned back" / "Outpost
   // packed up" / "Survey complete" / "Survey voided" / "System lost — Nyx" / "Machines inherited — Nyx" /
-  // "Machines taken — Nyx". The two delivery titles, the packed title and the two survey titles leave
-  // the name to the body and facts; their rows carry it (below).
+  // "Machines taken — Nyx" / "Awaiting salvage — Nyx" / "Machines lost — Nyx". The two delivery titles, the
+  // packed title and the two survey titles leave the name to the body and facts; their rows carry it (below).
   function noticeTitle(n){
     var p = (n && n.payload) || {};
     if(n.type === 'deploy_failed') return 'Deployment Failed — ' + deployKindLabel(p);
@@ -12623,6 +12627,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(n.type === 'delivery_space_warning') return 'No room at the outpost';
     if(n.type === 'delivery_turned_back') return 'Delivery turned back';
     if(isTerritoryNotice(n)) return TERRITORY_TITLE[n.type] + ' — ' + territorySystemName(p);
+    if(isSalvageNotice(n)) return SALVAGE_TITLE[n.type] + ' — ' + territorySystemName(p);
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
   }
   // The subject-line row title: the same prefix, with the label in the muted `.who` span.
@@ -12631,6 +12636,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(n.type === 'deploy_failed') return 'Deployment Failed &mdash; <span class="who">' + esc(deployKindLabel(p)) + '</span>';
     if(n.type === 'outpost_packed') return 'Outpost packed up &mdash; <span class="who">' + esc(packedOutpostName(p)) + '</span>';
     if(isTerritoryNotice(n)) return esc(TERRITORY_TITLE[n.type]) + ' &mdash; <span class="who">' + esc(territorySystemName(p)) + '</span>';
+    if(isSalvageNotice(n)) return esc(SALVAGE_TITLE[n.type]) + ' &mdash; <span class="who">' + esc(territorySystemName(p)) + '</span>';
     if(n.type === 'scan_complete') return 'Survey complete &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'scan_voided') return 'Survey voided &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
@@ -12640,7 +12646,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
   // The popup body — one static line per `type` + `payload.cause` (§2), one plain Syndicate tone
   // (the domain-character voices are parked, §5 — bar the fleet lane's pilot, DEPLOY_FAILED_BODY
-  // below, §10). The node-held sentence is appended ONLY when a
+  // below, §10, and her two salvage-window reports, salvageBody, §16: those two are not static, they
+  // carry the count and the time off the payload). The node-held sentence is appended ONLY when a
   // lockout was written (`payload.lockoutUntilTick`, §9) — a lapse or an unlicensed teardown holds
   // no node, so the body must not claim one. The precise day rides the facts block (`unlockDay`),
   // not this prose, so the body stays static and the client renders no game number here.
@@ -12898,6 +12905,11 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // The title's prefix, per type. The system's name follows it, in the title and in the row.
   var TERRITORY_TITLE = { system_lost:'System lost', assets_inherited:'Machines inherited', assets_swept:'Machines taken' };
 
+  // The one-word tag on the day a system notice records — the facts block's last row, "Lost · Day 12". The two
+  // salvage-window notices (below) share it: "Awaiting" (a reminder) and "Lost" (a lapse).
+  var SYSTEM_DAY_WORD = { system_lost:'Lost', assets_inherited:'Claimed', assets_swept:'Taken',
+    salvage_window_reminder:'Awaiting', salvage_window_lapsed:'Lost' };
+
   // The system's seed name, as the engine wrote it, falling back to its id (the other notices' discipline).
   function territorySystemName(p){ return p.systemName || p.systemId || 'Unknown system'; }
 
@@ -12999,8 +13011,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         ['Machines taken', assetKindsLabel(p.sweptAssetIds), false]
       ];
     }
-    var dayWord = { system_lost:'Lost', assets_inherited:'Claimed', assets_swept:'Taken' }[n.type];
-    if(n.whenDay != null){ facts.push([dayWord, 'Day ' + n.whenDay, false]); }
+    if(n.whenDay != null){ facts.push([SYSTEM_DAY_WORD[n.type], 'Day ' + n.whenDay, false]); }
     return facts;
   }
 
@@ -13010,6 +13021,56 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function territorySystemHex(p){
     var sys = (p.systemId && window.__boardSystem) ? window.__boardSystem(p.systemId) : null;
     return (sys && sys.coords) ? { q: sys.coords.q, r: sys.coords.r } : null;
+  }
+
+  // --- The salvage-window notices — losing ground, the salvage window (docs/event-log.md §16) ---------------------
+  // A lost system's salvage window. salvage_window_reminder: once a day while the window is open and the player still
+  // has something stranded there — how much, and how long is left. salvage_window_lapsed: the window ran out, and what
+  // was still there is destroyed. The CHIEF PILOT reports both — her crews fly the salvage — on the pilot's card
+  // (openNotice), in the human's words verbatim. They have a territory notice's shape: the system's name in the title,
+  // a one-word day tag (SYSTEM_DAY_WORD), and Show on map to the system (territorySystemHex). Both are PASSIVE: Dismiss
+  // and Show on map. Every value is a payload field or a difference of two published ticks; the client computes no game
+  // number (§18).
+
+  function isSalvageNotice(n){ return n.type === 'salvage_window_reminder' || n.type === 'salvage_window_lapsed'; }
+
+  // The title's prefix, per type. The system's name follows it, in the title and in the row.
+  var SALVAGE_TITLE = { salvage_window_reminder:'Awaiting salvage', salvage_window_lapsed:'Machines lost' };
+
+  // "1 machine" / "3 machines", through the shell's one plural helper (countWords, shared as __countWords). The count
+  // is the list's own length: the ids still stranded (a reminder) or destroyed (a lapse). A kit in the list is counted
+  // as a machine too: the human's word, accepted as a slight generalisation.
+  function salvageMachines(ids){ return window.__countWords((ids || []).length, 'machine', 'machines'); }
+
+  // The time left on the window AS OF THE NOTICE'S OWN TICK: the stored deadline less the tick the reminder was written
+  // on (n.tick), formatted as every other ETA is (the map's fmtETA, shared as __fmtETA). A reminder is a logged moment —
+  // "at this midnight, 9d left" — so it keeps its own time as the ticks pass. (The live countdowns on Operations and
+  // the map read the snapshot's tick instead: they are live, this is a log entry.) A tick or deadline that is not a
+  // number reads "—", never a made-up time.
+  function salvageTimeLeft(n){
+    var p = n.payload || {};
+    if(typeof p.deadlineTick !== 'number' || typeof n.tick !== 'number') return '—';
+    return window.__fmtETA(p.deadlineTick - n.tick);
+  }
+
+  // The Chief Pilot's words, one paragraph each, filled in from the payload: the system's name, the count and (in a
+  // reminder) the time. The reminder's pronouns follow the count, so one machine is "its heels" / "get it" / "haul it
+  // home" and several are "their" / "them".
+  function salvageBody(n){
+    var p = n.payload || {};
+    var system = territorySystemName(p);
+    if(n.type === 'salvage_window_lapsed'){
+      return ["That's the salvage window shut on " + system + ", Guildmaster. Unfortunately the guys just couldn't get it done — we lost " + salvageMachines(p.destroyedAssetIds) + ". It is what it is I guess. We're haulers, not miracle workers."];
+    }
+    var one = (p.strandedAssetIds || []).length === 1;
+    var their = one ? 'its' : 'their';
+    var them = one ? 'it' : 'them';
+    return ["Still got " + salvageMachines(p.strandedAssetIds) + " cooling " + their + " heels out at " + system + ", Guildmaster. We still have another " + salvageTimeLeft(n) + " to get " + them + ", but I wouldn't dawdle. Space is pretty big, as I'm sure you're aware, so it's going to take some time to get the crews together and the transports moving. Just say the word and I'll get some heavies out there to haul " + them + " home before the clock runs dry."];
+  }
+
+  // The facts block: the day tag alone — "Awaiting · Day 9" / "Lost · Day 12". The count and the time are in her words.
+  function salvageFacts(n){
+    return n.whenDay != null ? [[SYSTEM_DAY_WORD[n.type], 'Day ' + n.whenDay, false]] : [];
   }
 
   // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
@@ -13110,9 +13171,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var p = n.payload || {};
     shownNotice = n;
     // Who is speaking, and which buttons show. The fleet / ops lane is the pilot's: eyebrow, portrait and
-    // voice. Two notices are in it, with different buttons. A deploy_failed (`fleet`) offers its two forks,
+    // voice. Four notices are in it, with different buttons. A deploy_failed (`fleet`) offers its two forks,
     // Redeploy and Return (§10; territory-model.md §5 REVISED). An outpost_packed (`packed`) offers Show on
-    // map alone (§12). So `pilot` (the speaker) and the buttons are separate flags. A delivery notice is
+    // map alone (§12), and so do the two salvage-window notices (`salvage`, §16), to the system they name.
+    // So `pilot` (the speaker) and the buttons are separate flags. A delivery notice is
     // the trade lane: the Trader's eyebrow, portrait and voice, and no button but Dismiss (§11). A scan
     // notice is the survey lane: the scout's eyebrow and portrait (the survey popup's), Dismiss alone (§13).
     // Every other notice is the Syndicate's uniform adviser (§9). Of those, a territory notice (`territory`)
@@ -13120,7 +13182,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // every open — a notice must not keep the last one's speaker or buttons, and no notice keeps an old note.
     var fleet = n.type === 'deploy_failed';
     var packed = n.type === 'outpost_packed';
-    var pilot = fleet || packed;
+    var salvage = isSalvageNotice(n);
+    var pilot = fleet || packed || salvage;
     var trade = isDeliveryNotice(n);
     var scan = isScanNotice(n);
     var territory = isTerritoryNotice(n);
@@ -13137,14 +13200,15 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // Return plans the unload, which — read off the kit aboard — may end on an unclaimed system, as the ferry may.
     el('noticeRedeploy').hidden = !fleet || isGroundKitKind(p.kind);
     el('noticeReturn').hidden = !fleet;
-    el('noticeShowMap').hidden = !(packed || territory);
+    el('noticeShowMap').hidden = !(packed || territory || salvage);
     el('noticeNote').textContent = '';
     el('noticeTitle').textContent = noticeTitle(n);
-    // The body, one <p> per paragraph: the pilot's two beats or one question, the Trader's lines, the
-    // scout's report, a territory notice's two lines, or a Syndicate notice's one line.
+    // The body, one <p> per paragraph: the pilot's two beats, one question or one salvage report, the
+    // Trader's lines, the scout's report, a territory notice's two lines, or a Syndicate notice's one line.
     var paras;
     if(fleet) paras = DEPLOY_FAILED_BODY;
     else if(packed) paras = OUTPOST_PACKED_BODY;
+    else if(salvage) paras = salvageBody(n);
     else if(trade) paras = deliveryBody(n);
     else if(scan) paras = scanBody(n);
     else if(territory) paras = territoryBody(n);
@@ -13155,6 +13219,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       facts = deployFailedFacts(n);
     } else if(packed){
       facts = outpostPackedFacts(n);
+    } else if(salvage){
+      facts = salvageFacts(n);
     } else if(trade){
       facts = deliveryFacts(n);
     } else if(scan){
@@ -13227,13 +13293,13 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // Show on map: close the popup and fly the map to what the notice is about. For an outpost_packed (§12),
-  // its one control, that is the packed heavy (packedCraftHex); for a territory notice (§14 / §15), the system
-  // it names (territorySystemHex). Navigation only. Zoom 9 is the Dispatch popup's Show on map zoom, and
-  // __flyTo closes the Guild Hall itself.
+  // its one control, that is the packed heavy (packedCraftHex); for a territory notice (§14 / §15) or a
+  // salvage-window notice (§16), the system it names, payload.systemId (territorySystemHex). Navigation only.
+  // Zoom 9 is the Dispatch popup's Show on map zoom, and __flyTo closes the Guild Hall itself.
   function noticeShowMap(){
     var n = shownNotice || {};
     var p = n.payload || {};
-    var hex = isTerritoryNotice(n) ? territorySystemHex(p) : packedCraftHex(p);
+    var hex = (isTerritoryNotice(n) || isSalvageNotice(n)) ? territorySystemHex(p) : packedCraftHex(p);
     closeNotice();
     if(hex && window.__flyTo) window.__flyTo(hex.q, hex.r, 9);
   }
@@ -13328,8 +13394,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // The notice popup's own close wiring (a single Dismiss; the × ; a scrim click) — plus the two forks,
-  // Redeploy and Return, which only a deploy_failed notice shows (§10), and Show on map, which only an
-  // outpost_packed notice shows (§12).
+  // Redeploy and Return, which only a deploy_failed notice shows (§10), and Show on map, which an
+  // outpost_packed (§12), a territory (§14 / §15) or a salvage-window (§16) notice shows.
   var noticeDismiss = el('noticeDismiss'); if(noticeDismiss){ noticeDismiss.addEventListener('click', closeNotice); }
   var noticeRedeploy = el('noticeRedeploy'); if(noticeRedeploy){ noticeRedeploy.addEventListener('click', function(){ noticeFork('deploy'); }); }
   var noticeReturn = el('noticeReturn'); if(noticeReturn){ noticeReturn.addEventListener('click', function(){ noticeFork('unload'); }); }

@@ -555,11 +555,13 @@ test('wiring: the markup, the listeners, the self-close path and the CSS that hi
   // The Show on map button sits in the notice footer, hidden until an outpost_packed (or, since losing ground client
   // slice 1, a territory notice — losing-ground-notice-client.test.js) opens, and is wired.
   assert.match(html, /<button class="btn accept" id="noticeShowMap" type="button" hidden>Show on map<\/button>\n\s+<button class="btn accept" id="noticeDismiss"/);
-  assert.match(guildScript, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory\);/);
+  // (⤳ 02-11-26: and a salvage-window notice — salvage-notice-client.test.js.)
+  assert.match(guildScript, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory \|\| salvage\);/);
   assert.match(guildScript, /noticeShowMapBtn\.addEventListener\('click', noticeShowMap\)/);
   // The forks stay deploy_failed-only, the speaker is the pilot flag. (Since the Prefecture / claims client PR B1 a
   // GROUND kit's deploy_failed hides Redeploy too — deploy-failed-notice-client.test.js holds that.)
-  assert.match(guildScript, /var fleet = n\.type === 'deploy_failed';\n\s+var packed = n\.type === 'outpost_packed';\n\s+var pilot = fleet \|\| packed;/);
+  // (⤳ 02-11-26: the two salvage-window notices joined the pilot — salvage-notice-client.test.js.)
+  assert.match(guildScript, /var fleet = n\.type === 'deploy_failed';\n\s+var packed = n\.type === 'outpost_packed';\n\s+var salvage = isSalvageNotice\(n\);\n\s+var pilot = fleet \|\| packed \|\| salvage;/);
   assert.match(guildScript, /el\('noticeRedeploy'\)\.hidden = !fleet \|\| isGroundKitKind\(p\.kind\);\n\s+el\('noticeReturn'\)\.hidden = !fleet;/);
   // The strip's markup, in the head just before ✕, and its CSS: an empty strip is hidden.
   assert.match(html, /<div class="om-tear" id="omTeardown"><\/div>\n\s+<button class="est-close" id="omClose"/);

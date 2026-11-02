@@ -626,6 +626,8 @@ days × 1,440 ticks) and `SALVAGE_WINDOW_CAP_TICKS = 25920` (18 days), read only
   `deadlineTick`; the next slice) and the `salvage_window_lapsed` card's words; the operator CLI's printout of a window
   (`abandon-prefecture` prints the eviction only). Capture / takeover and the salvage waiver stay with the investment arc.
   *(⤳ 01-11-26: the countdown is BUILT — the next note. The card's words and the CLI printout are still to come.)*
+  *(⤳ 02-11-26: the card's words are BUILT — "AS-BUILT — the salvage notices' words (client)", this section's last
+  note. The CLI printout is still to come.)*
   *(⤳ 01-11-26: and the owner's daily reminder is BUILT, engine half — "AS-BUILT — the salvage window's daily reminder
   (engine)", this section's last note.)*
 
@@ -657,7 +659,8 @@ snapshot or fog change; no new number.
   own lapse — "1m left" on the tick before the deadline, the row and the window gone on it. A guard pins every Operations
   host as `main` drew it at 2338b51.
 - **Not built:** the `salvage_window_lapsed` card's words; any surface but Operations (the galaxy map shows no window).
-  *(⤳ 01-11-26: the galaxy map marks it — the next note.)*
+  *(⤳ 01-11-26: the galaxy map marks it — the next note.)* *(⤳ 02-11-26: and the card's words are BUILT — this
+  section's last note.)*
 
 **AS-BUILT — the salvage map marker (client) (01-11-26; `client/game.html` only; tripwires
 `sim/tests/salvage-marker-client.test.js`).** The galaxy map now marks each system the player lost where a machine or kit
@@ -748,6 +751,26 @@ galaxy's own day.
   evicts nothing; and each invariant rule red on a forced row. Mutation results are in the roadmap.
 - **Not built:** the client — the notice's row, card, words and voice (the last salvage-window slice; until then the live
   client reads it as "Licence lapsed — Venture", the engine-first gap). Capture / takeover stays with the investment arc.
+  *(⤳ 02-11-26: the client is BUILT, for this notice and the lapse's — the next note.)*
+
+**AS-BUILT — the salvage notices' words (client) (02-11-26; `client/game.html` only; tripwires
+`sim/tests/salvage-notice-client.test.js`).** The window's two notices get their words and their face: the Chief Pilot —
+whose crews fly the salvage — reports both on the pilot's card, in the human's words, with Show on map to the lost
+system. This is the last salvage-window slice: it completes the salvage window end to end and, with it, losing ground's
+client, bar capture. No engine, snapshot or fog change; no new number. The full record is `docs/event-log.md` §16,
+"AS-BUILT — the client half"; in short:
+- **The reminder** — "Awaiting salvage — {system}": "Still got {N machines} cooling their heels out at {system},
+  Guildmaster. We still have another {TIME} to get them, …" (the rest in §16). {N machines} counts `strandedAssetIds`
+  ("1 machine", "3 machines"; for one the pronouns read "its" / "it"). {TIME} is `fmtETA(deadlineTick − n.tick)`, the
+  time left **as of the reminder's own midnight** — a logged moment, so a later snapshot does not move it — where
+  Operations' line and the map tag, which are live, read the snapshot's tick.
+- **The lapse** — "Machines lost — {system}": "That's the salvage window shut on {system}, Guildmaster. … we lost {N
+  machines}. …", counting `destroyedAssetIds`.
+- **Both**: the eyebrow "Fleet — Dispatch" and the pilot's portrait; one fact, the day tag ("Awaiting" / "Lost" = "Day
+  N"); Show on map to `payload.systemId`; Dismiss. Passive.
+- **Proved** by `sim/tests/salvage-notice-client.test.js` (10) on real per-guild snapshots — one machine run to its
+  deadline, and three run to the first midnight and on to the deadline — with a guard, hashed on a `main` worktree, on
+  every notice the client already rendered. Mutation results are in the roadmap.
 
 ## 5. The deployment pipeline — the cross-system asset ferry
 

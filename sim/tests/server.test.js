@@ -3389,9 +3389,10 @@ test('GET / serves the delivery notices — the Trader, passive, Dismiss only', 
   assert.match(open, /else if\(trade\) paras = deliveryBody\(n\);/);
   assert.match(open, /\} else if\(trade\)\{\s*facts = deliveryFacts\(n\);/);
   // The card's buttons: deploy_failed's two forks, outpost_packed's Show on map (event-log.md §12, added by the
-  // Outpost teardown client slice; the territory notices show it too since losing ground client slice 1, §14 / §15)
-  // and Dismiss. Each optional one is gated on its own types, so a delivery notice still shows Dismiss alone.
-  assert.match(open, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory\);/, 'Show on map shows for the packed and territory notices alone');
+  // Outpost teardown client slice; the territory notices show it too since losing ground client slice 1, §14 / §15,
+  // and the salvage-window notices since their client words, §16) and Dismiss. Each optional one is gated on its own
+  // types, so a delivery notice still shows Dismiss alone.
+  assert.match(open, /el\('noticeShowMap'\)\.hidden = !\(packed \|\| territory \|\| salvage\);/, 'Show on map shows for the packed, territory and salvage notices alone');
   const overlay = html.slice(html.indexOf('<div id="notice-overlay">'), html.indexOf('<!-- The adviser reel'));
   assert.equal((overlay.match(/<button class="btn accept"/g) || []).length, 4, 'Redeploy, Return, Show on map, Dismiss — no other button');
   assert.equal((await fetch(base + '/assets/mission/Trader.jpg')).status, 200, 'the Trader hero is served');
@@ -3408,7 +3409,10 @@ test('GET / serves the delivery notices — the Trader, passive, Dismiss only', 
 
   // THE FACTS are payload fields and the engine's whenDay, formatted — never a sum or a difference over
   // the payload (§18), and no tick turned into a day by the client (so no Arrives fact from arrivalTick).
-  const facts = fn('deliveryFacts', 'myUnreadNotices');
+  // (⤳ 02-11-26: cut at the next function, isScanNotice. It ran to myUnreadNotices, written when that came next; the
+  // scan, territory and salvage blocks have landed between since, and the salvage reminder's time is the one allowed
+  // difference — of two published ticks, deadlineTick − the notice's tick, a countdown (§18). salvage-notice-client.test.js.)
+  const facts = fn('deliveryFacts', 'isScanNotice');
   assert.match(facts, /fmt\(p\.units\)/);
   assert.match(facts, /fmt\(p\.shortfall\)/);
   assert.match(facts, /fmt\(p\.freeSpace\)/);
