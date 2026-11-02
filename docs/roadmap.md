@@ -5476,7 +5476,14 @@ boundary so the later hex-map swap doesn't touch it.
     swept card); `outpost_packed` losing Show on map → 6, the guard among them. Sim 2,585 → **2,595** (the 10 new tests), tools **98** (unchanged). **Next:** capture /
     takeover (the investment arc). Checklist items below.
 - **2.6 — Droids.** The licence payoff (the reason a 0%-commitment venture still wants a licence) —
-  a production boost, built at 2.1. *Open: the boost mechanic + numbers.*
+  a production boost, built at 2.1. *Design **RULED 02-11-26** — `docs/droids.md` (headline in
+  `design.md` §4). 2.6 builds **droids functioning with the numbers**: individual rows, source
+  **Syndicate|guild** (guild cheaper + longer-lived, Syndicate dearer + shorter + safe,
+  licence-gated); a ×2-at-full source-blind boost applied in the tick; a `droid_components`
+  maintenance pool; decay + replace. GP/RP-neutral. The **failure mechanism is NOT built here** —
+  it is storyteller-era (2.7+), so the droid licence-payoff is **latent in 2.6** and completes with
+  the storyteller. Numbers `[FIRST-CUT]` in `phase-1-tuning.md` §Droids. **Build pending** — engine
+  then client.*
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
@@ -5986,6 +5993,12 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   **timer**. With no sub-tier they have no `TICKS_PER_UNIT`, so they stay **continuous** at 5
   batches/tick (their status quo). The ruling says ALL Tier-3 goods are timed, so this is a known gap.
   Ruling their sub-tier makes them timed with no code change (`ticksPerUnitFor` reads the class).
+  **⤳ RULED 02-11-26 — CLOSED, the last two.** `drive_module` → **3-2** and `droid_components` →
+  **3-2** (the droid bill, `docs/droids.md` / `phase-1-tuning.md` §Droids), by analogy to
+  `comms_array`; each becomes a TIMED good (30 ticks/unit, y = 336/week, divides 10,080) and
+  `UNCLASSIFIED_TIER3_BAND` empties of real goods. Applied at the droid engine build (classifier +
+  golden re-pin + fresh galaxy, the 16-10-26 pattern). **All four unclassified modules are now
+  ruled** — this checklist item is closed.
 
 - **Tier-3 slice 2 (timed production) — items for a ruling or a confirm** — *surfaced 27-09-26.*
   - **What a partial throttle means for a timed factory.** Built as **on/off**: a throttle of 0 stops
@@ -7583,7 +7596,9 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   4. **No time is made up.** A reminder with no numeric deadline or tick, which the engine's `checkSalvageReminders`
      forbids, reads "—" where the time goes, never "0m". Recorded.
 - **A confirm flag on the galaxy-replacing operator commands (ops, `tools/admin.js`) — PROPOSED, not ruled; not built** — *raised 15-10-26 by the slice-17 hand-back (its carried-forward item 9).* `verify-cycle`, `seat-demo` (without `--window`) and `new-galaxy` each create a galaxy, which REPLACES the active one; `verify-cycle`, run as the post-redeploy check the runbook used to name, wiped the live galaxy once (restored from backup). The runbook was fixed in `1dbca6d`; the CLI's help text and comments were fixed, wording only and with no behaviour change, in the same PR that added this item. The proposal: when a galaxy is active, those three commands refuse unless the operator passes an explicit confirm flag. **To rule:** whether to build it at all; the flag's name; whether `seat-demo --window` (which `/reset`s the galaxy in place rather than creating one) is covered too; and whether "a galaxy is active" is read from `GET /health` before the replacing call.
-- **Droids:** the production-boost mechanic + numbers.
+- **Droids:** the production-boost mechanic + numbers — **RULED 02-11-26** (`docs/droids.md`,
+  `design.md` §4, `phase-1-tuning.md` §Droids). 2.6 builds droids + numbers; the failure mechanic
+  and the felt payoff complete with the storyteller (2.7). Build pending (engine then client).
 
 **Carried from Phase 1 / earlier:**
 
