@@ -1649,9 +1649,11 @@ test('GET /asset-recipes returns the FULL build catalog, matching sim/asset-reci
   // ⤳ 15-10-26 (docs/asset-purchase.md §"Installation kits"): six → eight — the deep scan array and the outpost
   // joined the build catalog, by their BILL kinds. The data-only toll gate did not.
   // ⤳ 16-10-26 (the Prefecture / claims slice): eight → nine — the build-only Prefecture joined it too.
-  assert.equal(body.buildable.length, 9, 'the full build catalog is served (nine kinds)');
+  // ⤳ 02-11-26 (droid engine slice 2): nine → ten — the droid joined it, appended last.
+  assert.equal(body.buildable.length, 10, 'the full build catalog is served (ten kinds)');
   assert.ok(body.buildable.includes(SPYCRAFT), 'spycraft IS in the build catalog (guild-buildable)');
-  assert.deepEqual(body.buildable.slice(-3), ['deep_scan_array', 'outpost', 'prefecture'], 'the three installation kits, last');
+  assert.deepEqual(body.buildable.slice(-4), ['deep_scan_array', 'outpost', 'prefecture', 'droid'], 'the three installation kits, then the droid, last');
+  assert.equal(body.buildTicks.droid, 360, 'the droid\'s assembly time is served');
   assert.equal(body.buildable.includes('toll_gate'), false, 'the toll gate is not buildable');
   assert.equal(body.bills.toll_gate, undefined, 'and its bill is not served as a build recipe');
   for (const kind of body.buildable) {

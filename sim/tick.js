@@ -31,6 +31,7 @@ const {
   isVehicleClass, vehicleId, nextVehicleSerial, vehicleSpec,
 } = require('./vehicles.js');
 const { assetBill, kitKindForBill, BUILD_TICKS } = require('./asset-recipes.js');
+const { DROID, DROID_SOURCE_GUILD, mintDroid } = require('./droids.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
@@ -282,6 +283,12 @@ function refineDeuterium(state, guild) {
 //     collide with a granted, starter or unloaded kit (docs/asset-purchase.md §"Installation kits").
 //     Checked FIRST: the outpost's bill kind is spelled like its kit kind, and it must not fall through
 //     to the ground-asset branch below.
+//   - a DROID (2.6, droid engine slice 2) → mint ONE idle guild-source droid into `guild.droids` through
+//     `mintDroid` (sim/droids.js), id from the guild's `droidSerial`. NOT through mintKitAsset — a droid is
+//     not a kit and has no KIT_KIND_FOR_BILL row — and it must be caught before the ground-asset fallthrough,
+//     which would otherwise mint an `asset_<guild>_droid_NN` ASSET no asset rule knows. The source is always
+//     'guild' today, because the only path that reaches here with a droid is the dockyard: the Syndicate
+//     buy refuses a droid at intake until the flat-tariff slice, which decides how its source reaches here.
 //   - a VEHICLE class → mint a Vehicle into `guild.vehicles`, stamping the per-class spec
 //     (sim/vehicles.js VEHICLE_SPECS) + a SYSTEM-LANDMARK location for `systemId` (a bought/
 //     built craft always lands at a system — design.md §15.4); the id's `NN` is the per-GUILD
@@ -291,7 +298,7 @@ function refineDeuterium(state, guild) {
 // The finished thing is IDLE — referenced by no venture (assets) / carrying no leg (vehicles) —
 // which is derived, so it stores no status flag beyond the vehicle's default `idle`.
 //
-// THE DUPLICATE-ID TRIPWIRE (rule 4) holds for all three families: a minted id cannot collide (the
+// THE DUPLICATE-ID TRIPWIRE (rule 4) holds for all four families (the droid's lives in mintDroid): a minted id cannot collide (the
 // kit and vehicle serials only ever climb; the asset max + 1 is above every existing suffix), so a
 // hit means the id scheme itself has been corrupted — halt loudly rather than share an id.
 function mintFinishedKind(guild, kind, systemId) {
@@ -303,6 +310,11 @@ function mintFinishedKind(guild, kind, systemId) {
     if (guild.assets.filter((a) => a.id === kit.id).length !== 1) {
       throw new Error(`mintFinishedKind: guild ${guild.id} minted duplicate kit id ${kit.id} — kit serial corrupted`);
     }
+    return;
+  }
+  if (kind === DROID) {
+    // mintDroid holds the duplicate-id tripwire itself (the id is built there, from the serial).
+    mintDroid(guild, DROID_SOURCE_GUILD, systemId);
     return;
   }
   if (isVehicleClass(kind)) {

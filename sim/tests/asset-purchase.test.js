@@ -179,8 +179,13 @@ test('validate: refuses when FUEL is short — reached only once credits pass (t
 // ⤳ 16-10-26 (docs/asset-recipes.md, the Prefecture note): spycraft is no longer the ONLY build-only kind. The
 // Prefecture is the second — the deliberate throttle on rapid expansion — so the relation is now "minus the two".
 const BUILD_ONLY_KINDS = [SPYCRAFT, 'prefecture'];
+// ⤳ 02-11-26 (droid engine slice 2): the droid is buildable and NOT sellable too — but it is not build-only. The
+// Syndicate will sell it at a flat tariff in a later slice (docs/droids.md §3). Kept apart from BUILD_ONLY_KINDS
+// so that slice has exactly one line to delete here.
+const NOT_YET_SOLD_KINDS = ['droid'];
+const UNSOLD_KINDS = [...BUILD_ONLY_KINDS, ...NOT_YET_SOLD_KINDS];
 
-test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus the two build-only kinds, spycraft and the Prefecture (rule-4 tripwire)', () => {
+test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus the two build-only kinds (spycraft, the Prefecture) and the not-yet-sold droid (rule-4 tripwire)', () => {
   // The load-bearing set relation, asserted both ways so a future kind added to ONE catalog can
   // never silently skip the other: each build-only kind is buildable but NOT sellable, and every
   // OTHER buildable kind IS sellable.
@@ -188,14 +193,18 @@ test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus the two
     assert.ok(BUILDABLE_KINDS.includes(kind), `${kind} is a BUILDABLE kind (a guild builds it)`);
     assert.ok(!SYNDICATE_SELLABLE_KINDS.includes(kind), `${kind} is NOT sellable (guild-build-only)`);
   }
+  for (const kind of NOT_YET_SOLD_KINDS) {
+    assert.ok(BUILDABLE_KINDS.includes(kind), `${kind} is a BUILDABLE kind (a guild builds it)`);
+    assert.ok(!SYNDICATE_SELLABLE_KINDS.includes(kind), `${kind} is NOT sellable yet`);
+  }
   for (const kind of BUILDABLE_KINDS) {
-    if (BUILD_ONLY_KINDS.includes(kind)) continue;
+    if (UNSOLD_KINDS.includes(kind)) continue;
     assert.ok(SYNDICATE_SELLABLE_KINDS.includes(kind), `${kind} is buildable AND sellable`);
   }
-  // The sell set is precisely the buildable set with the build-only kinds removed — nothing more, nothing less.
+  // The sell set is precisely the buildable set with the unsold kinds removed — nothing more, nothing less.
   assert.deepEqual(
     [...SYNDICATE_SELLABLE_KINDS].sort(),
-    BUILDABLE_KINDS.filter((k) => !BUILD_ONLY_KINDS.includes(k)).sort(),
+    BUILDABLE_KINDS.filter((k) => !UNSOLD_KINDS.includes(k)).sort(),
   );
 });
 

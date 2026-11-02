@@ -758,6 +758,8 @@ function computeAttention(state) {
 //                                                                   //   salvage (§19 #67); omit-when-absent
 //                             inTransitOnVehicleId? } ],           //   aboard that craft (the asset ferry —
 //                                                                   //   the third state); omit-when-absent
+//                 droids?: [ { id, systemId, source, condition } ], // 2.6 droids (docs/droids.md §1), all idle
+//                                                                   //   this slice; sorted by id; omit-when-empty
 //                 salvageWindows?: { systemId: { deadlineTick } }, // its lost systems' open salvage windows —
 //                                                                   //   the tick each lapses; omit-when-empty
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
@@ -1660,6 +1662,18 @@ function buildGodsEyeSnapshot(state) {
       // mutating the snapshot can't alias into engine state.
       vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice, dockStatusByVehicle.get(v.id)))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // droids (roadmap 2.6, droid engine slice 2; docs/droids.md §1): the guild's droids, one row each —
+      // `{ id, systemId, source, condition }`, the stored fields echoed, fresh objects so a consumer can never
+      // alias into engine state. Sorted by id (the mint order). Every droid is idle this slice (assignment is
+      // a later slice), so no derived state rides along yet. PRESENT ONLY when the guild has a droid, so a
+      // droidless galaxy's snapshot is byte-identical to pre-slice. A rival never sees it: a rival's guild row
+      // is cut to RIVAL_GUILD_FIELDS (sim/fog.js).
+      ...(g.droids && g.droids.length
+        ? {
+            droids: g.droids.map((d) => ({ id: d.id, systemId: d.systemId, source: d.source, condition: d.condition }))
+              .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+          }
+        : {}),
       // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — what the client's "Load Route"
       // list reads (slice 2b). Each row is `{ id, name, waypoints: [{ anchor, action? }] }`, FRESH-copied
       // (copyRouteWaypoint copies each anchor and manifest line) so a consumer mutating the snapshot can
