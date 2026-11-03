@@ -60,6 +60,22 @@
 // also DELIVERED differently: no paced send — every minted unit goes to the Syndicate
 // first, until the week's target is met (see "SYNDICATE FIRST", below). Mines and Tier-2
 // refineries are exactly as described above.
+//
+// THE DROID BOOST (roadmap 2.6, droid engine slice 4; docs/droids.md §2). A venture staffed by n
+// WORKING droids produces faster by a factor (1 + boost(n)) — `productionBoost`, sim/droids.js. It is
+// applied HERE, to this tick's numbers only, and NEVER written onto the venture's stored
+// `productionRate`: that stored rate (and the droidless baseline behind it) is what the licence fee,
+// the commitment target Q and the price engine's capacity read, and droids must not move any of them
+// (docs/droids.md §4 — the extra output is the guild's uncommitted upside). In each production form:
+//   - a MINE extracts productionRate × (1 + boost) a tick, landed on whole units by a per-mine
+//     `extractionCarry` (the batchCarry floor-and-carry discipline, for a mine);
+//   - a CONTINUOUS line runs at up to productionRate × (1 + boost) batches a tick — its throttle cap
+//     AND its input ask both scale, so a boosted line draws proportionally MORE inputs (conservation)
+//     and its existing batchCarry lands the higher rate on whole units;
+//   - a TIMED factory does (1 + boost) ticks of work on its unit each tick instead of 1
+//     (resolveTimedFactory, `unitWorkCarry`) — units stay whole and still need their whole input set.
+// With no working droid the boost is exactly 0, every × (1 + 0) is an exact × 1, both new carries stay
+// 0 (and so absent), and every number below is byte-for-byte what it was before this slice.
 
 const { getRecipe } = require('./recipes.js');
 const { getStock } = require('./stock.js');
@@ -73,6 +89,7 @@ const {
 const { committedContribution } = require('./licence.js');
 const { producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { getHistory } = require('./history.js');
+const { workingDroidCounts, productionBoost } = require('./droids.js');
 
 // resolveProduction(guild, systemId) -> a plain report for that (guild, system):
 //   {
@@ -130,6 +147,11 @@ const { getHistory } = require('./history.js');
 function resolveProduction(guild, systemId, opts = {}) {
   const ventures = (guild.ventures || []).filter((v) => v.systemId === systemId);
 
+  // THE DROID BOOST for each venture (see the header): counted once, from the guild's droids, and only
+  // ever multiplied into THIS tick's numbers. A venture no working droid staffs gets exactly 0.
+  const droidCounts = workingDroidCounts(guild);
+  const boostOf = (v) => productionBoost(droidCounts.get(v.id) || 0);
+
   // The producing tick this resolve is FOR (the tick number of the state production
   // yields — both callers pass state.tick + 1) and the engine-wide window length
   // (state.windowN). A direct single-resolve (a test) may omit them, in which case
@@ -152,12 +174,24 @@ function resolveProduction(guild, systemId, opts = {}) {
   // --- Mines: this tick's fresh raw output (the routing basis), per producing
   // mine and aggregated per good. Order is establishment order (ventures order),
   // matching the deposit order stepProduction has always used.
+  //
+  // A droid-boosted mine extracts productionRate × (1 + boost), which is usually not a whole number.
+  // Goods are integers (§15.2), so it uses the refinery's floor-and-carry: add this tick's extraction to
+  // the mine's stored `extractionCarry`, deposit the whole part, carry the rest (always in [0, 1)) to next
+  // tick. The row carries the NEW carry for stepProduction to write back, and only when it is above 0 —
+  // an unboosted mine's rate is a whole number, so its carry stays 0 and its row is exactly as before.
   const mines = [];
   const fresh = {}; // good -> units produced fresh this tick in this system
   for (const v of ventures) {
     if (!v.productionRate || !v.resourceType) continue;
-    mines.push({ ventureId: v.id, good: v.resourceType, amount: v.productionRate });
-    fresh[v.resourceType] = (fresh[v.resourceType] || 0) + v.productionRate;
+    const raw = (v.extractionCarry || 0) + v.productionRate * (1 + boostOf(v));
+    const amount = Math.floor(raw);
+    const extractionCarry = raw - amount;
+    mines.push({
+      ventureId: v.id, good: v.resourceType, amount,
+      ...(extractionCarry > 0 ? { extractionCarry } : {}),
+    });
+    fresh[v.resourceType] = (fresh[v.resourceType] || 0) + amount;
   }
 
   // Refineries in this system, in establishment order.
@@ -299,7 +333,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     // the per-line min-rate balancer below: a line held by a scarce partner input
     // consumes less of this good and spills the rest back.
     let demandTotal = 0;
-    for (const { venture, qty } of consumers) demandTotal += batchesAsked(venture) * qty;
+    for (const { venture, qty } of consumers) demandTotal += unitsAsked(venture, boostOf(venture), qty);
 
     // §5 one-pot distribution (Slice A, 10-08-26). The whole pot for this good is the
     // start-of-step reserve PLUS this tick's fresh; three claimants draw from it in
@@ -377,7 +411,7 @@ function resolveProduction(guild, systemId, opts = {}) {
       give = [];
       let rem = consumerPool;
       for (const { venture, qty } of consumers) {
-        const g = Math.min(batchesAsked(venture) * qty, rem);
+        const g = Math.min(unitsAsked(venture, boostOf(venture), qty), rem);
         give.push(g);
         rem -= g;
       }
@@ -393,8 +427,8 @@ function resolveProduction(guild, systemId, opts = {}) {
       // fractional ask would hand it part of a set it can never start on.
       const wants = consumers.map(({ venture, qty }) => {
         const pct = getThrottlePct(guild, systemId, venture.id);
-        if (isTimedFactory(venture)) return pct > 0 ? batchesAsked(venture) * qty : 0;
-        return (pct / 100) * venture.productionRate * qty;
+        if (isTimedFactory(venture)) return pct > 0 ? batchesAsked(venture, 0) * qty : 0;
+        return (pct / 100) * batchesAsked(venture, boostOf(venture)) * qty;
       });
       const wantTotal = wants.reduce((a, b) => a + b, 0);
       const capTotal = wants.reduce((a, b) => a + Math.ceil(b), 0);
@@ -412,7 +446,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     }
     consumers.forEach(({ venture, qty }, idx) => {
       (alloc[venture.id] || (alloc[venture.id] = {}))[good] = give[idx];
-      lines.push({ ventureId: venture.id, good, demand: batchesAsked(venture) * qty, alloc: give[idx] });
+      lines.push({ ventureId: venture.id, good, demand: unitsAsked(venture, boostOf(venture), qty), alloc: give[idx] });
     });
   }
 
@@ -445,7 +479,7 @@ function resolveProduction(guild, systemId, opts = {}) {
     const ticksPerUnit = ticksPerUnitFor(recipe.output.good);
     if (ticksPerUnit !== null) {
       const timed = resolveTimedFactory(c, recipe, ticksPerUnit, alloc[c.id] || {},
-        getThrottlePct(guild, systemId, c.id));
+        getThrottlePct(guild, systemId, c.id), boostOf(c));
       drawnByLine[c.id] = timed.drawn;
       if (timed.row.minted > 0) {
         mintedByGood[recipe.output.good] = (mintedByGood[recipe.output.good] || 0) + timed.row.minted;
@@ -454,7 +488,9 @@ function resolveProduction(guild, systemId, opts = {}) {
       continue;
     }
 
-    const throttleCap = (getThrottlePct(guild, systemId, c.id) / 100) * c.productionRate;
+    // The throttle caps the line at a share of its DROID-BOOSTED rate (batchesAsked — the same number
+    // its input ask was sized on, so a boosted line is never starved by its own ask).
+    const throttleCap = (getThrottlePct(guild, systemId, c.id) / 100) * batchesAsked(c, boostOf(c));
     // The scarcest input sets the rate; that input IS the bottleneck (no search —
     // it is the min by definition, §5). Ties resolve to the first input in recipe
     // order (a fixed, frozen array — deterministic).
@@ -711,17 +747,33 @@ function isTimedFactory(venture) {
   return !!recipe && ticksPerUnitFor(recipe.output.good) !== null;
 }
 
-// batchesAsked(venture) -> how many batches a consuming line asks its inputs for THIS tick, at
+// batchesAsked(venture, boost) -> how many batches a consuming line asks its inputs for THIS tick, at
 // full tilt: the number each input's per-batch qty is multiplied by in Gates 2 and 3.
-//   - a CONTINUOUS line: its `productionRate` (batches per tick), exactly as always;
+//   - a CONTINUOUS line: its `productionRate` (batches per tick) × (1 + its droid boost). The boost
+//     scales the ASK as well as the line's cap — otherwise Gate 3 would hand a boosted line only its
+//     unboosted share of inputs and the boost could never run. With boost 0 this is exactly
+//     `productionRate`, as always;
 //   - a TIMED factory: 1 when its line is empty (it wants one whole set, to start a unit), 0
-//     while a unit is on the line (that unit's inputs were already taken when it started).
-function batchesAsked(venture) {
-  if (!isTimedFactory(venture)) return venture.productionRate;
+//     while a unit is on the line (that unit's inputs were already taken when it started). The boost
+//     speeds the timer, never the set: a unit still takes exactly one whole input set.
+function batchesAsked(venture, boost) {
+  if (!isTimedFactory(venture)) return venture.productionRate * (1 + boost);
   return venture.unitTicksRemaining == null ? 1 : 0;
 }
 
-// resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct)
+// unitsAsked(venture, boost, qty) -> the WHOLE units of one input a line asks for this tick at full tilt:
+// `batchesAsked × qty`, rounded UP. Gates 2 and 3 deal in whole units (the downstream cap is floored, FCFS
+// hands out integers), so a fractional ask would be cut DOWN to the whole number below it — and a droid-
+// boosted line running at, say, 1.35 batches a tick would only ever be handed enough for 1, so the boost
+// could never run. Asking for the ceiling hands it enough for its true pace: the per-good carry still draws
+// only the whole units the rate has earned (never more than this ask — see the carry note in the refinery
+// loop), and anything handed but not drawn simply stays in the pool, as for any non-binding input. Without
+// droids every ask is already whole (an integer rate × an integer qty), so the ceiling changes nothing.
+function unitsAsked(venture, boost, qty) {
+  return Math.ceil(batchesAsked(venture, boost) * qty);
+}
+
+// resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct, boost)
 //   -> { drawn: { [input good]: whole units }, row: <the report row> }
 // ONE timed factory's tick, computed from start-of-step state — pure, it moves nothing.
 // `allocated` is what Gate 3 handed it per input this tick.
@@ -739,8 +791,24 @@ function batchesAsked(venture) {
 // (The committed progress payment, Slice 3d, is worked out by sim/tick.js from these same facts:
 // a unit was on the line, so `output qty ÷ ticksPerUnit` of a unit's work was done. It is not a
 // key here, so the preview and the snapshot a timed factory shows are unchanged by it.)
-function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct) {
+//
+// THE DROID BOOST (droid engine slice 4; docs/droids.md §2). Each tick a unit is on the line it gets
+// `1 + boost` ticks of work instead of 1. The countdown `unitTicksRemaining` stays a WHOLE number, so the
+// work is landed by floor-and-carry, like every other fractional rate in the engine: the work is added to
+// the venture's `unitWorkCarry`, the whole ticks come off the countdown, and the part of a tick left over
+// waits in `unitWorkCarry` for next tick.
+//   THE OVERSHOOT (ruled in this slice — docs/droids.md §2): the last tick of a unit can do more work than
+//   the unit still needed (2 ticks of work against 1 tick left). That leftover is CARRIED into the next
+//   unit, not dropped, so a steadily-fed factory averages exactly ticksPerUnit ÷ (1 + boost) ticks a unit.
+//   The leftover only survives if the next unit starts on the very next tick: an EMPTY line that does not
+//   start a unit (no input set, or throttled to 0) does no work, so it cannot bank any — its carry is
+//   cleared. A unit is never minted early or in part: only when its countdown reaches 0.
+// Between ticks `unitWorkCarry` is in [0, 1) while a unit is on the line, and in [0, 2) on the tick right
+// after one was minted (at most one whole tick of overshoot, plus a part) — sim/invariants.js fences both.
+// With boost 0 the work is exactly 1 a tick, the carry stays 0 (absent) and the timer is unchanged.
+function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttlePct, boost = 0) {
   let remaining = venture.unitTicksRemaining; // undefined/null = the line is empty
+  let carry = venture.unitWorkCarry || 0;     // banked work, in ticks (droid boost only)
   const drawn = {};
   for (const inp of recipe.inputs) drawn[inp.good] = 0;
   let bottleneckGood = null;
@@ -766,11 +834,17 @@ function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttleP
   let minted = 0;
   const onLine = remaining != null;
   if (onLine) {
-    remaining -= 1;
-    if (remaining === 0) {
+    const work = carry + 1 + boost;     // ticks of work done this tick (exactly 1 with no droids)
+    const whole = Math.floor(work);
+    carry = work - whole;
+    remaining -= whole;
+    if (remaining <= 0) {
       minted = recipe.output.qty; // one whole unit (every Tier-3 recipe outputs 1 — a test pins it)
+      carry += -remaining;        // the overshoot rolls into the next unit (see the header)
       remaining = null;
     }
+  } else {
+    carry = 0; // an empty line did no work this tick, so it banks none
   }
 
   return {
@@ -780,10 +854,13 @@ function resolveTimedFactory(venture, recipe, ticksPerUnit, allocated, throttleP
       timed: true,
       ticksPerUnit,
       started,
-      rate: onLine ? 1 / ticksPerUnit : 0,
+      rate: onLine ? (1 + boost) / ticksPerUnit : 0,
       bottleneckGood,
       minted,
       unitTicksRemaining: remaining == null ? null : remaining,
+      // The NEW banked work for stepProduction to write back — present only when above 0, so an
+      // unboosted factory's row is exactly as before.
+      ...(carry > 0 ? { unitWorkCarry: carry } : {}),
     },
   };
 }

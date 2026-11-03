@@ -3980,6 +3980,14 @@ function validateAction(state, action) {
     if (!venture) {
       return { valid: false, reason: `guild ${guild.id} owns no venture ${JSON.stringify(action.ventureId)}` };
     }
+    // 1b. A PRODUCING VENTURE (droid engine slice 4) — a droid's only job is the production boost, and the
+    // boost multiplies a venture's output good. A venture that makes no good (a dockyard, an illegal
+    // deuterium refinery, a bare shell) can never be boosted, so a droid there would be dead weight the
+    // player paid for. Refused, naming it: assignable now means exactly boostable. `producedGoodFor` is the
+    // engine's one definition of "what does this venture make" (sim/baseline.js).
+    if (producedGoodFor(venture) == null) {
+      return { valid: false, reason: `venture ${venture.id} produces no good, so a droid there could boost nothing — a droid may be assigned only to a producing venture (a mine or a factory)` };
+    }
     // 2. IDLE — a droid staffs one venture at a time. Unassign it first (this names where it is).
     if (!isDroidIdle(droid)) {
       return { valid: false, reason: `droid ${droid.id} is already assigned to venture ${JSON.stringify(droid.assignedToVentureId)} — unassign it first` };
@@ -6001,7 +6009,7 @@ function applyAction(state, action) {
     next.syndicate.ledger += SYNDICATE_DROID_TARIFF;
     // THE DROID — one idle, Syndicate-source row through THE ONE droid mint (sim/droids.js), the same
     // helper a finished dockyard build uses, so both sources number off the one `droidSerial`.
-    mintDroid(guild, DROID_SOURCE_SYNDICATE, action.destinationSystemId);
+    mintDroid(guild, DROID_SOURCE_SYNDICATE, action.destinationSystemId, next.tick);
     // No fuel or goods moved, and credits only moved guild↔ledger, so the cache is expected unchanged —
     // refreshed anyway, as the cancel apply does, so it can never lag the state it summarises.
     next.galacticSupply = computeGalacticSupply(next);
@@ -6082,19 +6090,20 @@ function applyAction(state, action) {
   if (action.type === 'assignDroid') {
     // Validate proved the droid is this guild's, idle, in the venture's system, licence-eligible and
     // under the cap. Assignment moves nothing — no credit, good or fuel — it only records WHICH venture
-    // and WHEN (§15.2: every mutation records its tick). It still does nothing to production: the boost
-    // is a later slice.
+    // and WHEN (§15.2: every mutation records its tick). From the next tick on, the droid boosts that
+    // venture's production (droid engine slice 4 — sim/production.js resolveProduction reads it).
     const guild = findGuild(next, action.guildId);
     const droid = guild.droids.find((d) => d.id === action.droidId);
     droid.assignedToVentureId = action.ventureId;
     droid.deployedAtTick = next.tick;
+    droid.updatedAtTick = next.tick;
     return next;
   }
 
   if (action.type === 'unassignDroid') {
     // Back to idle, in the system it already stands in (assignment never moved it).
     const guild = findGuild(next, action.guildId);
-    unassign(guild.droids.find((d) => d.id === action.droidId));
+    unassign(guild.droids.find((d) => d.id === action.droidId), next.tick);
     return next;
   }
 

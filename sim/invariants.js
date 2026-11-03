@@ -345,10 +345,21 @@ function checkNonNegativityAndIntegrality(state) {
 // above (units drawn/minted stay integer; the carries are draw/mint-TIMING state),
 // so they get their own tripwire here. A venture with no map yet (undefined) is
 // legal; only a present, out-of-range entry trips.
+//
+// The droid boost's MINE carry, `extractionCarry` (droid engine slice 4, docs/droids.md §2), is the same
+// kind of remainder and is fenced here too: present only on a mine, and in [0, 1).
 function checkBatchCarry(state) {
   const out = [];
   for (const g of state.guilds || []) {
     for (const v of g.ventures || []) {
+      const ex = v.extractionCarry;
+      if (ex !== undefined) {
+        if (!v.resourceType) {
+          out.push({ rule: 'extraction-carry-only-on-a-mine (droids.md §2)', where: `venture:${v.id}.extractionCarry`, detail: { value: ex } });
+        } else if (typeof ex !== 'number' || Number.isNaN(ex) || ex < 0 || ex >= 1) {
+          out.push({ rule: 'extraction-carry-in-[0,1) (droids.md §2)', where: `venture:${v.id}.extractionCarry`, detail: { value: ex } });
+        }
+      }
       if (v.batchCarry === undefined) continue;
       for (const [good, frac] of Object.entries(v.batchCarry)) {
         if (typeof frac !== 'number' || Number.isNaN(frac) || frac < 0 || frac >= 1) {
@@ -409,6 +420,20 @@ function checkTimedProduction(state) {
           out.push({ rule: 'payment-carry-only-on-a-timed-factory (Slice 3d)', where: `${where}.paymentCarry`, detail: { value: carry, good } });
         } else if (typeof carry !== 'number' || Number.isNaN(carry) || carry < 0 || carry >= 1) {
           out.push({ rule: 'payment-carry-in-[0,1) (Slice 3d)', where: `${where}.paymentCarry`, detail: { value: carry, good } });
+        }
+      }
+
+      // (d) the droid boost's banked work `unitWorkCarry` (droid engine slice 4) exists ONLY on a timed
+      // factory, and is a number in [0, 1) while a unit is on the line, or in [0, 2) on the tick right
+      // after a unit was minted (at most one whole tick of overshoot carried into the next unit, plus a
+      // part — sim/production.js resolveTimedFactory). Anything larger is work the timer failed to apply.
+      const work = v.unitWorkCarry;
+      if (work !== undefined) {
+        const bound = v.unitTicksRemaining === undefined ? 2 : 1;
+        if (ticksPerUnit === null || v.resourceType) {
+          out.push({ rule: 'unit-work-carry-only-on-a-timed-factory (droids.md §2)', where: `${where}.unitWorkCarry`, detail: { value: work, good } });
+        } else if (typeof work !== 'number' || Number.isNaN(work) || work < 0 || work >= bound) {
+          out.push({ rule: `unit-work-carry-in-[0,${bound}) (droids.md §2)`, where: `${where}.unitWorkCarry`, detail: { value: work, good, unitTicksRemaining: v.unitTicksRemaining } });
         }
       }
 
@@ -1537,6 +1562,12 @@ function checkDroids(state) {
 function checkDroidAssignment(state, g, d, where, out) {
   const assigned = d.assignedToVentureId !== undefined;
   const stamped = d.deployedAtTick !== undefined;
+  // `updatedAtTick` (droid engine slice 4): when present, the whole tick of the droid's last mutation —
+  // never in the future (§15.2: every mutation records its tick).
+  if (d.updatedAtTick !== undefined
+    && (!Number.isSafeInteger(d.updatedAtTick) || d.updatedAtTick < 0 || d.updatedAtTick > state.tick)) {
+    out.push({ rule: 'droid-updated-at-tick-valid (design.md §15.2)', where: `${where}.updatedAtTick`, detail: { updatedAtTick: d.updatedAtTick, tick: state.tick } });
+  }
   if (assigned !== stamped) {
     out.push({ rule: 'droid-assignment-paired', where, detail: { assignedToVentureId: d.assignedToVentureId, deployedAtTick: d.deployedAtTick } });
     return;

@@ -59,7 +59,9 @@ function assignGalaxy({ credits = 1_000_000 } = {}) {
   const s = kitGalaxy({ credits });
   const g1 = g1Of(s);
   const g2 = s.guilds.find((g) => g.id === 'g2');
-  const bare = (id, owner, systemId, extra = {}) => ({ id, ownerGuildId: owner, type: 'refining', systemId, ...extra });
+  // Each names a recipe, so it is a PRODUCING venture a droid may staff (droid engine slice 4 refuses a venture
+  // that makes nothing), but carries no productionRate, so it never actually runs and the tick leaves it alone.
+  const bare = (id, owner, systemId, extra = {}) => ({ id, ownerGuildId: owner, type: 'refining', systemId, recipeId: 'titanium_alloy', ...extra });
   g1.ventures.push(bare(LICENSED, 'g1', HOME.id, {
     licence: { committedOutputPct: 0, windowDays: 7, signedTick: 0, basicFee: 0, discountedFee: 0, lockedPrice: 1 },
   }));
@@ -88,7 +90,7 @@ const D2 = 'asset_g1_droid_02';
 // droid where a test only needs a guild droid to exist.
 function withGuildDroid(s, systemId = HOME.id) {
   const next = structuredClone(s);
-  mintDroid(g1Of(next), 'guild', systemId);
+  mintDroid(g1Of(next), 'guild', systemId, next.tick);
   assert.deepEqual(checkInvariants(next, next.tick), []);
   return next;
 }
@@ -110,15 +112,23 @@ test('createDroid: idle is exactly slice 2\'s four fields; assigned adds assigne
 // A galaxy that builds a guild droid, buys a miner from the Syndicate and closes a venture — but buys and
 // assigns no droid — must not move by a byte.
 const NO_BUY_NO_ASSIGN_GOLDEN_B226B3A = '68e5bb474400953cde39cdcf02a592ec7a2ca9ec54b4e2b99c964150d6f57114';
+// ⤳ droid engine slice 4 (tick-stamping, §15.2): every minted droid now carries `updatedAtTick`, so this run's
+// one guild droid gained that field and the run RE-PINS below. The b226b3a proof still stands, and is checked:
+// with the droids' `updatedAtTick` deleted, the end state hashes to the b226b3a digest exactly — the new field
+// is the ONLY change.
+const NO_BUY_NO_ASSIGN_GOLDEN_SLICE4 = '795d9f9afb99e97f51e5ebdd507b1aa9d759e0a02518fa1ee49c4295954fb1e3';
 
-test('no-op: a run that buys and assigns no droid is byte-identical to b226b3a', () => {
+test('no-op: a run that buys and assigns no droid is byte-identical to b226b3a, but for the droid\'s new updatedAtTick', () => {
   const s = noBuyNoAssignScript();
   // The run really did walk the touched paths: a guild droid minted (and left idle), a miner delivered, the
   // dockyard venture closed.
-  assert.deepEqual(droidsOf(s), [{ id: D1, systemId: HOME.id, source: 'guild', condition: 1 }]);
+  assert.deepEqual(droidsOf(s).map(({ updatedAtTick, ...rest }) => rest), [{ id: D1, systemId: HOME.id, source: 'guild', condition: 1 }]);
   assert.deepEqual(g1Of(s).assets.map((a) => a.id), ['asset_g1_miner_01']);
   assert.equal(g1Of(s).ventures.length, 0);
-  assert.equal(hashState(s), NO_BUY_NO_ASSIGN_GOLDEN_B226B3A);
+  assert.equal(hashState(s), NO_BUY_NO_ASSIGN_GOLDEN_SLICE4);
+  const stripped = structuredClone(s);
+  for (const g of stripped.guilds) for (const d of g.droids || []) delete d.updatedAtTick;
+  assert.equal(hashState(stripped), NO_BUY_NO_ASSIGN_GOLDEN_B226B3A, 'the stamp is the only difference from b226b3a');
 });
 
 // --- 3. the Syndicate buy -----------------------------------------------------------------------------------
@@ -137,7 +147,7 @@ test('buy: exactly ONE idle Syndicate droid at the destination for exactly 10,00
   const s = assignGalaxy({ credits: 25_000 });
   const before = { credits: g1Of(s).credits, ledger: s.syndicate.ledger, fuel: g1Of(s).fuelHoard, consumed: s.audit.totalConsumed };
   const after = accept(s, buy()); // accept() runs every invariant with no tick between (credit conservation too)
-  assert.deepEqual(droidsOf(after), [{ id: D1, systemId: HOME.id, source: 'syndicate', condition: 1 }]);
+  assert.deepEqual(droidsOf(after), [{ id: D1, systemId: HOME.id, source: 'syndicate', condition: 1, updatedAtTick: s.tick }]);
   assert.equal(g1Of(after).credits, before.credits - 10_000);
   assert.equal(after.syndicate.ledger, before.ledger + 10_000);
   assert.equal(g1Of(after).credits + after.syndicate.ledger, before.credits + before.ledger, 'credits moved, none made');
@@ -184,6 +194,7 @@ test('assign / unassign flip idle ↔ deployed and record their tick', () => {
   s = accept(s, assign(D1, LICENSED));
   assert.deepEqual(droidOf(s, D1), {
     id: D1, systemId: HOME.id, source: 'syndicate', condition: 1, assignedToVentureId: LICENSED, deployedAtTick: assignTick,
+    updatedAtTick: assignTick,
   });
   assert.equal(isDroidIdle(droidOf(s, D1)), false);
   assert.equal(assignedDroidCount(g1Of(s), LICENSED), 1);
@@ -191,8 +202,9 @@ test('assign / unassign flip idle ↔ deployed and record their tick', () => {
   s = ticks(s, 10);
   assert.equal(droidOf(s, D1).deployedAtTick, assignTick, 'the deploy tick is the assign tick, not re-stamped');
 
+  const unassignTick = s.tick;
   s = accept(s, unassignA(D1));
-  assert.deepEqual(droidOf(s, D1), { id: D1, systemId: HOME.id, source: 'syndicate', condition: 1 }, 'back to the idle row, in place');
+  assert.deepEqual(droidOf(s, D1), { id: D1, systemId: HOME.id, source: 'syndicate', condition: 1, updatedAtTick: unassignTick }, 'back to the idle row, in place, stamped');
   assert.equal(assignedDroidCount(g1Of(s), LICENSED), 0);
 
   // And it can be put to work again, re-stamped at the new tick.
@@ -371,7 +383,7 @@ test('closure: a closed venture\'s droids return to idle, where they stand — a
   // with no node, which the lockout invariant rightly refuses — a fixture limit, not a droid question.)
   s = accept(s, createRemoveVentureAction({ guildId: 'g1', ventureId: UNLICENSED }));
   assert.equal(g1Of(s).ventures.some((v) => v.id === UNLICENSED), false);
-  assert.deepEqual(droidOf(s, D2), { id: D2, systemId: HOME.id, source: 'guild', condition: 1 }, 'released, in place');
+  assert.deepEqual(droidOf(s, D2), { id: D2, systemId: HOME.id, source: 'guild', condition: 1, updatedAtTick: s.tick }, 'released, in place, stamped with the closure tick');
   assert.equal(droidOf(s, D1).assignedToVentureId, LICENSED, 'another venture\'s droid is untouched');
   ticks(s, 5);
 });
@@ -405,7 +417,7 @@ test('checkDroids bites on every bad assignment, naming the guild and the value'
   // The cap, forced past by hand (the gate would never let it happen).
   const over = structuredClone(base);
   for (let i = 0; i < DROID_CAP; i += 1) {
-    const d = mintDroid(g1Of(over), 'guild', HOME.id);
+    const d = mintDroid(g1Of(over), 'guild', HOME.id, over.tick);
     d.assignedToVentureId = LICENSED;
     d.deployedAtTick = over.tick;
   }

@@ -485,6 +485,8 @@ function createVenture({
   batchCarry = {},
   unitTicksRemaining,
   paymentCarry,
+  extractionCarry,
+  unitWorkCarry,
 }) {
   if (id === undefined) throw new Error('createVenture: id is required');
   if (ownerGuildId === undefined) throw new Error('createVenture: ownerGuildId is required');
@@ -757,6 +759,15 @@ function createVenture({
     // a galaxy without one serializes exactly as before. A 0 handed in is simply "nothing
     // carried"; anything else is kept and reaches the tripwire (sim/invariants.js).
     ...(paymentCarry != null && paymentCarry !== 0 ? { paymentCarry } : {}),
+    // extractionCarry / unitWorkCarry (droid engine slice 4, docs/droids.md §2): the droid boost's two
+    // sub-unit remainders. A droid-boosted MINE extracts a fractional amount a tick, so its part-unit
+    // waits in `extractionCarry`, in [0, 1); a droid-boosted TIMED factory does a fractional number of
+    // ticks of work, so its part-tick waits in `unitWorkCarry` (sim/production.js resolveTimedFactory).
+    // Both are timing state, not goods (§15.2 keeps every pile whole), advanced only by stepProduction,
+    // and OMITTED when 0 — every droidless venture carries neither key and serializes as before. A
+    // present value reaches its tripwire (sim/invariants.js).
+    ...(extractionCarry != null && extractionCarry !== 0 ? { extractionCarry } : {}),
+    ...(unitWorkCarry != null && unitWorkCarry !== 0 ? { unitWorkCarry } : {}),
     // NOTE: the old typeless `outputStockpile` scalar was retired in the
     // resource-representation slice (02-08-26). Produced goods are typed and go
     // straight into the owner guild's `stockpiles` — one home, no drift. There
@@ -847,9 +858,10 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 //                           slice will read it as its anchor).
 // Both OMITTED when idle, so an idle row is exactly slice 2's four fields and a galaxy that assigns no
 // droid serializes byte-identically. They travel together — checkDroids halts on one without the other.
+// And one added by droid engine slice 4: `updatedAtTick`, the tick of the last mint / assign / unassign.
 // This function only ASSEMBLES the row; `checkDroids` (sim/invariants.js) is where a bad source,
 // condition or assignment is caught.
-function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, assignedToVentureId, deployedAtTick }) {
+function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, assignedToVentureId, deployedAtTick, updatedAtTick }) {
   if (id === undefined) throw new Error('createDroid: id is required');
   if (systemId === undefined) throw new Error('createDroid: systemId is required');
   if (source === undefined) throw new Error('createDroid: source is required');
@@ -857,6 +869,11 @@ function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, as
     id, systemId, source, condition,
     ...(assignedToVentureId === undefined ? {} : { assignedToVentureId }),
     ...(deployedAtTick === undefined ? {} : { deployedAtTick }),
+    // updatedAtTick (droid engine slice 4, §15.2 "every mutation records its tick"): the tick of the
+    // droid's last mutation — its mint, an assign or an unassign — the field `Asset.updatedAtTick`
+    // already carries for machines. Omitted when absent (as on Asset), so a row built without one keeps
+    // its old shape; every droid the engine mints or moves carries it.
+    ...(updatedAtTick === undefined ? {} : { updatedAtTick }),
   };
 }
 
