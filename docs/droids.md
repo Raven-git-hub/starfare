@@ -8,7 +8,8 @@ but that file is their source of truth. Nothing here is built yet. *(⤳ 02-11-2
 `drive_module` / `droid_components` → 3-2 — BUILT as **droid engine slice 1** (§12); and the §1 entity + the guild
 dockyard build (§3's guild half), BUILT as **droid engine slice 2** (§12); and the Syndicate flat-tariff buy (§3's
 Syndicate half) + assignment with the licence gate and the cap (§1/§4), BUILT as **droid engine slice 3** (§12); and
-the boost (§2), BUILT as **droid engine slice 4** (§12). Decay and maintenance are not.)*
+the boost (§2), BUILT as **droid engine slice 4** (§12); and decay, the maintenance pool and destroy-at-zero (§5), BUILT as
+**droid engine slice 5** (§12) — **the droid engine is complete**; the client is next.)*
 
 **Scope discipline:** 2.6 builds **droids functioning, with these numbers** — the entity, the two
 sources, the boost, decay and the maintenance pool. The **failure mechanism is NOT built here**
@@ -270,6 +271,65 @@ default 0) protects build-stock: maintenance never draws below it. The client **
 consumption rate (components/week at the current complement), runway, and coverage status — and
 computes no game number.
 
+*(**⤳ AS-BUILT 03-11-26 — droid engine slice 5: decay, the maintenance pool, destroy at zero.** **No new number** —
+the lives, the upkeep and the reserve default are `phase-1-tuning.md` §Droids', now read by code (`sim/droids.js`:
+`DROID_LIFE_TICKS` guild **4 wk / 8 wk**, Syndicate **2 wk / 4 wk**; `DROID_UPKEEP_PER_WEEK` guild **1**, Syndicate
+**2**; `DROID_COMPONENT_RESERVE_DEFAULT` **0**; the week is the Tier-3 week, 10,080 ticks). Two reconciliations, ruled
+by the human in the slice prompt:
+
+- **The maintenance cadence is the WEEK, not the window.** "1 component = 1 droid-week", so coverage is funded at each
+  **week boundary** — `isWindowBoundary(tick, 10,080, dayAnchorTick)`, the same anchored week a Tier-3 contract
+  settles on — not at the daily window boundary the paragraph above says.
+- **The pool is PER SYSTEM, not per guild.** Goods are system-local (ruling B1, `design.md` §15.2), so a droid is
+  maintained from **its own system's** `droid_components` stock only — never another system's. The reserve floor is
+  per system too: `guild.droidComponentReserve: { [systemId]: whole units }`, omitted when empty, absent ⇒ 0
+  (`droidComponentReserveFor`). *Nothing sets it yet* — there is no player action for it in this slice (decision
+  checklist); a scenario or a restored save may hand one in, and the upkeep honours it.
+
+**Decay** (`decayDroidsIn`, run per tick per system from `stepProduction`'s per-system loop, right **after** that
+system's production — so a droid boosts at its start-of-tick condition, including on the tick it wears out). Each
+**deployed** droid in the system loses one tick of wear; an **idle droid is untouched**. The arithmetic is done in whole
+**wear units** so a droid lands on exactly 0 on exactly its ruled tick: a new droid holds `DROID_WEAR_SCALE` units — the
+least common multiple of the four lives (80,640 today, *derived*, not a tuning number) — and a tick takes
+`SCALE ÷ life` of them (guild 2 uncovered / 1 covered, Syndicate 4 / 2); the stored `condition` stays the fraction
+`units ÷ SCALE`. A load-time tripwire halts if any rate is not a whole number. Decay is **monotonic** by construction
+(at least one unit a tick, rounding moves less than ½) and a per-droid tripwire halts if a condition ever fails to
+fall. Wear is the tick's ambient process, so it does **not** re-stamp `updatedAtTick`, which keeps marking discrete
+events only.
+
+**Destroy at zero.** A droid reaching 0 is **removed from `guild.droids`** the same tick (the key omitted when the last
+one goes); its venture simply has one droid fewer from the next tick — the boost drops, the cap slot frees, and
+nothing replaces it automatically (rebuy / rebuild is the player's). The loss is **recorded** as one `droids_spent`
+notice per system per tick, stamped with the producing tick (`docs/event-log.md` §17). **Ids are never reissued:**
+`droidSerial` only climbs and never reads the live rows, so destroying even the top-numbered droid leaves the next
+mint one above it (test-pinned). `checkDroids` now halts on a **deployed droid at condition 0** (`droid-deployed-alive`
+— the "undead" state §10 forbids); an idle droid at 0 stays legal (hand-built only — idle droids never wear).
+
+**Upkeep** (`fundDroidUpkeep`, on a week boundary only, per system, **after** that tick's wear — so the boundary tick
+itself wears at last week's rate and a droid that wore out on it is not paid for). It pays for the week that starts
+the next tick. Spendable stock = the system's `droid_components` above its reserve floor. The deployed droids are
+ordered **lowest condition first, id tie-break** (a total order — invariant 9), and each is covered if the remaining
+spendable stock pays its cost (1 guild, 2 Syndicate); **a droid the remainder cannot pay for is skipped and a cheaper
+one after it may still be covered** (built so no component sits idle while a droid it could pay for wears fast —
+decision checklist). Each deployed droid's coverage is SET — `maintained: true` (slow wear) or the key removed (fast
+wear) — and stamped `updatedAtTick`. The whole draw leaves the stock in one `addStock`; tripwires halt if the stock
+fell by anything but exactly the covered droids' cost, or below the floor. The consumed components are a goods sink
+like a dockyard's bill consumption (non-fuel goods are not conserved — the galactic-supply cache follows the stock,
+`sim/supply.js`). **A droid deployed mid-week** carries no `maintained` key, so it wears fast until the next boundary
+covers it. **Unassign clears coverage** (`unassign`, which the closure release also runs): the week's component is
+not refunded, and a redeployed droid is unmaintained until the next boundary (decision checklist). `checkDroids`
+halts on a `maintained` that is not exactly `true` or sits on an idle droid, and on a reserve that is not a whole
+number ≥ 0.
+
+**Neutral** (§6, test-pinned): the step moves nothing but droid rows, `droid_components` and the notice — no credit,
+no fuel, no GP, no mean-line modifier, no RP, no licence or fee. **No-op byte-identical:** a galaxy with no deployed
+droid (idle droids of both sources beside a pile of `droid_components`, across a week boundary) hashes exactly as at
+8ffbd21 (recorded there, `sim/tests/droid-decay-noop-script.js`). **Snapshot** (state only — no client in this slice):
+each droid row carries `maintained: true` while covered (omitted otherwise) beside its `condition`; the owner's guild
+row carries `droidUpkeep: { [systemId]: { stock, reserve, weeklyUpkeep, maintained, unmaintained, runwayWeeks,
+nextUpkeepTick } }` for each system with a deployed droid — all derived on read, all whole numbers, omitted when no
+droid is deployed, fogged from rivals.)*
+
 ## 6. GP / RP — neutral (reaffirmed)
 
 GP/RP-neutral (RULED 10-09-26, `points-and-reputation.md` §1): droids touch output at the
@@ -319,6 +379,9 @@ slice; until then the bill stays a note in `docs/asset-recipes.md`.)* *(⤳ 02-1
 commit, with droid engine slice 2 — the entity + the guild dockyard build (§12).)*
 
 *(⤳ 03-11-26: the boost in `stepProduction` (both forms) shipped with droid engine slice 4 — §2 AS-BUILT.)*
+*(⤳ 03-11-26: monotonic decay, destroy at end-of-life and the `droid_components` maintenance pool (weekly funding,
+lowest-condition triage, the reserve floor) shipped with droid engine slice 5 — §5 AS-BUILT. Replacement is the
+player's ordinary rebuy / rebuild; the engine's in-scope list is done, and only the client affordances remain.)*
 
 **Out (§7):** all failure/illegality mechanics, the security role, idle-storage cost, in-place
 repair, miner/factory condition, the throttle-below rate cap, anything rival-dependent.
@@ -370,6 +433,11 @@ upkeep 2 `droid_components` = 1 droid-week · `droidComponentReserve` default 0 
 sub-tier **3-2**, `droid_components` → sub-tier **3-2** (each sets the module's price band **and**
 its production timer — 30 ticks/unit, y = 336/week).
 
+*(⤳ AS-BUILT 03-11-26, droid engine slice 5: every number above is now read by code. The lives as `DROID_LIFE_TICKS`
+(guild 40,320 / 80,640 ticks, Syndicate 20,160 / 40,320), the upkeep as `DROID_UPKEEP_PER_WEEK` (1 / 2), the reserve
+default as `DROID_COMPONENT_RESERVE_DEFAULT` (0), all in `sim/droids.js`. The only derived figure is the wear scale
+80,640 (the lives' least common multiple), an exact-arithmetic device, not a tuning number.)*
+
 ## 12. Build order (vertical slices)
 
 1. **Engine** — the entity + both acquire paths (guild dockyard build, Syndicate flat-tariff buy) +
@@ -404,6 +472,11 @@ its production timer — 30 ticks/unit, y = 336/week).
    commitment, the fee, the progress payment, GP and the mean line. Folded in: `updatedAtTick` on every droid
    mutation, and `assignDroid` refusing a non-producing venture (§1 AS-BUILT). **Still pending:** decay and the
    maintenance pool, then the client.)*
+   *(⤳ **Slice 5 — decay + the `droid_components` maintenance pool + destroy at zero — BUILT 03-11-26.** Per-tick
+   linear wear of deployed droids in exact whole units, the weekly per-system upkeep (lowest-condition-first, the
+   per-system reserve floor), removal at 0 with a `droids_spent` notice and no id reissued, the snapshot's
+   `maintained` flag and per-system `droidUpkeep` row (§5 AS-BUILT). **The droid engine is complete.** Next: the
+   client (step 2 below).)*
 2. **Client** — buy / build / assign / unassign + the boosted-rate and coverage display; renders the
    snapshot, computes no game number.
 

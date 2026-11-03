@@ -1029,3 +1029,34 @@ share one block in the notice code, beside §14's territory block, whose helpers
   (`losing-ground-notice-client.test.js`, `outpost-teardown-client.test.js`, `server.test.js`), and `server.test.js`'s
   "no arithmetic over a payload field" check on the delivery facts now ends at the next function: it ran on to
   `myUnreadNotices` and so had come to span the salvage block, whose time is the one allowed difference.
+
+## 17. The `droids_spent` notice — droids worn out to zero (2.6 droid engine slice 5, 03-11-26)
+
+**What it records.** One or more of a guild's **deployed droids wore out** — reached condition 0 — and were
+**destroyed** (`docs/droids.md` §5: "at zero condition the droid is spent → destroyed → replaced"). Discrete and
+unrecoverable — the rows are gone — so it is an EVENT, not a standing condition (§0). ONE writer: `stepDroidUpkeep`
+(`sim/tick.js`), run per system inside tick step 2 (production, `design.md` §15.6), right after that system's
+production; the notice's `tick` is the producing tick the droids reached 0 on. Passive and informational — no
+action-item, no decision. Born unread. Ordinary wear, **not** the storyteller's catastrophic failure (`docs/droids.md`
+§7, not built).
+
+**Who gets it, and how many.** The owning guild only. **One notice per system per tick**, however many droids wore out
+there together — droids deployed together on one venture wear out together, and twenty notices for one event would
+bury the inbox. A system where nothing wore out writes nothing.
+
+**The payload, self-contained** (the destroyed rows no longer exist when the player reads it):
+- `systemId`, `systemName` — the system, its seed name (falling back to its id, as the other notices resolve names);
+- `spent` — one entry per destroyed droid, sorted by `droidId`: `{ droidId, source, ventureId }` — the droid, its
+  source (`'guild'` / `'syndicate'`) and the venture it was staffing.
+Each droid's number stays spent: `droidSerial` only climbs, so none is reissued (`docs/droids.md` §5 AS-BUILT). (The
+type string, the payload names and the one-per-system batching are on the roadmap decision checklist.)
+
+**The surface — today.** No new snapshot field for the notice: `guilds[].events` carries the row with its `whenDay`,
+`attention.notices` counts it while unread, and the per-guild view shows a guild only its own. **Not built: the
+client** — the inbox row, the card and its voice; until the droid client slice lands, the live client's notice renderer
+treats a type it does not know as a licence lapse (the gap every engine-first notice has had).
+
+**A NO-OP elsewhere.** A galaxy where no deployed droid wears out writes no such notice, so every log, snapshot and
+golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts fourteen types; the
+notice itself is pinned by `sim/tests/droid-decay.test.js`.
+

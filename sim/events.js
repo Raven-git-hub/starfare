@@ -32,7 +32,8 @@
 // writes `salvage_window_lapsed` to a guild whose stranded assets were destroyed when its window ran out; and, while the
 // window is still open, its reminder (sim/eviction.js `remindSalvageWindows`, docs/event-log.md §16) writes
 // `salvage_window_reminder` to the window's owner at each window boundary — the galaxy's midnight — for as long as
-// something of the owner's is still stranded there. The storyteller / rival / disaster writers are future work (§5).
+// something of the owner's is still stranded there. The droid wear step (sim/tick.js `stepDroidUpkeep`,
+// docs/event-log.md §17) writes `droids_spent` when deployed droids wear out to zero and are destroyed. The storyteller / rival / disaster writers are future work (§5).
 // Renegotiation ACCEPT writes nothing — an accept is a re-lock, not a discrete loss.
 
 // --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13, §14, §15, §16) ----
@@ -63,11 +64,13 @@ const ASSETS_SWEPT = 'assets_swept';
 const SALVAGE_WINDOW_LAPSED = 'salvage_window_lapsed';
 // the salvage window's daily nudge: the guild still has assets stranded in its lost system, and the window is still open
 const SALVAGE_WINDOW_REMINDER = 'salvage_window_reminder';
+// droids wore out: one or more of a guild's deployed droids in one system reached condition 0 and were destroyed
+const DROIDS_SPENT = 'droids_spent';
 
 const EVENT_TYPES = Object.freeze([
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
-  SALVAGE_WINDOW_REMINDER,
+  SALVAGE_WINDOW_REMINDER, DROIDS_SPENT,
 ]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
@@ -155,7 +158,7 @@ function cloneEventPayload(payload) {
 module.exports = {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
-  SALVAGE_WINDOW_REMINDER,
+  SALVAGE_WINDOW_REMINDER, DROIDS_SPENT,
   EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,

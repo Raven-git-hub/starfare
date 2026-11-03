@@ -31,7 +31,10 @@ const {
   isVehicleClass, vehicleId, nextVehicleSerial, vehicleSpec,
 } = require('./vehicles.js');
 const { assetBill, kitKindForBill, BUILD_TICKS } = require('./asset-recipes.js');
-const { DROID, DROID_SOURCE_GUILD, mintDroid } = require('./droids.js');
+const {
+  DROID, DROID_SOURCE_GUILD, DROID_WEEK_TICKS, mintDroid, decayDroidsIn, fundDroidUpkeep,
+} = require('./droids.js');
+const { getSystem } = require('./seed.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
 const { resolveProduction } = require('./production.js');
@@ -60,7 +63,7 @@ const { issuanceModifier } = require('./meanline.js');
 const { pushModifierSample } = require('./modifier-history.js');
 const { pushFuelBurnEntry } = require('./fuel-burn-history.js');
 const { outpostDockTurnaround, outpostFreeSpace, consignmentSummary } = require('./outposts.js');
-const { recordEvent, DELIVERY_TURNED_BACK } = require('./events.js');
+const { recordEvent, DELIVERY_TURNED_BACK, DROIDS_SPENT } = require('./events.js');
 const { resolveManifest, usedSpace } = require('./manifest.js');
 const { stepScanCompletions } = require('./deep-scan-arrays.js');
 const { lapseSalvageWindows, remindSalvageWindows } = require('./eviction.js');
@@ -155,6 +158,9 @@ function stepProduction(state, _actions, ctx) {
     const toClose = [];
     for (const sys of systemIds) {
       const fee = applyProduction(state, guild, sys, ctx);
+      // The droids of this system wear, wear out, and (at a week boundary) are maintained — right after
+      // this system's production, which they boosted at their start-of-tick condition (droid engine slice 5).
+      stepDroidUpkeep(state, guild, sys);
       if (!fee) continue;
       lump += fee.owed;
       Object.assign(charged, fee.ventures);   // keys are venture ids — unique guild-wide
@@ -215,6 +221,37 @@ function stepProduction(state, _actions, ctx) {
     buildDockyards(state, guild);
   }
   return state;
+}
+
+// stepDroidUpkeep(state, guild, systemId) — one system's droids, once a tick (droid engine slice 5;
+// docs/droids.md §5). Mutates the guild in place; tick() already cloned state. Three things, in order:
+//   1. WEAR — every deployed droid in the system loses one tick of condition (fast if unmaintained, slow if
+//      maintained); idle droids are untouched (decayDroidsIn, sim/droids.js).
+//   2. DESTROY — a droid that reached 0 is removed, and the loss is RECORDED: one `droids_spent` notice for the
+//      system, listing the spent droids and the ventures they staffed (docs/event-log.md §17). Its venture
+//      simply has one droid fewer from the next tick; nothing replaces it automatically.
+//   3. UPKEEP — on a WEEK boundary only, the system's droid_components pay for next week's maintenance
+//      (fundDroidUpkeep). It runs AFTER the wear, so the boundary tick itself still wears at last week's rate,
+//      and a droid that wore out on the boundary is not paid for.
+// Runs inside the per-system loop of stepProduction, the step that already touches this system's droids.
+// A system with no deployed droid does nothing here at all, so a droidless galaxy is byte-identical. Moves
+// no credit, no fuel, no GP, no RP and no fee — only condition and droid_components (§1 neutrality).
+function stepDroidUpkeep(state, guild, systemId) {
+  const producingTick = state.tick + 1;
+  const spent = decayDroidsIn(guild, systemId);
+  if (spent.length > 0) {
+    const system = getSystem(systemId);
+    const byId = (a, b) => (a.droidId < b.droidId ? -1 : a.droidId > b.droidId ? 1 : 0);
+    recordEvent(guild, producingTick, DROIDS_SPENT, {
+      systemId,
+      systemName: (system && system.name) || systemId,
+      spent: spent.map((d) => ({ droidId: d.id, source: d.source, ventureId: d.assignedToVentureId })).sort(byId),
+    });
+  }
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  if (isWindowBoundary(producingTick, DROID_WEEK_TICKS, dayAnchorTick)) {
+    fundDroidUpkeep(guild, systemId, state.tick);
+  }
 }
 
 // refineDeuterium(state, guild) — convert the guild's raw `deuterium` into contraband
@@ -1932,4 +1969,4 @@ function tick(state, actions = []) {
   return next;
 }
 
-module.exports = { tick, STEPS, stepSyndicateBuilds, stepOutpostDocks };
+module.exports = { tick, STEPS, stepSyndicateBuilds, stepOutpostDocks, stepDroidUpkeep };

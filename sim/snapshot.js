@@ -46,7 +46,10 @@ const { expectedReputation, issuanceModifier } = require('./meanline.js');
 const { computeOccupancy } = require('./occupancy.js');
 const { deployedAssetIds, carriedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
-const { DROID } = require('./droids.js');
+const {
+  DROID, DROID_WEEK_TICKS, DROID_COMPONENTS, deployedDroidsIn, droidComponentReserveFor,
+  isDroidMaintained, weeklyUpkeepFor,
+} = require('./droids.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
 const { copyScanJob, isArrayAttached } = require('./deep-scan-arrays.js');
@@ -62,7 +65,7 @@ const {
   getSite, getLandmark, getStarterSystems, getTerranHomeworld,
   getSystem, getClaimRadius, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
-const { guildTotals, cloneStockpiles } = require('./stock.js');
+const { guildTotals, cloneStockpiles, getStock } = require('./stock.js');
 const { cloneProfile } = require('./profile.js');
 const { previewProduction } = require('./production.js');
 const { PRICED_GOODS, postedPrice, basePriceFor } = require('./prices.js');
@@ -76,7 +79,7 @@ const { clonePriceHistory } = require('./price-history.js');
 const { getFuelPriceRing } = require('./fuel-price-history.js');
 const { cloneModifierHistory } = require('./modifier-history.js');
 const { liveEvents, cloneEventPayload } = require('./events.js');
-const { DEFAULT_WINDOW_N } = require('./windows.js');
+const { DEFAULT_WINDOW_N, winStartFor } = require('./windows.js');
 const { dayOf, minuteOf, displayLabel } = require('./calendar.js');
 const { fogForGuild } = require('./fog.js');
 
@@ -760,10 +763,14 @@ function computeAttention(state) {
 //                             inTransitOnVehicleId? } ],           //   aboard that craft (the asset ferry —
 //                                                                   //   the third state); omit-when-absent
 //                 droids?: [ { id, systemId, source, condition,     // 2.6 droids (docs/droids.md §1); sorted
-//                              assignedToVentureId? } ],             //   by id; omit-when-empty; the venture
-//                                                                   //   only while assigned
+//                              assignedToVentureId?, maintained? } ], //   by id; omit-when-empty; the venture
+//                                                                   //   only while assigned; maintained only
+//                                                                   //   while this week's upkeep covers it
 //                 droidComplement?: { ventureId: [droidId] },       // assigned droids per venture, sorted;
 //                                                                   //   omit-when-none assigned
+//                 droidUpkeep?: { systemId: { stock, reserve,       // 2.6 slice 5: per system with a deployed
+//                   weeklyUpkeep, maintained, unmaintained,         //   droid — droid_components upkeep, derived
+//                   runwayWeeks, nextUpkeepTick } },                //   on read; omit-when-none deployed
 //                 salvageWindows?: { systemId: { deadlineTick } }, // its lost systems' open salvage windows —
 //                                                                   //   the tick each lapses; omit-when-empty
 //                 vehicles: [ { id, class,                        // §15.4 transport inventory (2.2)
@@ -1677,6 +1684,8 @@ function buildGodsEyeSnapshot(state) {
             droids: g.droids.map((d) => ({
               id: d.id, systemId: d.systemId, source: d.source, condition: d.condition,
               ...(d.assignedToVentureId === undefined ? {} : { assignedToVentureId: d.assignedToVentureId }),
+              // maintained (droid engine slice 5): present, `true`, only while this week's upkeep covers it.
+              ...(isDroidMaintained(d) ? { maintained: true } : {}),
             }))
               .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
           }
@@ -1687,6 +1696,9 @@ function buildGodsEyeSnapshot(state) {
       // pointers. On the guild's OWN row, not the public venture rows, so a rival never sees a complement.
       // PRESENT ONLY when some droid is assigned, so a galaxy with none stays byte-identical.
       ...droidComplementField(g),
+      // droidUpkeep (droid engine slice 5; docs/droids.md §5): per system holding a DEPLOYED droid, what the
+      // client's maintenance panel will show — derived on read, nothing stored. Own row only (fogged).
+      ...droidUpkeepField(state, g),
       // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — what the client's "Load Route"
       // list reads (slice 2b). Each row is `{ id, name, waypoints: [{ anchor, action? }] }`, FRESH-copied
       // (copyRouteWaypoint copies each anchor and manifest line) so a consumer mutating the snapshot can
@@ -2388,6 +2400,40 @@ function droidComplementField(guild) {
   const ventureIds = Object.keys(byVenture).sort();
   if (ventureIds.length === 0) return {};
   return { droidComplement: Object.fromEntries(ventureIds.map((id) => [id, byVenture[id].sort()])) };
+}
+
+// droidUpkeepField(state, guild) -> `{ droidUpkeep: { [systemId]: row } }` for every system where the guild
+// has a deployed droid, or `{}` when none (omit-when-empty). Each row, all whole numbers (the client computes
+// none of them):
+//   - stock            — the system's droid_components on hand;
+//   - reserve          — the floor upkeep never draws below (default 0);
+//   - weeklyUpkeep     — components a week to maintain every deployed droid here (1 guild, 2 Syndicate each);
+//   - maintained / unmaintained — how many deployed droids this week's upkeep covers, and how many it does not;
+//   - runwayWeeks      — how many whole weeks the stock above the floor keeps the current complement covered
+//                        (floor((stock − reserve) / weeklyUpkeep), never below 0);
+//   - nextUpkeepTick   — the next week-boundary tick, when the next week's upkeep is drawn.
+// Systems keyed in sorted order (deterministic whatever the stored order).
+function droidUpkeepField(state, guild) {
+  const systemIds = [...new Set((guild.droids || [])
+    .filter((d) => d.assignedToVentureId !== undefined).map((d) => d.systemId))].sort();
+  if (systemIds.length === 0) return {};
+  const anchor = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  // The week containing the NEXT producing tick ends on the next boundary (sim/windows.js winStartFor).
+  const nextUpkeepTick = winStartFor(state.tick + 1, DROID_WEEK_TICKS, anchor) + DROID_WEEK_TICKS - 1;
+  const out = {};
+  for (const systemId of systemIds) {
+    const deployed = deployedDroidsIn(guild, systemId);
+    const stock = getStock(guild, systemId, DROID_COMPONENTS);
+    const reserve = droidComponentReserveFor(guild, systemId);
+    const weeklyUpkeep = weeklyUpkeepFor(deployed);
+    const maintained = deployed.filter(isDroidMaintained).length;
+    out[systemId] = {
+      stock, reserve, weeklyUpkeep, maintained, unmaintained: deployed.length - maintained,
+      runwayWeeks: Math.floor(Math.max(0, stock - reserve) / weeklyUpkeep),
+      nextUpkeepTick,
+    };
+  }
+  return { droidUpkeep: out };
 }
 
 // buildSnapshot(state, guildId?) — THE ONE ENTRY POINT, two lenses (docs/exploration-model.md §7,

@@ -1481,7 +1481,7 @@ function checkAssetOccupancy(state) {
 //   - `droid-source-known`: source is one of DROID_SOURCES ('guild' / 'syndicate'). A source is not a
 //     quality tier but it WILL decide durability and upkeep, so an unknown one must not slip through;
 //   - `droid-system-present`: an idle droid has a location — a non-empty string, as an asset's is;
-//   - `droid-condition-in-range`: a finite fraction in [0, 1] (minted at 1, inert until decay);
+//   - `droid-condition-in-range`: a finite fraction in [0, 1] (minted at 1; wears down while deployed);
 //   - `droid-id-names-its-owner`: the id rebuilds exactly as `asset_<this guild>_droid_NN` from its own
 //     number — the droidSerial scheme. A droid moved between guilds without a re-mint fails here;
 //   - `droid-id-unique`: no two droids of a guild share an id;
@@ -1496,6 +1496,13 @@ function checkAssetOccupancy(state) {
 //     venture, or one that was closed without releasing its droids, fails here;
 //   - `droid-venture-same-system`: that venture is in the droid's own system (assignment is same-system);
 //   - `droid-venture-cap`: no venture holds more than DROID_CAP assigned droids.
+// And the WEAR rules (droid engine slice 5, docs/droids.md §5):
+//   - `droid-maintained-valid`: `maintained`, when present, is exactly `true` and sits on a DEPLOYED droid —
+//     an idle droid does not wear, so it is never maintained (unassign clears it);
+//   - `droid-deployed-alive`: a deployed droid has condition > 0. A droid is destroyed the tick it wears to 0,
+//     so a deployed droid at 0 — assigned, counted against the cap, boosting nothing — is the "undead" state
+//     docs/droids.md §10 says must not exist ("assigned" and "alive" coincide);
+//   - `droid-component-reserve-valid`: each `guild.droidComponentReserve[systemId]` is a whole number >= 0.
 // There is deliberately NO "a Syndicate droid's venture must be licensed" rule: the licence gate is
 // ASSIGN-TIME ONLY. A licence that lapses after assignment leaves the droid running (docs/droids.md §4/§10),
 // and that is a LEGAL state an invariant must not halt on (test-pinned in droid-assignment.test.js).
@@ -1538,6 +1545,24 @@ function checkDroids(state) {
       seen.add(d.id);
       if (n !== null && n > maxNumber) maxNumber = n;
       checkDroidAssignment(state, g, d, where, out);
+      if (d.maintained !== undefined && (d.maintained !== true || d.assignedToVentureId === undefined)) {
+        out.push({ rule: 'droid-maintained-valid (docs/droids.md §5)', where: `${where}.maintained`, detail: { maintained: d.maintained, assignedToVentureId: d.assignedToVentureId } });
+      }
+      if (d.assignedToVentureId !== undefined && !(d.condition > 0)) {
+        out.push({ rule: 'droid-deployed-alive (docs/droids.md §5/§10)', where: `${where}.condition`, detail: { condition: d.condition, assignedToVentureId: d.assignedToVentureId } });
+      }
+    }
+    if (g.droidComponentReserve !== undefined) {
+      const reserve = g.droidComponentReserve;
+      if (reserve === null || typeof reserve !== 'object' || Array.isArray(reserve)) {
+        out.push({ rule: 'droid-component-reserve-valid', where: `guild:${g.id}.droidComponentReserve`, detail: { droidComponentReserve: reserve } });
+      } else {
+        for (const [systemId, floor] of Object.entries(reserve)) {
+          if (!Number.isSafeInteger(floor) || floor < 0) {
+            out.push({ rule: 'droid-component-reserve-valid', where: `guild:${g.id}.droidComponentReserve.${systemId}`, detail: { reserve: floor } });
+          }
+        }
+      }
     }
     // The cap, per venture, every source counted. Counted over the droids' pointers (the stored side).
     const perVenture = new Map();

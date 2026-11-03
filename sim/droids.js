@@ -13,13 +13,16 @@
 // buy (a flat tariff, sim/actions.js buyAssetFromSyndicate) and ASSIGNMENT (assignDroid / unassignDroid,
 // licence-gated for a Syndicate droid, capped per venture). Slice 4 adds THE BOOST (`productionBoost`,
 // below): a venture's WORKING droids raise its production, applied transiently by sim/production.js
-// resolveProduction. Decay and maintenance are later slices.
+// resolveProduction. Slice 5 (this file's last engine slice) adds DECAY, the weekly droid_components
+// UPKEEP that slows it, and DESTRUCTION at zero (`decayDroidsIn`, `fundDroidUpkeep`, below; docs/droids.md §5).
 //
 // Like sim/assets.js, this file holds RULES and the mint. The row itself is built by `createDroid` in
 // sim/state.js, beside the other entity constructors.
 
 const { createDroid } = require('./state.js');
 const { assetId } = require('./assets.js');
+const { getStock, addStock } = require('./stock.js');
+const { TIER3_WINDOW_N } = require('./windows.js');
 
 // The bill kind a dockyard queue entry carries for a droid build. Spelled ONCE, here.
 const DROID = 'droid';
@@ -71,9 +74,9 @@ function productionBoost(n) {
 }
 
 // isDroidWorking(droid) -> true when the droid is assigned to a venture AND still has condition left.
-// Only a working droid boosts (docs/droids.md §2: "Working droids (condition > 0)"). Nothing lowers
-// condition yet (decay is the next slice), so today every assigned droid is working — but reading
-// `condition > 0` now means decay slots in later with no change here.
+// Only a working droid boosts (docs/droids.md §2: "Working droids (condition > 0)"). Decay (slice 5)
+// destroys a droid the tick it reaches 0, so in a running galaxy every assigned droid is working; the
+// `condition > 0` test still guards a hand-built state.
 function isDroidWorking(droid) {
   return droid.assignedToVentureId !== undefined && droid.condition > 0;
 }
@@ -107,6 +110,10 @@ function assignedDroidCount(guild, ventureId) {
 function unassign(droid, tick) {
   delete droid.assignedToVentureId;
   delete droid.deployedAtTick;
+  // Coverage is for a DEPLOYED droid only (slice 5): an idle droid does not wear, so it is not maintained.
+  // The week's components were spent at the boundary and are not refunded; redeployed, the droid wears at
+  // the fast rate until the next boundary covers it — the same as any droid deployed mid-week.
+  delete droid.maintained;
   droid.updatedAtTick = tick;
 }
 
@@ -128,6 +135,179 @@ function releaseDroidsFrom(guild, ventureId, tick) {
   return released;
 }
 
+// ── DECAY & UPKEEP (droid engine slice 5; docs/droids.md §5, the numbers docs/phase-1-tuning.md §Droids) ──────
+//
+// A DEPLOYED droid wears out linearly; an idle one does not wear at all. Each week a system's
+// `droid_components` stock pays to MAINTAIN its deployed droids, and a maintained droid wears half as fast.
+// Maintenance only SLOWS the wear — nothing ever raises a droid's condition. At zero the droid is destroyed.
+
+// The maintenance week: the same 10,080-tick week the Tier-3 contracts settle on (7 days × 1,440 ticks), on
+// the same anchored cadence (sim/windows.js), so a galaxy has one week, not two.
+const DROID_WEEK_TICKS = TIER3_WINDOW_N;
+
+// The good maintenance burns. Spelled once, here.
+const DROID_COMPONENTS = 'droid_components';
+
+// DROID_LIFE_TICKS — how many ticks a NEW droid lasts, by source, uncovered (no maintenance) and covered
+// (maintained every tick). `[FIRST-CUT]`, docs/phase-1-tuning.md §Droids: guild 4 weeks / 8 weeks, Syndicate
+// 2 weeks / 4 weeks. Maintenance doubles the life, which is the same as halving the wear per tick.
+const DROID_LIFE_TICKS = Object.freeze({
+  [DROID_SOURCE_GUILD]: Object.freeze({ uncovered: 4 * DROID_WEEK_TICKS, covered: 8 * DROID_WEEK_TICKS }),
+  [DROID_SOURCE_SYNDICATE]: Object.freeze({ uncovered: 2 * DROID_WEEK_TICKS, covered: 4 * DROID_WEEK_TICKS }),
+});
+
+// DROID_UPKEEP_PER_WEEK — how many droid_components keep ONE droid maintained for ONE week, by source.
+// `[FIRST-CUT]`, docs/phase-1-tuning.md §Droids: 1 for a guild droid, 2 for a Syndicate droid (the red tape).
+const DROID_UPKEEP_PER_WEEK = Object.freeze({ [DROID_SOURCE_GUILD]: 1, [DROID_SOURCE_SYNDICATE]: 2 });
+
+// The default per-system floor maintenance never draws below (docs/phase-1-tuning.md §Droids: default 0).
+const DROID_COMPONENT_RESERVE_DEFAULT = 0;
+
+// WHY A "WEAR SCALE". Condition is stored as a fraction (1 = new), but subtracting 1/40,320 from a float
+// forty thousand times does not land on exactly 0 — rounding error piles up, and "reaches zero on the
+// ruled tick" would be off by one, or never quite reach 0 at all. So the arithmetic is done in WHOLE
+// "wear units" instead: a new droid holds DROID_WEAR_SCALE units, each tick takes away a whole number of
+// them, and the stored fraction is just units ÷ DROID_WEAR_SCALE. Whole numbers subtract exactly, so a
+// droid hits exactly 0 on exactly the ruled tick, every run (invariant 9).
+//
+// The scale is not a tuning number: it is the smallest number every life divides into (their least common
+// multiple — 80,640 at today's lives), worked out from DROID_LIFE_TICKS, so retuning a life retunes it.
+function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+const ALL_LIVES = Object.values(DROID_LIFE_TICKS).flatMap((l) => [l.uncovered, l.covered]);
+const DROID_WEAR_SCALE = ALL_LIVES.reduce((acc, life) => (acc / gcd(acc, life)) * life, 1);
+
+// wearPerTick(source, covered) -> the whole wear units one tick takes from a droid. Uncovered = SCALE ÷ the
+// uncovered life, covered = SCALE ÷ the covered life — so a new droid runs out in exactly its life.
+function wearPerTick(source, covered) {
+  const life = DROID_LIFE_TICKS[source];
+  if (!life) throw new Error(`wearPerTick: unknown droid source ${JSON.stringify(source)}`);
+  return DROID_WEAR_SCALE / (covered ? life.covered : life.uncovered);
+}
+
+// Load-time tripwire: every wear rate must be a whole number of units, or the exact-zero promise above breaks.
+for (const source of DROID_SOURCES) {
+  for (const covered of [false, true]) {
+    const w = wearPerTick(source, covered);
+    if (!Number.isSafeInteger(w) || w < 1) {
+      throw new Error(`droids: the ${source} droid's ${covered ? 'covered' : 'uncovered'} wear ${w} units/tick is not a whole number ≥ 1 — DROID_WEAR_SCALE ${DROID_WEAR_SCALE} must divide every life`);
+    }
+  }
+}
+
+// decayedCondition(condition, wear) -> the condition after taking `wear` units off it, never below 0.
+// `Math.round` turns the stored fraction back into its whole units (exact for any value this code wrote).
+// Because `wear` is at least 1 and the rounding moves by less than ½, the result is ALWAYS strictly lower
+// than `condition` (or 0) — decay is monotonic even for a hand-built condition that is off the grid.
+function decayedCondition(condition, wear) {
+  const units = Math.round(condition * DROID_WEAR_SCALE) - wear;
+  return units <= 0 ? 0 : units / DROID_WEAR_SCALE;
+}
+
+// isDroidMaintained(droid) -> is this droid covered by this week's upkeep? Stored as `maintained: true`,
+// omitted otherwise, and only ever on a deployed droid (unassign clears it).
+function isDroidMaintained(droid) {
+  return droid.maintained === true;
+}
+
+// deployedDroidsIn(guild, systemId) -> the guild's DEPLOYED droids standing in that system, in stored order.
+function deployedDroidsIn(guild, systemId) {
+  return (guild.droids || []).filter((d) => !isDroidIdle(d) && d.systemId === systemId);
+}
+
+// droidComponentReserveFor(guild, systemId) -> the floor maintenance keeps in that system's droid_components
+// stock. Stored per system in `guild.droidComponentReserve` (omitted when empty); absent means the default 0.
+function droidComponentReserveFor(guild, systemId) {
+  const map = guild.droidComponentReserve || {};
+  return Object.prototype.hasOwnProperty.call(map, systemId) ? map[systemId] : DROID_COMPONENT_RESERVE_DEFAULT;
+}
+
+// weeklyUpkeepFor(droids) -> how many droid_components would cover all of `droids` for one week.
+function weeklyUpkeepFor(droids) {
+  return droids.reduce((sum, d) => sum + DROID_UPKEEP_PER_WEEK[d.source], 0);
+}
+
+// decayDroidsIn(guild, systemId) -> the droids DESTROYED this tick (removed rows), having MUTATED `guild`.
+// Run once per tick per system (sim/tick.js stepProduction, right after that system's production — so a
+// droid still boosts on the tick it wears out, and is gone before the next). For each deployed droid in the
+// system: take one tick of wear (covered or uncovered); a droid that reaches 0 is removed from guild.droids.
+//
+// NOT re-stamped: wear is the tick's ambient process, not a discrete event, so `updatedAtTick` keeps marking
+// the last mint / assign / unassign / upkeep. The destruction IS a discrete event — the caller records it.
+// An idle droid is untouched, so a galaxy with no deployed droid changes nothing here at all.
+function decayDroidsIn(guild, systemId) {
+  const deployed = deployedDroidsIn(guild, systemId);
+  if (deployed.length === 0) return [];
+  const spent = [];
+  for (const d of deployed) {
+    const before = d.condition;
+    d.condition = decayedCondition(before, wearPerTick(d.source, isDroidMaintained(d)));
+    // Tripwire: decay must only ever go DOWN (docs/droids.md §5, monotonic). decayedCondition guarantees it;
+    // this halts loudly if that ever stops being true rather than let a droid quietly heal.
+    if (!(d.condition < before || before === 0)) {
+      throw new Error(`decayDroidsIn: droid ${d.id} went from condition ${before} to ${d.condition} — decay must only go down`);
+    }
+    if (d.condition === 0) spent.push(d);
+  }
+  if (spent.length > 0) {
+    const gone = new Set(spent);
+    guild.droids = guild.droids.filter((d) => !gone.has(d));
+    // Omit-when-empty, like createGuild: a guild whose last droid wore out carries no `droids` key. The
+    // serial stays — it only climbs, so a spent droid's number is never handed out again (§15.4).
+    if (guild.droids.length === 0) delete guild.droids;
+  }
+  return spent;
+}
+
+// fundDroidUpkeep(guild, systemId, tick) -> { drawn, covered, uncovered }, having MUTATED `guild`. Run at each
+// WEEK boundary, per system, AFTER that tick's decay: it pays for the week that STARTS on the next tick.
+//
+// The droids are maintained from THEIR OWN system's droid_components stock only — goods are system-local, so
+// one system's stock never maintains another system's droids. Only stock ABOVE the system's reserve floor is
+// spent. Each deployed droid costs DROID_UPKEEP_PER_WEEK[source] (1 guild, 2 Syndicate). When the stock cannot
+// cover them all, the LOWEST-condition droids are covered first (the ones closest to wearing out), ties broken
+// by id so two runs always pick the same droids (invariant 9). A droid the remaining stock cannot pay for is
+// skipped, and a cheaper droid after it may still be covered — so no component sits unused while a droid it
+// could have paid for wears fast. (That skip rule is on the roadmap decision checklist.)
+//
+// Every deployed droid's coverage is SET here — `maintained: true`, or the key removed — and each is stamped
+// `updatedAtTick` (a discrete, weekly mutation, §15.2). A droid deployed after this boundary has no
+// `maintained` key, so it wears at the fast rate until the next boundary pays for it.
+function fundDroidUpkeep(guild, systemId, tick) {
+  const deployed = deployedDroidsIn(guild, systemId);
+  if (deployed.length === 0) return { drawn: 0, covered: 0, uncovered: 0 };
+  const order = [...deployed].sort((a, b) => (
+    a.condition - b.condition || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  ));
+  const reserve = droidComponentReserveFor(guild, systemId);
+  const stockBefore = getStock(guild, systemId, DROID_COMPONENTS);
+  let spendable = Math.max(0, stockBefore - reserve);
+  let drawn = 0;
+  let covered = 0;
+  for (const d of order) {
+    const cost = DROID_UPKEEP_PER_WEEK[d.source];
+    if (spendable >= cost) {
+      d.maintained = true;
+      spendable -= cost;
+      drawn += cost;
+      covered += 1;
+    } else {
+      delete d.maintained;
+    }
+    d.updatedAtTick = tick;
+  }
+  if (drawn > 0) addStock(guild, systemId, DROID_COMPONENTS, -drawn);
+  // Tripwires — the draw must be exactly what the covered droids cost, and must never dig below the floor.
+  const stockAfter = getStock(guild, systemId, DROID_COMPONENTS);
+  const paidFor = weeklyUpkeepFor(deployed.filter(isDroidMaintained));
+  if (stockBefore - stockAfter !== drawn || drawn !== paidFor) {
+    throw new Error(`fundDroidUpkeep: guild ${guild.id} system ${systemId} at tick ${tick}: drew ${drawn} ${DROID_COMPONENTS} (stock ${stockBefore} → ${stockAfter}) for droids costing ${paidFor}`);
+  }
+  if (drawn > 0 && stockAfter < reserve) {
+    throw new Error(`fundDroidUpkeep: guild ${guild.id} system ${systemId} at tick ${tick}: upkeep left ${stockAfter} ${DROID_COMPONENTS}, below the reserve floor ${reserve}`);
+  }
+  return { drawn, covered, uncovered: deployed.length - covered };
+}
+
 // droidId(guildId, n) -> `asset_<guildId>_droid_NN`. The same shape as every other asset id
 // (sim/assets.js assetId), so the id names its owner and its number the same way.
 function droidId(guildId, n) {
@@ -135,8 +315,8 @@ function droidId(guildId, n) {
 }
 
 // nextDroidSerial(guild) -> one above the guild's stored `droidSerial` (absent/0 -> 1). The kitAssetSerial
-// pattern (sim/assets.js nextKitAssetSerial): droids WILL leave the collection (spent at end of life, a
-// later slice), so "the highest live number + 1" could hand out a spent droid's id again. A stored counter
+// pattern (sim/assets.js nextKitAssetSerial): droids DO leave the collection (spent at end of life —
+// decayDroidsIn, slice 5), so "the highest live number + 1" could hand out a spent droid's id again. A stored counter
 // that only climbs cannot (design.md §15.4 "Ids never repeat"). A pure read — the caller bumps it.
 function nextDroidSerial(guild) {
   return (guild.droidSerial || 0) + 1;
@@ -182,4 +362,18 @@ module.exports = {
   droidId,
   nextDroidSerial,
   mintDroid,
+  DROID_WEEK_TICKS,
+  DROID_COMPONENTS,
+  DROID_LIFE_TICKS,
+  DROID_UPKEEP_PER_WEEK,
+  DROID_COMPONENT_RESERVE_DEFAULT,
+  DROID_WEAR_SCALE,
+  wearPerTick,
+  decayedCondition,
+  isDroidMaintained,
+  deployedDroidsIn,
+  droidComponentReserveFor,
+  weeklyUpkeepFor,
+  decayDroidsIn,
+  fundDroidUpkeep,
 };
