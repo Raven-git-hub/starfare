@@ -7,8 +7,8 @@ headline rulings and points here; this file is the model the build reads. Number
 but that file is their source of truth. Nothing here is built yet. *(⤳ 02-11-26: except the §11 sub-tier reband —
 `drive_module` / `droid_components` → 3-2 — BUILT as **droid engine slice 1** (§12); and the §1 entity + the guild
 dockyard build (§3's guild half), BUILT as **droid engine slice 2** (§12); and the Syndicate flat-tariff buy (§3's
-Syndicate half) + assignment with the licence gate and the cap (§1/§4), BUILT as **droid engine slice 3** (§12). The
-boost, decay and maintenance are not.)*
+Syndicate half) + assignment with the licence gate and the cap (§1/§4), BUILT as **droid engine slice 3** (§12); and
+the boost (§2), BUILT as **droid engine slice 4** (§12). Decay and maintenance are not.)*
 
 **Scope discipline:** 2.6 builds **droids functioning, with these numbers** — the entity, the two
 sources, the boost, decay and the maintenance pool. The **failure mechanism is NOT built here**
@@ -80,6 +80,18 @@ also halts on a half-assigned droid, a deploy tick in the future, a droid on a v
 (or no longer exists), a droid in a different system from its venture, and a venture over the cap. Assigned droids
 still do **nothing** to production — the boost is a later slice.)*
 
+*(**⤳ AS-BUILT 03-11-26 — droid engine slice 4: the tick stamp, and assignable = boostable.** Every droid row the
+engine mints or moves now carries **`updatedAtTick`** — the tick of its last mutation, the field `Asset.updatedAtTick`
+already carries for machines (§15.2, every mutation records its tick). `mintDroid` takes the tick and stamps it (the
+dockyard mint stamps the dockyard step's tick, the one its yard venture is stamped with; the Syndicate buy, the
+action's tick) and refuses to mint without one; `assignDroid` and `unassignDroid` stamp it, and so does the closure
+release (`releaseDroidsFrom`, the closure's tick). Omitted when absent (as on `Asset`), so a droidless galaxy is
+byte-identical; `checkDroids` halts on a stamp that is not a whole tick or lies in the future. A droid that merely
+*works* is not re-stamped — nothing about the row changed. **And `assignDroid` refuses a venture that makes nothing**
+(`producedGoodFor(venture) == null` — a dockyard, an illegal deuterium refinery, a bare shell), naming it, checked
+right after ownership: the boost can never reach such a venture, so a droid may now be assigned exactly where it
+boosts.)*
+
 ## 2. The buff — one knob, two emission paths
 
 Working droids (`condition > 0`) multiply a venture's production **speed** by `1 + boost(n)`, `n` =
@@ -94,14 +106,63 @@ cost and maintenance, never the boost.
 
 Applied in the production model's native form (`productionRate` is inert for a timed factory):
 
-- **Continuous** (Tier 1/2): effective `rate = baseline × (1 + boost)`, emitted through a
-  per-venture **fractional accumulator** so goods stay integer (§15.2) and deterministic. Baseline
-  is the droidless baseline (`baselineRateFor`), never a throttled `productionRate`.
+- **Continuous** (Tier 1/2): effective `rate = productionRate × (1 + boost)`, emitted through a
+  per-venture **fractional accumulator** so goods stay integer (§15.2) and deterministic. *(⤳ RULED
+  03-11-26 — the boost's input is the venture's **`productionRate`**, the stored rate the tick runs at,
+  throttled for a continuous line as `(pct/100) × productionRate × (1 + boost)`. For a normally-established,
+  unthrottled venture `productionRate` **is** the droidless baseline, so this reads `baseline × (1 + boost)` in
+  the common case. The two differ only under a throttle — the boost raises the throttled rate: throttle-below and
+  droids-above are the two directions of one dial — or under an operator-set rate; in both, `productionRate` is
+  the correct input. The rule "read the droidless baseline (`baselineRateFor`), never a throttled
+  `productionRate`" is the **fee / commitment basis** (§4), not the boost's input; the two do not conflict — the
+  boost moves output, the basis prices the licence, and neither reads the other.)*
 - **Timed** (Tier 3/4): each tick advances the unit's progress by `(1 + boost)` instead of 1, on
   the `unitTicksRemaining` accumulator. `TICKS_PER_UNIT` is **untouched**, so units stay whole and
   `assertWholeWeeklyOutput` stays green.
 
 Applied in the tick (`stepProduction`); the client renders the rate and computes no game number.
+
+*(**⤳ AS-BUILT 03-11-26 — droid engine slice 4, the boost.** `productionBoost(n)` (`sim/droids.js`) is the curve
+above, read from a 21-entry table built once at load (n is a whole 0–20, so no `Math.pow` in the tick; boost(0) is
+an exact 0 and boost(20) an exact 1.0). n counts a venture's **working** droids — `assignedToVentureId` is the
+venture AND `condition > 0` (`isDroidWorking`, `workingDroidCounts`); nothing lowers condition yet, so every assigned
+droid works, and decay will slot in without touching the boost. **Applied transiently inside `resolveProduction`**
+(`sim/production.js`) — the pure resolver both the tick and `previewProduction` run, so the preview shows the
+boosted numbers the tick then applies — and **never written onto the venture**. **The multiplied rate is the stored
+`productionRate`** (RULED 03-11-26 — see the Continuous bullet above): the droidless baseline in the common case,
+the throttled or operator-set rate otherwise. The droidless baseline remains the fee / commitment basis (§4), which
+the boost never touches. Per form:
+
+- **Mine:** extracts `productionRate × (1 + boost)` a tick. Goods stay whole by floor-and-carry on a new per-mine
+  **`extractionCarry`** (in [0, 1), omitted when 0): this tick's extraction is added to it, the whole part is
+  deposited, the rest carried. The deposit takes whichever path the mine's output already takes (stockpile, a
+  licensed deuterium mine's auto-sale + pool mint, an unlicensed one's raw store).
+- **Continuous line:** its throttle cap is `(pct/100) × productionRate × (1 + boost)`, and its Gate-2/3 **input ask
+  scales the same way** (`batchesAsked`) — rounded **up** to whole units (`unitsAsked`), because Gates 2 and 3 deal in
+  integers and a floored ask would hand a line at 1.35 batches/tick only enough for 1, so the boost could never run.
+  The existing `batchCarry` then lands the higher rate on whole units and draws `rate × qty` of every input — a
+  boosted line draws proportionally more (conservation), and a starved one is still held by its scarcest input.
+  An unboosted ask is already whole, so the rounding changes nothing for it.
+- **Timed factory:** each tick a unit is on the line gets `1 + boost` ticks of work instead of 1. The countdown
+  `unitTicksRemaining` stays whole: the work is floor-and-carried through a new **`unitWorkCarry`**. **The overshoot
+  (ruled in this slice):** a unit's last tick can do more work than it still needed; the leftover is **carried into
+  the next unit**, not dropped, so a steadily-fed factory averages exactly `TICKS_PER_UNIT ÷ (1 + boost)` ticks a unit
+  (at ×2 a 15-tick unit lands on ticks 8, 15, 23, 30 …). Work is banked only across a mint into an immediately
+  started next unit: an **empty line that starts no unit** (no input set, or throttled to 0) does no work and **its
+  carry is cleared**. `unitWorkCarry` is in [0, 1) while a unit is on the line and in [0, 2) on the tick right after a
+  mint (at most one whole tick of overshoot plus a part); `checkTimedProduction` fences both. A unit is minted only
+  when its countdown reaches 0, takes its whole input set at start, and is never partial; `TICKS_PER_UNIT` and
+  `assertWholeWeeklyOutput` (the BASELINE y) are untouched — a boosted factory simply makes more than y a week.
+
+**Neutral, by construction and test-pinned (§4, §6):** the commitment target `Q` is still built from
+`syndicateCommitment`, so a committed boosted venture delivers exactly its baseline commitment and keeps the surplus
+(the windowed send self-terminates at `Q`; a timed good's Syndicate-first take stops at `x`); the fee is locked at
+signing off the baseline; a timed factory's **progress payment** still pays the committed share of *baseline*
+progress (`output qty ÷ TICKS_PER_UNIT`) on each tick a unit is on the line, so a steadily-fed boosted factory is paid
+exactly what an unboosted one is — the extra work is the guild's, not the Syndicate's to pay for; GP, the issuance
+modifier and the expected RP read ventures and systems, never output. **No-op:** with no working droid every
+`× (1 + 0)` is an exact `× 1` and both carries stay absent — a galaxy with idle droids and every production path hashes
+exactly as at a8ff924 (pinned).)*
 
 ## 3. Sources, cost & durability — and WHY the numbers are what they are
 
@@ -165,6 +226,25 @@ droid assigned and running (a legal state; an invariant demanding the licence wo
 a Syndicate droid on a venture whose licence then lapses (`applyLapse`) stays assigned, un-restamped, through every
 invariant on every tick; a second Syndicate droid is then refused there; the first can be taken off but not put
 back. The licence's fee and terms still read only the droidless baseline — nothing in this slice touches them.)*
+
+*(**⤳ AS-BUILT 03-11-26 — droid engine slice 4.** **Assignable = boostable:** `assignDroid` now also refuses a venture
+that produces no good (`producedGoodFor` null — a dockyard, an illegal deuterium refinery), naming it, so the licence
+gate above only ever decides *which producing* ventures a Syndicate droid may staff. **Droids cannot inflate the fee
+or the commitment — now with a boost to test it against:** the boost multiplies only this tick's minted output, never
+the stored `productionRate`, the signed licence or `syndicateCommitment`; a committed boosted venture delivers exactly
+its baseline commitment and keeps the rest as uncommitted upside, and the boundary fee is identical with or without a
+full complement (test-pinned, `sim/tests/droid-boost.test.js`).)*
+
+*(**⤳ RULED 03-11-26 — the slice-4 neutrality rules, settled.** **The timed progress payment pays baseline
+progress only:** a committed boosted timed factory is paid, on each tick a unit is on the line, the committed share
+of *baseline* progress (`output qty ÷ TICKS_PER_UNIT`), exactly as an unboosted one — paying for the boosted progress
+would have the Syndicate pay for units it never receives (it takes its `x` and no more; the extra units are the
+guild's). This is the settled neutrality rule, not an open question. **Droids may boost a licensed deuterium mine**,
+like any producing venture — no special case. Its windowless `deuteriumLicence` sets no commitment, and its output
+already goes, per tick, to the Syndicate auto-sale and the fuel-pool mint; so a boosted licensed deuterium mine adds
+to the guild's deuterium sales **and** to the galaxy's fuel pool (an unlicensed one's raw store simply grows faster).
+Allowed now; whether that unbalances the fuel pool is flagged on the roadmap's decision checklist for the
+fuel-economy / multiplayer balancing pass.)*
 
 ## 5. Decay & maintenance
 
@@ -238,6 +318,8 @@ move — the `rebanded-goods-delta.test.js` template). *(⤳ 02-11-26, the human
 slice; until then the bill stays a note in `docs/asset-recipes.md`.)* *(⤳ 02-11-26: the bill lift shipped, in one
 commit, with droid engine slice 2 — the entity + the guild dockyard build (§12).)*
 
+*(⤳ 03-11-26: the boost in `stepProduction` (both forms) shipped with droid engine slice 4 — §2 AS-BUILT.)*
+
 **Out (§7):** all failure/illegality mechanics, the security role, idle-storage cost, in-place
 repair, miner/factory condition, the throttle-below rate cap, anything rival-dependent.
 
@@ -245,8 +327,12 @@ repair, miner/factory condition, the throttle-below rate cap, anything rival-dep
 
 - **GP/RP-neutrality:** buying, building, assigning, unassigning or replacing a droid moves no GP,
   no mean-line modifier, no fuel entitlement, no licence fee/commitment.
-- **Boost correctness:** effective output = droidless baseline × `(1 + boost(n))` for working
-  droids, to the ruled curve; zero droids ⇒ exactly baseline.
+- **Boost correctness:** effective output = `productionRate × (1 + boost(n))` for working droids
+  (for a continuous line, its throttled rate `(pct/100) × productionRate × (1 + boost(n))`; for a
+  timed factory, `1 + boost(n)` ticks of work a tick), to the ruled curve; zero droids ⇒ exactly the
+  droidless output. For a normally-established, unthrottled venture `productionRate` is the droidless
+  baseline, so this is baseline × `(1 + boost(n))` (§2's ruling, 03-11-26). The droidless baseline is
+  the fee / commitment basis (§4), never moved by the boost.
 - **Licence gate:** a Syndicate droid cannot be *assigned* to an unlicensed venture (refused,
   naming it).
 - **No-op byte-identical:** a galaxy that mints no droid serializes byte-identical to pre-slice
@@ -311,6 +397,13 @@ its production timer — 30 ticks/unit, y = 336/week).
    closed venture releasing its droids; `checkDroids`' assignment rules; the snapshot's droid `assignedToVentureId`
    and the owner-only `droidComplement` (omit-when-empty). Assigned droids still do nothing to production. **Still
    pending:** the boost, decay and the maintenance pool.)*
+   *(⤳ **Slice 4 — the production boost (both emission forms) — BUILT 03-11-26.** `productionBoost` for a venture's
+   working droids, applied transiently in `resolveProduction`: a mine through a new `extractionCarry`, a continuous
+   line through its scaled throttle cap and input ask (the existing `batchCarry`), a timed factory through a new
+   `unitWorkCarry` with the overshoot carried into the next unit (§2 AS-BUILT). Neutral to the stored rate, the
+   commitment, the fee, the progress payment, GP and the mean line. Folded in: `updatedAtTick` on every droid
+   mutation, and `assignDroid` refusing a non-producing venture (§1 AS-BUILT). **Still pending:** decay and the
+   maintenance pool, then the client.)*
 2. **Client** — buy / build / assign / unassign + the boosted-rate and coverage display; renders the
    snapshot, computes no game number.
 

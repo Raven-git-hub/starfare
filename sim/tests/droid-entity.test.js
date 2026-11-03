@@ -125,7 +125,10 @@ test('build: one droid bill → consumed on the start tick, 360 ticks later exac
   assert.equal(s.tick, startTick + 360, 'emission lands exactly BUILD_TICKS after the consume tick');
 
   const g = g1Of(s);
-  assert.deepEqual(g.droids, [{ id: 'asset_g1_droid_01', systemId: HOME.id, source: 'guild', condition: ASSET_CONDITION_NEW }]);
+  // Stamped with the tick the dockyard step ran on (the pre-increment tick every tick-step stamp uses, as the
+  // yard venture's own updatedAtTick does) — droid engine slice 4, §15.2.
+  assert.deepEqual(g.droids, [{ id: 'asset_g1_droid_01', systemId: HOME.id, source: 'guild', condition: ASSET_CONDITION_NEW, updatedAtTick: s.tick - 1 }]);
+  assert.equal(yardOf(s).updatedAtTick, s.tick - 1);
   assert.equal(g.droidSerial, 1);
   assert.deepEqual(yardOf(s).buildQueue, [], 'the head shifted off the queue');
   // NOT a kit, NOT an asset, NOT a vehicle: the only other entity is the fixture's own heavy.
@@ -161,20 +164,20 @@ test('ids: a droid that leaves the collection never has its number reissued (the
   // No path removes a droid in this slice — spending one at end of life is the decay slice. Remove it by hand
   // to prove the counter, not the live list, decides the next number.
   const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
-  mintDroid(g, 'guild', 'sys_x');
-  mintDroid(g, 'guild', 'sys_x');
+  mintDroid(g, 'guild', 'sys_x', 0);
+  mintDroid(g, 'guild', 'sys_x', 0);
   g.droids = g.droids.filter((d) => d.id !== 'asset_g1_droid_02'); // the TOP number leaves
   assert.equal(nextDroidSerial(g), 3, 'the counter remembers 2');
-  assert.equal(mintDroid(g, 'guild', 'sys_x').id, 'asset_g1_droid_03', 'never 02 again');
+  assert.equal(mintDroid(g, 'guild', 'sys_x', 0).id, 'asset_g1_droid_03', 'never 02 again');
   assert.deepEqual(g.droids.map((d) => d.id), ['asset_g1_droid_01', 'asset_g1_droid_03']);
   assert.deepEqual(checkDroids({ guilds: [g] }), []);
 });
 
 test('ids: mintDroid HALTS on a corrupted serial rather than share an id', () => {
   const g = createGuild({ id: 'g1', credits: 0, fuelHoard: 0 });
-  mintDroid(g, 'guild', 'sys_x');
+  mintDroid(g, 'guild', 'sys_x', 0);
   g.droidSerial = 0; // corrupted: the next mint would rebuild 01
-  assert.throws(() => mintDroid(g, 'guild', 'sys_x'), /guild g1 minted duplicate droid id asset_g1_droid_01 — droidSerial corrupted/);
+  assert.throws(() => mintDroid(g, 'guild', 'sys_x', 0), /guild g1 minted duplicate droid id asset_g1_droid_01 — droidSerial corrupted/);
 });
 
 // --- 5. the invariant -------------------------------------------------------------------------------------

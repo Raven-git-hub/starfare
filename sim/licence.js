@@ -1434,7 +1434,7 @@ function applyVentureClosure(state, guild, venture, cause, tick) {
     ...(lockoutUntilTick != null ? { lockoutUntilTick } : {}),
   });
   guild.guildReputation -= (venture.reputation || 0);
-  releaseDroidsFrom(guild, venture.id);
+  releaseDroidsFrom(guild, venture.id, tick);
   guild.ventures.splice(guild.ventures.indexOf(venture), 1);
   if (lockoutUntilTick != null) {
     if (!Array.isArray(state.nodeLockouts)) state.nodeLockouts = [];

@@ -272,7 +272,7 @@ function refineDeuterium(state, guild) {
 //
 // Start and count-down are SEPARATE ticks: the tick that consumes the bill sets `remainingTicks`
 // and does NOT also decrement, so emission lands exactly BUILD_TICKS ticks after the consume tick.
-// mintFinishedKind(guild, kind, systemId) — the ONE place a finished build/purchase becomes an
+// mintFinishedKind(guild, kind, systemId, tick) — the ONE place a finished build/purchase becomes an
 // owned entity, idle at `systemId` (2.2-foundation). Both mint sites — the dockyard's own build
 // (buildDockyards, below) and the Syndicate delivery's arrival (stepArrivals) — route through
 // here, so the branch and the duplicate-id tripwire live once. It BRANCHES on the kind:
@@ -301,7 +301,7 @@ function refineDeuterium(state, guild) {
 // THE DUPLICATE-ID TRIPWIRE (rule 4) holds for all four families (the droid's lives in mintDroid): a minted id cannot collide (the
 // kit and vehicle serials only ever climb; the asset max + 1 is above every existing suffix), so a
 // hit means the id scheme itself has been corrupted — halt loudly rather than share an id.
-function mintFinishedKind(guild, kind, systemId) {
+function mintFinishedKind(guild, kind, systemId, tick) {
   const kitKind = kitKindForBill(kind);
   if (kitKind !== null) {
     const kit = mintKitAsset(guild, kitKind, systemId);
@@ -313,8 +313,9 @@ function mintFinishedKind(guild, kind, systemId) {
     return;
   }
   if (kind === DROID) {
-    // mintDroid holds the duplicate-id tripwire itself (the id is built there, from the serial).
-    mintDroid(guild, DROID_SOURCE_GUILD, systemId);
+    // mintDroid holds the duplicate-id tripwire itself (the id is built there, from the serial), and
+    // stamps the row with `tick` (§15.2 — droid engine slice 4).
+    mintDroid(guild, DROID_SOURCE_GUILD, systemId, tick);
     return;
   }
   if (isVehicleClass(kind)) {
@@ -382,7 +383,7 @@ function buildDockyards(state, guild) {
         // installation KIT into guild.assets, a guild transport into guild.vehicles — the branch, the id sequence and
         // the duplicate-id tripwire all live in mintFinishedKind (above), shared with the
         // Syndicate-delivery arrival so the two mint sites can never diverge.
-        mintFinishedKind(guild, head.assetKind, venture.systemId);
+        mintFinishedKind(guild, head.assetKind, venture.systemId, state.tick);
         queue.shift();
       }
     }
@@ -488,6 +489,10 @@ function applyProduction(state, guild, systemId, ctx) {
     } else {
       addStock(guild, systemId, m.good, m.amount);
     }
+    // A droid-boosted mine's sub-unit remainder (droid engine slice 4, sim/production.js): written back
+    // when above 0, removed otherwise, so an unboosted mine never carries the key.
+    if (m.extractionCarry > 0) v.extractionCarry = m.extractionCarry;
+    else delete v.extractionCarry;
     v.updatedAtTick = state.tick;
   }
 
@@ -513,10 +518,15 @@ function applyProduction(state, guild, systemId, ctx) {
     if (r.timed) {
       if (r.unitTicksRemaining === null) delete v.unitTicksRemaining;
       else v.unitTicksRemaining = r.unitTicksRemaining;
+      // The droid boost's banked work (droid engine slice 4): written back when above 0, removed
+      // otherwise. An idle line clears it — a change to the venture, so that tick is stamped too.
+      const hadCarry = v.unitWorkCarry !== undefined;
+      if (r.unitWorkCarry > 0) v.unitWorkCarry = r.unitWorkCarry;
+      else delete v.unitWorkCarry;
       if (r.minted > 0) {
         addStock(guild, systemId, getRecipe(v.recipeId).output.good, r.minted);
       }
-      if (r.rate > 0) v.updatedAtTick = state.tick;
+      if (r.rate > 0 || (hadCarry && v.unitWorkCarry === undefined)) v.updatedAtTick = state.tick;
       continue;
     }
     if (r.rate <= 0) continue;
@@ -1308,7 +1318,7 @@ function stepArrivals(state, _actions) {
       // tripwire. The mint's tick is `thisTick`; like the dockyard, the entity carries no birth-tick
       // field of its own (the shapes are shared and immutable — stamping one here would diverge it,
       // invariant 5) — the emission tick lives in the step, not on the entity.
-      mintFinishedKind(guild, ship.assetKind, ship.destinationSystemId);
+      mintFinishedKind(guild, ship.assetKind, ship.destinationSystemId, thisTick);
       continue;
     }
 
