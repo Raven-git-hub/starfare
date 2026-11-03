@@ -5576,7 +5576,9 @@ boundary so the later hex-map swap doesn't touch it.
     slice 2's fb550f7 pins mint no droid and are untouched. **Not built:** decay, the maintenance pool, destroy /
     replace at zero, any client work. Sim 2,646 → **2,667** (21 new tests in `droid-boost.test.js`; the existing
     droid tests updated for the stamp, the producing-venture gate and the mint's tick), tools **98** (unchanged). **Next:**
-    decay + the maintenance pool (not yet scoped). Checklist items below ("Droids: slice-4 calls …").
+    decay + the maintenance pool (not yet scoped). Checklist items below ("Droids: slice-4 calls …" — ruled 03-11-26 in a doc-only follow-up on the same PR: the boost
+    multiplies `productionRate`; the timed payment pays baseline progress; droids may boost a licensed deuterium mine;
+    the rounded-up ask accepted; the client boost indicator left to the client slice).
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
@@ -5651,23 +5653,24 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
 ## Decision checklist (open)
 
 **Phase 2 — new, from the design notes (need rulings before their slice becomes a build prompt):**
-- **Droids: slice-4 calls built one way, flagged rather than ruled (03-11-26, droid engine slice 4, `docs/droids.md`
-  §2).** **(1) What the boost multiplies.** The stored `productionRate`, as the slice brief ruled — but `droids.md` §2
-  says "the droidless baseline (`baselineRateFor`), never a throttled `productionRate`". The two are equal unless an
-  operator named a different rate at establish (or, one day, the throttle-below refactor lands). Rule which one, before
-  that refactor makes them differ. **(2) The rounded-up ask.** A boosted continuous line asks Gates 2/3 for the
-  *ceiling* of its fractional need, so under FCFS it can be handed up to one unit per input per tick more than it then
-  draws — a later consumer of the same good in the same system can be offered that much less on a tick the pot is
-  short (the undrawn unit stays in the pool for next tick). Confirm, or rule a finer allocation. **(3) The progress
-  payment pays baseline progress.** A committed boosted timed factory is paid per tick on the line exactly what an
-  unboosted one is (the committed share of `1 ÷ TICKS_PER_UNIT` a tick) — built that way because paying for the boosted
-  work would pay the Syndicate's money for units it never receives. Confirm. **(4) Deuterium.** A licensed deuterium
-  mine's boosted output goes where its output already goes — the per-tick auto-sale and the fuel-pool mint — so droids
-  raise both the guild's deuterium income and the galaxy's fuel supply; an unlicensed one's raw store grows faster.
-  Nothing about the deuterium lever reads a commitment, so nothing in the boost stops it. Confirm that droids may boost
-  the fuel lever. **(5) The client's numbers.** The snapshot carries the boosted rate the resolver returns (and each
-  mine's `extractionCarry`, each timed factory's `unitWorkCarry`) but no explicit boost figure; the client slice may want
-  the multiplier or the working count served rather than read off `droidComplement`.
+- **Droids: slice-4 calls (03-11-26, droid engine slice 4, `docs/droids.md` §2/§4) — ⤳ RULED 03-11-26, folded into
+  the docs; what remains open is below.** ~~**(1) What the boost multiplies.** The stored `productionRate` vs
+  `droids.md` §2's "the droidless baseline (`baselineRateFor`), never a throttled `productionRate`".~~ *(⤳ RESOLVED
+  03-11-26: the boost multiplies `productionRate` — the droidless baseline in the common case, the throttled or
+  operator-set rate otherwise; the "never a throttled `productionRate`" rule is the fee / commitment basis, not the
+  boost's input. `droids.md` §2 and §9 now say so.)* ~~**(3) The progress payment pays baseline progress.**~~ *(⤳
+  CONFIRMED 03-11-26 — the settled neutrality rule, `droids.md` §4.)* Still on the list:
+  - **(2) The rounded-up input ask — ACCEPTED nuance, not a bug.** A boosted continuous line asks Gates 2/3 for the
+    *ceiling* of its fractional input need (`unitsAsked`, `sim/production.js`), so on a contested, scarce tick a later
+    line sharing that input can be handed slightly less. The over-asked surplus stays in the pool (conserved — drawn
+    next tick or by no one), the effect is bounded (≤ 1 unit per input per line per tick) and deterministic. Recorded
+    so it is not rediscovered as a bug; revisit only if play shows it.
+  - **(4) Does droid-boosted deuterium unbalance the fuel pool?** RULED 03-11-26 that droids may boost a licensed
+    deuterium mine like any producing venture (`droids.md` §4), so a boosted one adds to the guild's sales and the
+    galaxy's fuel pool. **Open:** revisit at the fuel-economy / multiplayer balancing pass.
+  - **(5) A boost indicator in the client.** The snapshot carries the boosted rate the resolver returns (and each
+    mine's `extractionCarry`, each timed factory's `unitWorkCarry`) but no explicit boost figure. Whether to surface
+    one (the multiplier, or the working-droid count beside `droidComplement`) is a **droid client-slice** decision.
 - **Droids: slice-3 calls built the plainest way, flagged rather than ruled (02-11-26, droid engine slice 3,
   `docs/droids.md` §1/§3/§4).** **(1) The Syndicate hand-over is instant.** A droid buy mints the droid at once in a
   held system — no commission queue (so no `SYNDICATE_QUEUE_MAX` count), no build wait, no delivery flight or fuel —
