@@ -117,6 +117,7 @@ function createGuild({
   removedAssetHighWater = {},
   droids = [],
   droidSerial = 0,
+  droidComponentReserve = {},
   events = [],
   eventSeq = 0,
   exploration = null,
@@ -441,6 +442,12 @@ function createGuild({
     // (`asset_<guild>_droid_NN`) is never reissued — even once droids can be spent (a later slice).
     // Guarded by `checkDroids` (sim/invariants.js). OMITTED when 0, so a droidless guild carries no key.
     ...(droidSerial !== 0 ? { droidSerial } : {}),
+    // droidComponentReserve (droid engine slice 5, docs/droids.md §5): `{ [systemId]: whole units }` — the
+    // per-system floor of droid_components that weekly droid upkeep never draws below. Absent for a system
+    // means the default 0 (sim/droids.js droidComponentReserveFor). Copied so a caller's object can never
+    // alias into engine state. OMITTED when empty, so a guild that sets none serializes as before.
+    ...(droidComponentReserve && Object.keys(droidComponentReserve).length
+      ? { droidComponentReserve: { ...droidComponentReserve } } : {}),
     // exploration: the guild's EXPLORATION RECORD (docs/exploration-model.md §3/§7, roadmap 2.5) —
     // `{ [planetId]: { tick, nodes: { [nodeId]: tick }, slots: { [slotId]: tick } } }`, the static
     // geography it has LEARNED, learn-once / known-forever. Ids only: the archetype and node types stay
@@ -850,8 +857,8 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 //   - source    — 'guild' or 'syndicate' (sim/droids.js DROID_SOURCES). REQUIRED, never defaulted,
 //                 because it will decide durability, cost and upkeep — a guessed source would be a
 //                 guessed number;
-//   - condition — a fraction, 1 = new. Minted at ASSET_CONDITION_NEW and INERT until the decay slice:
-//                 nothing reads it or changes it yet.
+//   - condition — a fraction, 1 = new. Minted at ASSET_CONDITION_NEW; wears down while deployed and the
+//                 droid is destroyed at 0 (droid engine slice 5, sim/droids.js decayDroidsIn).
 // Two more fields, added by droid engine slice 3 (assignment), present ONLY while the droid is assigned:
 //   - assignedToVentureId — the venture of this guild it staffs (the assignDroid action sets it);
 //   - deployedAtTick      — the tick it was assigned (every mutation records its tick, §15.2; the decay
@@ -861,7 +868,7 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 // And one added by droid engine slice 4: `updatedAtTick`, the tick of the last mint / assign / unassign.
 // This function only ASSEMBLES the row; `checkDroids` (sim/invariants.js) is where a bad source,
 // condition or assignment is caught.
-function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, assignedToVentureId, deployedAtTick, updatedAtTick }) {
+function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, assignedToVentureId, deployedAtTick, updatedAtTick, maintained }) {
   if (id === undefined) throw new Error('createDroid: id is required');
   if (systemId === undefined) throw new Error('createDroid: systemId is required');
   if (source === undefined) throw new Error('createDroid: source is required');
@@ -874,6 +881,10 @@ function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, as
     // already carries for machines. Omitted when absent (as on Asset), so a row built without one keeps
     // its old shape; every droid the engine mints or moves carries it.
     ...(updatedAtTick === undefined ? {} : { updatedAtTick }),
+    // maintained (droid engine slice 5, docs/droids.md §5): `true` while this week's droid_components upkeep
+    // covers the droid, so it wears at the slow rate. Set (or removed) at each week boundary; only ever on a
+    // deployed droid. Omitted otherwise, so an unmaintained row keeps its old shape.
+    ...(maintained === undefined ? {} : { maintained }),
   };
 }
 
