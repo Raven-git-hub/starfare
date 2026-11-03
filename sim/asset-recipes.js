@@ -24,7 +24,7 @@ const { MINER, FACTORY } = require('./assets.js');
 const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT, BUILDABLE_VEHICLE_KINDS,
 } = require('./vehicles.js');
-const { DROID } = require('./droids.js');
+const { DROID, SYNDICATE_DROID_TARIFF } = require('./droids.js');
 const { isTier3Good, kitGoodFor } = require('./resources.js');
 const { quotedPrice } = require('./price-ring.js');
 
@@ -218,8 +218,8 @@ const INSTALLATION_BILLS = Object.freeze({
 // Its own catalog, not ASSET_BILLS / VEHICLE_BILLS / INSTALLATION_BILLS, because a droid is none of those:
 // a finished build mints one idle row in `guild.droids` (sim/tick.js mintFinishedKind → sim/droids.js
 // mintDroid). It has NO KIT_KIND_FOR_BILL row (it is not a kit; assertKitBridge only demands a row for an
-// installation), and it is NOT Syndicate-sellable this slice: the Syndicate droid is a flat tariff, not a
-// parts-priced buy, and that is the next slice (so it has no INSTALLATION_KIT_BUY_BASELINE either).
+// installation). This bill prices only the GUILD build: the Syndicate sells a droid (slice 3) at a flat tariff,
+// not off these parts (priceAssetForPurchase), so it has no INSTALLATION_KIT_BUY_BASELINE row either.
 const DROID_BILL = Object.freeze({
   droid_components: 3,
   drive_module: 1,
@@ -257,24 +257,26 @@ const BUILDABLE_KINDS = Object.freeze([
 ]);
 
 // SYNDICATE_SELLABLE_KINDS — the kinds the Syndicate SELLS: sellable ⊂ buildable, diverging at
-// the BUILD-ONLY kinds and (2.6) the droid (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable
+// the BUILD-ONLY kinds (docs/asset-purchase.md §"What the Syndicate sells — sellable ⊂ buildable
 // (RULED 22-09-26)"). It is `BUILDABLE_KINDS` MINUS the two build-only kinds — the two ground
-// assets, the three CARGO transports (light / medium / heavy), and the two installation kits (deep
-// scan array, outpost; RULED 15-10-26, docs/asset-purchase.md §"Installation kits"): seven kinds.
+// assets, the three CARGO transports (light / medium / heavy), the two installation kits (deep
+// scan array, outpost; RULED 15-10-26, docs/asset-purchase.md §"Installation kits") and (2.6) the
+// droid: eight kinds.
 // The two build-only kinds, each for its own reason:
 //   - spycraft   — a guild makes it in the dark at its own dockyard (RULED 22-09-26);
 //   - prefecture — the deliberate throttle on rapid expansion by wealthy guilds: a guild must BUILD
 //                  its flag, there is no buy-it-and-skip path (RULED 16-10-26, docs/asset-recipes.md).
 //                  So it has no INSTALLATION_KIT_BUY_BASELINE either.
-// The DROID is also buildable and not in this list, but for a different reason: it is NOT build-only. The
-// Syndicate WILL sell droids — at a flat, market-independent tariff, not this parts-priced path — and that
-// buy is the next droid slice (docs/droids.md §3). Until then a droid buy is refused here like the two above.
+// The DROID is in the list (droid engine slice 3, docs/droids.md §3) but is PRICED DIFFERENTLY from the
+// rest: a flat, market-independent tariff (SYNDICATE_DROID_TARIFF, sim/droids.js), not the parts × 0.8
+// floored at a baseline — see priceAssetForPurchase below. It is also not COMMISSIONED: a droid buy
+// skips the Syndicate build queue and mints at once (sim/actions.js buyAssetFromSyndicate).
 // Spelled as an explicit list (not a filter of BUILDABLE_KINDS) so it reads as the deliberate sell
 // catalog it is — the buy gate (buyAssetFromSyndicate) and the snapshot's purchase quote read THIS,
 // not BUILDABLE_KINDS, so a buy of either build-only kind is refused loudly.
 const SYNDICATE_SELLABLE_KINDS = Object.freeze([
   ...BUILDABLE_ASSET_KINDS, LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
-  DEEP_SCAN_ARRAY, OUTPOST,
+  DEEP_SCAN_ARRAY, OUTPOST, DROID,
 ]);
 
 // KIT_KIND_FOR_BILL — THE BRIDGE between the two spellings of an installation (docs/asset-purchase.md
@@ -490,7 +492,13 @@ function nextSyndicateCommissionId(guild) {
 // guessed price: an assetKind with no bill (not buildable), or ANY module with no quoted price
 // at `issueTick` (the ring guard — the quote is too old/future to price that part). Mirrors the
 // goods-buy guard exactly: never price off a missing ring.
+//
+// THE DROID BRANCH (droid engine slice 3): a Syndicate droid is a flat tariff, market-independent
+// (docs/droids.md §3), so it returns SYNDICATE_DROID_TARIFF whatever the tick or the parts market —
+// never a parts price and never null. Branched HERE, in the one pricing function, so nothing that asks
+// "what does the Syndicate charge for this kind" can get a parts price for a droid.
 function priceAssetForPurchase(state, assetKind, issueTick) {
+  if (assetKind === DROID) return SYNDICATE_DROID_TARIFF;
   const bill = assetBill(assetKind);
   if (!bill) return null;
   let partsCost = 0;

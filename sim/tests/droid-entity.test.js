@@ -15,7 +15,7 @@
 //   4. IDS NEVER REPEAT: a second build takes the next serial; a droid that leaves the collection never has
 //      its number handed out again; mintDroid halts on a corrupted serial.
 //   5. THE INVARIANT: checkDroids bites on each bad shape, naming the guild and the value.
-//   6. THE GATES: a commission of a droid is accepted; a Syndicate buy of one is refused, naming it.
+//   6. THE GATES: a commission of a droid is accepted; (⤳ slice 3) a Syndicate buy mints a Syndicate-source one.
 //   7. CONSERVATION (invariant 2): exactly the bill leaves the yard's pool and Galactic Supply; no credit
 //      or fuel moves.
 //   8. SNAPSHOT: the owner sees its droids; a droidless guild's row has no key; a rival never sees them.
@@ -60,7 +60,7 @@ function bills(n) {
 test('createDroid assembles exactly { id, systemId, source, condition }, condition new by default', () => {
   const d = createDroid({ id: 'asset_g1_droid_01', systemId: 'sys_x', source: 'guild' });
   assert.deepEqual(d, { id: 'asset_g1_droid_01', systemId: 'sys_x', source: 'guild', condition: ASSET_CONDITION_NEW });
-  // Design-ahead fields belong to the assignment slice — not here yet.
+  // The assignment fields (slice 3) are omitted on an idle droid, so this row is unchanged.
   assert.equal('assignedToVentureId' in d, false);
   assert.equal('deployedAtTick' in d, false);
   // Required, never defaulted: a guessed source or location would be an invented fact.
@@ -235,15 +235,15 @@ test('checkDroids runs inside checkInvariants: a corrupted droid halts the tick 
 
 // --- 6. the gates -----------------------------------------------------------------------------------------
 
-test('gates: a dockyard accepts a droid commission; the Syndicate refuses a droid buy, naming it', () => {
+test('gates: a dockyard accepts a droid commission; the Syndicate now SELLS one (slice 3) — a Syndicate-source droid', () => {
+  // ⤳ 02-11-26: this pinned the slice-2 refusal; droid engine slice 3 replaced it with the flat-tariff buy
+  // (its tripwires are in droid-assignment.test.js). Here only that the two acquire paths stamp their source.
   const s = kitGalaxy({ credits: 1_000_000_000, fuelHoard: 10_000 });
   accept(s, commission());
-  const reason = refuse(s, createBuyAssetFromSyndicateAction({
+  const bought = accept(s, createBuyAssetFromSyndicateAction({
     guildId: 'g1', assetKind: DROID, destinationSystemId: HOME.id, issueTick: s.tick,
   }));
-  assert.match(reason, /"droid" is not a Syndicate-sellable kind/);
-  assert.match(reason, /the Syndicate does not sell droids yet/);
-  assert.doesNotMatch(reason, /guild-build-only/, 'a droid is not build-only — its Syndicate source is a later slice');
+  assert.deepEqual(droidsOf(bought).map((d) => d.source), ['syndicate']);
 });
 
 // --- 7. conservation --------------------------------------------------------------------------------------

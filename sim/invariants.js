@@ -91,7 +91,7 @@ const { volumeOf } = require('./fuel.js');
 const { manifestAmountError } = require('./manifest.js');
 const { isDockyard, producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
-const { DROID_SOURCES, droidId } = require('./droids.js');
+const { DROID_SOURCES, DROID_CAP, droidId } = require('./droids.js');
 const {
   DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, winStartFor, windowFraction, isWindowBoundary,
 } = require('./windows.js');
@@ -1463,6 +1463,17 @@ function checkAssetOccupancy(state) {
 //   - `droid-serial-valid` / `droid-serial-monotonic`: `droidSerial`, when present, is a whole number
 //     >= 1, and it is >= every live droid's number. The kit-asset-serial-monotonic rule's sibling: a live
 //     droid above the counter means the counter drifted, and the next mint could reissue an id (§15.4).
+// And the ASSIGNMENT rules (droid engine slice 3) — `assignedToVentureId` is the one stored fact that makes a
+// droid deployed (idle iff it is absent), so each rule is a way it could point somewhere impossible:
+//   - `droid-assignment-paired`: `assignedToVentureId` and `deployedAtTick` are both present or both absent,
+//     and `deployedAtTick` is a whole tick no later than now (every mutation records its tick, §15.2);
+//   - `droid-venture-exists`: a deployed droid's venture is one of THIS guild's ventures — a rival's
+//     venture, or one that was closed without releasing its droids, fails here;
+//   - `droid-venture-same-system`: that venture is in the droid's own system (assignment is same-system);
+//   - `droid-venture-cap`: no venture holds more than DROID_CAP assigned droids.
+// There is deliberately NO "a Syndicate droid's venture must be licensed" rule: the licence gate is
+// ASSIGN-TIME ONLY. A licence that lapses after assignment leaves the droid running (docs/droids.md §4/§10),
+// and that is a LEGAL state an invariant must not halt on (test-pinned in droid-assignment.test.js).
 // A pure read: it reports, it never repairs.
 function checkDroids(state) {
   const out = [];
@@ -1501,12 +1512,47 @@ function checkDroids(state) {
       }
       seen.add(d.id);
       if (n !== null && n > maxNumber) maxNumber = n;
+      checkDroidAssignment(state, g, d, where, out);
+    }
+    // The cap, per venture, every source counted. Counted over the droids' pointers (the stored side).
+    const perVenture = new Map();
+    for (const d of g.droids || []) {
+      if (d.assignedToVentureId !== undefined) {
+        perVenture.set(d.assignedToVentureId, (perVenture.get(d.assignedToVentureId) || 0) + 1);
+      }
+    }
+    for (const [ventureId, count] of perVenture) {
+      if (count > DROID_CAP) {
+        out.push({ rule: 'droid-venture-cap', where: `guild:${g.id}.venture:${ventureId}`, detail: { assigned: count, cap: DROID_CAP } });
+      }
     }
     if ((serial || 0) < maxNumber) {
       out.push({ rule: 'droid-serial-monotonic (design.md §15.4)', where: `guild:${g.id}.droidSerial`, detail: { droidSerial: serial || 0, highestLiveDroidNumber: maxNumber } });
     }
   }
   return out;
+}
+
+// checkDroidAssignment — the per-droid half of checkDroids' assignment rules (see there). Pushes onto `out`.
+function checkDroidAssignment(state, g, d, where, out) {
+  const assigned = d.assignedToVentureId !== undefined;
+  const stamped = d.deployedAtTick !== undefined;
+  if (assigned !== stamped) {
+    out.push({ rule: 'droid-assignment-paired', where, detail: { assignedToVentureId: d.assignedToVentureId, deployedAtTick: d.deployedAtTick } });
+    return;
+  }
+  if (!assigned) return; // idle — nothing more to check
+  if (!Number.isSafeInteger(d.deployedAtTick) || d.deployedAtTick < 0 || d.deployedAtTick > state.tick) {
+    out.push({ rule: 'droid-assignment-paired', where: `${where}.deployedAtTick`, detail: { deployedAtTick: d.deployedAtTick, tick: state.tick } });
+  }
+  const venture = (g.ventures || []).find((v) => v.id === d.assignedToVentureId);
+  if (!venture) {
+    out.push({ rule: 'droid-venture-exists', where: `${where}.assignedToVentureId`, detail: { assignedToVentureId: d.assignedToVentureId, owner: g.id } });
+    return;
+  }
+  if (venture.systemId !== d.systemId) {
+    out.push({ rule: 'droid-venture-same-system', where, detail: { droidSystemId: d.systemId, ventureId: venture.id, ventureSystemId: venture.systemId } });
+  }
 }
 
 // tripViolation(trip) -> a detail object naming the first thing wrong with an in-transit craft's

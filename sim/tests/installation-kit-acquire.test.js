@@ -106,8 +106,8 @@ test('the vocabularies: both kinds join ALL_BILLS, BUILDABLE_KINDS and SYNDICATE
   }
   assert.ok(SYNDICATE_SELLABLE_KINDS.every((k) => BUILDABLE_KINDS.includes(k)), 'sellable ⊂ buildable');
   // ⤳ 16-10-26: spycraft is no longer the ONLY build-only kind — the Prefecture is the second (docs/asset-recipes.md).
-  // ⤳ 02-11-26: the droid is unsold too — not build-only, just not sold until its flat-tariff slice (docs/droids.md §3).
-  assert.deepEqual(BUILDABLE_KINDS.filter((k) => !SYNDICATE_SELLABLE_KINDS.includes(k)), [SPYCRAFT, 'prefecture', 'droid']);
+  // ⤳ 02-11-26: the droid was briefly unsold too; droid engine slice 3 sells it (a flat tariff, docs/droids.md §3).
+  assert.deepEqual(BUILDABLE_KINDS.filter((k) => !SYNDICATE_SELLABLE_KINDS.includes(k)), [SPYCRAFT, 'prefecture']);
   assert.equal(TOLL_GATE in ALL_BILLS, false, 'the toll gate has no buildable bill');
   assert.equal(BUILDABLE_KINDS.includes(TOLL_GATE), false, 'the toll gate is not buildable');
   assert.equal(SYNDICATE_SELLABLE_KINDS.includes(TOLL_GATE), false, 'the toll gate is not sold');
@@ -369,7 +369,8 @@ test('snapshot: the purchase quote grows by exactly the two rows — each the en
   const s = kitGalaxy();
   for (const snap of [buildSnapshot(s), buildSnapshot(s, 'g1')]) {
     const quote = snap.assetPurchaseQuote;
-    assert.deepEqual(Object.keys(quote), [...SYNDICATE_SELLABLE_KINDS]);
+    // The droid is sellable but not quoted here: it is not a commission (droid engine slice 3).
+    assert.deepEqual(Object.keys(quote), SYNDICATE_SELLABLE_KINDS.filter((k) => k !== 'droid'));
     assert.deepEqual(quote[DEEP_SCAN_ARRAY], { price: priceAssetForPurchase(s, DEEP_SCAN_ARRAY, s.tick), buildTicks: 10_080 });
     assert.deepEqual(quote[OUTPOST], { price: priceAssetForPurchase(s, OUTPOST, s.tick), buildTicks: 12_960 });
     assert.equal(quote[DEEP_SCAN_ARRAY].price, 100_000_000);

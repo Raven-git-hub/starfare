@@ -191,17 +191,18 @@ test('the Prefecture: buildable (its bill, finishing as one idle prefecture kit)
 });
 
 // ⤳ 02-11-26 (roadmap 2.6, droid engine slice 2; docs/droids.md §3): the droid is the eleventh billed kind. A
-// dockyard builds it and it finishes as a droid ROW, not a kit. The Syndicate does not sell it YET — its
-// Syndicate droid is a flat tariff, a later slice — so it has no buy baseline and no purchase quote.
-test('the Droid: buildable from the lean bill, no kit row, NOT sellable this slice, no buy baseline', () => {
+// dockyard builds it and it finishes as a droid ROW, not a kit. (⤳ slice 3:) the Syndicate sells it, at a flat
+// tariff rather than off this bill — so it still has no buy baseline and no commissioned-asset quote.
+test('the Droid: buildable from the lean bill, no kit row, Syndicate-sellable at a flat tariff, no buy baseline', () => {
   assert.deepEqual({ ...assetBill(DROID) }, { droid_components: 3, drive_module: 1, power_cells: 2 }, 'the ruled lean bill');
   assert.equal(ALL_BILLS[DROID], DROID_BILLS[DROID], 'in the buildable catalog');
   assert.equal(BUILDABLE_KINDS.includes(DROID), true, 'a dockyard builds it');
   assert.equal(BUILDABLE_KINDS[BUILDABLE_KINDS.length - 1], DROID, 'appended last, so every earlier kind keeps its place');
   assert.equal(kitKindForBill(DROID), null, 'a droid is not a kit');
   assert.equal(INSTALLATION_BILLS[DROID], undefined, 'nor an installation');
-  assert.equal(SYNDICATE_SELLABLE_KINDS.includes(DROID), false, 'the Syndicate does NOT sell it this slice');
-  assert.equal(DROID in INSTALLATION_KIT_BUY_BASELINE, false, 'so it has no buy baseline (its tariff is flat, a later slice)');
+  // ⤳ 02-11-26 (droid engine slice 3): the Syndicate SELLS it now — at a flat tariff, not a floor baseline.
+  assert.equal(SYNDICATE_SELLABLE_KINDS.includes(DROID), true, 'the Syndicate sells it (droid engine slice 3)');
+  assert.equal(DROID in INSTALLATION_KIT_BUY_BASELINE, false, 'but it has no buy baseline — its tariff is flat');
   // The load-time Tier-3 tripwire covers the droid bill: both of its 3-2 modules and power_cells are Tier 3 …
   assert.doesNotThrow(() => assertBillModulesAreTier3(ALL_BILLS));
   assert.doesNotThrow(() => assertBillModulesAreTier3(DROID_BILLS));

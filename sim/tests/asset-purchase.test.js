@@ -182,10 +182,12 @@ const BUILD_ONLY_KINDS = [SPYCRAFT, 'prefecture'];
 // ⤳ 02-11-26 (droid engine slice 2): the droid is buildable and NOT sellable too — but it is not build-only. The
 // Syndicate will sell it at a flat tariff in a later slice (docs/droids.md §3). Kept apart from BUILD_ONLY_KINDS
 // so that slice has exactly one line to delete here.
-const NOT_YET_SOLD_KINDS = ['droid'];
+// ⤳ 02-11-26 (droid engine slice 3): EMPTY — the droid was here until the Syndicate began selling it at its flat
+// tariff. Kept as a named list so the next "buildable, sold later" kind has a home.
+const NOT_YET_SOLD_KINDS = [];
 const UNSOLD_KINDS = [...BUILD_ONLY_KINDS, ...NOT_YET_SOLD_KINDS];
 
-test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus the two build-only kinds (spycraft, the Prefecture) and the not-yet-sold droid (rule-4 tripwire)', () => {
+test('catalog: SYNDICATE_SELLABLE_KINDS is EXACTLY BUILDABLE_KINDS minus the two build-only kinds (spycraft, the Prefecture) — the droid is sold now (rule-4 tripwire)', () => {
   // The load-bearing set relation, asserted both ways so a future kind added to ONE catalog can
   // never silently skip the other: each build-only kind is buildable but NOT sellable, and every
   // OTHER buildable kind IS sellable.
@@ -425,9 +427,12 @@ test('snapshot: assetPurchaseQuote publishes the engine price + build ticks for 
   const snap = buildSnapshot(s);
   // The quote is the SELL catalog, not the build catalog: exactly SYNDICATE_SELLABLE_KINDS (the
   // five), spycraft ABSENT — the TRADE tab iterates the quote, so this is what it shows.
-  assert.deepEqual(Object.keys(snap.assetPurchaseQuote).sort(), [...SYNDICATE_SELLABLE_KINDS].sort());
+  // ⤳ 02-11-26 (droid engine slice 3): minus the DROID — sellable, but a flat tariff handed over at once, so it
+  // has no build time to quote here (droid-assignment.test.js).
+  const quoted = SYNDICATE_SELLABLE_KINDS.filter((k) => k !== 'droid');
+  assert.deepEqual(Object.keys(snap.assetPurchaseQuote).sort(), [...quoted].sort());
   assert.ok(!(SPYCRAFT in snap.assetPurchaseQuote), 'spycraft is guild-build-only — not in the sell quote');
-  for (const kind of SYNDICATE_SELLABLE_KINDS) {
+  for (const kind of quoted) {
     const q = snap.assetPurchaseQuote[kind];
     assert.equal(q.price, priceAssetForPurchase(s, kind, s.tick), `${kind} price == priceAssetForPurchase`);
     assert.equal(q.buildTicks, BUILD_TICKS[kind], `${kind} buildTicks == BUILD_TICKS`);

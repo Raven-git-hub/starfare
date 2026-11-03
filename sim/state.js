@@ -833,7 +833,7 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 }
 
 // Droid (OWNED, roadmap 2.6 droid engine slice 2; docs/droids.md §1) — one droid, a row in
-// `guild.droids`. Four fields this slice:
+// `guild.droids`. Four fields always (slice 2):
 //   - id        — `asset_<guild>_droid_NN`, from the guild's `droidSerial` (sim/droids.js);
 //   - systemId  — the system it sits in. REQUIRED, like an asset's: an idle droid has a location;
 //   - source    — 'guild' or 'syndicate' (sim/droids.js DROID_SOURCES). REQUIRED, never defaulted,
@@ -841,14 +841,23 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
 //                 guessed number;
 //   - condition — a fraction, 1 = new. Minted at ASSET_CONDITION_NEW and INERT until the decay slice:
 //                 nothing reads it or changes it yet.
-// `assignedToVentureId` and `deployedAtTick` are in the design (docs/droids.md §1) but belong to the
-// assignment slice, so they are deliberately NOT here yet. This function only ASSEMBLES the row;
-// `checkDroids` (sim/invariants.js) is where a bad source or condition is caught.
-function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW }) {
+// Two more fields, added by droid engine slice 3 (assignment), present ONLY while the droid is assigned:
+//   - assignedToVentureId — the venture of this guild it staffs (the assignDroid action sets it);
+//   - deployedAtTick      — the tick it was assigned (every mutation records its tick, §15.2; the decay
+//                           slice will read it as its anchor).
+// Both OMITTED when idle, so an idle row is exactly slice 2's four fields and a galaxy that assigns no
+// droid serializes byte-identically. They travel together — checkDroids halts on one without the other.
+// This function only ASSEMBLES the row; `checkDroids` (sim/invariants.js) is where a bad source,
+// condition or assignment is caught.
+function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, assignedToVentureId, deployedAtTick }) {
   if (id === undefined) throw new Error('createDroid: id is required');
   if (systemId === undefined) throw new Error('createDroid: systemId is required');
   if (source === undefined) throw new Error('createDroid: source is required');
-  return { id, systemId, source, condition };
+  return {
+    id, systemId, source, condition,
+    ...(assignedToVentureId === undefined ? {} : { assignedToVentureId }),
+    ...(deployedAtTick === undefined ? {} : { deployedAtTick }),
+  };
 }
 
 // Vehicle (OWNED, design.md §15.4): "id, ownerGuildId, class, speed/capacity/

@@ -54,6 +54,7 @@ const { tierWeight, tierOf } = require('./points.js');
 const { dayOf, tickAt } = require('./calendar.js');
 const { getSite } = require('./seed.js');
 const { recordEvent, LICENCE_LAPSED, VENTURE_CLOSED } = require('./events.js');
+const { releaseDroidsFrom } = require('./droids.js');
 
 // The structural equity ceiling — §5: "up to the structural 49% ceiling (the owner
 // keeps control by retaining at least 51%)". This is a DESIGN number, not a tuning
@@ -1396,6 +1397,10 @@ function applyLapse(guild, venture, cause, tick) {
 //      with it (derived), so the mean line does the rest of the "punishment" (§2). The site goes
 //      vacant and the asset returns to idle for free — both derived (§0) — so there is nothing
 //      to write for them.
+//   1b. DROIDS RETURN TO IDLE (droid engine slice 3) — every droid assigned to this venture is released
+//      (`releaseDroidsFrom`, sim/droids.js) in the same mutation, staying in its system. The droid's
+//      pointer is the one STORED fact here (unlike the asset's, which is on the venture), so it has to be
+//      cleared explicitly or `checkDroids` would halt on a droid staffing a venture that no longer exists.
 //   2. THE NODE LOCKOUT (§3.3) — written iff `teardownSettlement` returns a release tick (an
 //      ordinary-licensed venture with contract time left: `releaseTick > state.tick`; null when
 //      unlicensed or past the term). `state.nodeLockouts` is created lazily — the only writer of
@@ -1429,6 +1434,7 @@ function applyVentureClosure(state, guild, venture, cause, tick) {
     ...(lockoutUntilTick != null ? { lockoutUntilTick } : {}),
   });
   guild.guildReputation -= (venture.reputation || 0);
+  releaseDroidsFrom(guild, venture.id);
   guild.ventures.splice(guild.ventures.indexOf(venture), 1);
   if (lockoutUntilTick != null) {
     if (!Array.isArray(state.nodeLockouts)) state.nodeLockouts = [];
