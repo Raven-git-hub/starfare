@@ -511,6 +511,15 @@ which is exactly the per-venture home droids need (the per-system Production Con
 This section is **client-only**: it reads existing snapshot state and calls existing actions — no new engine or
 snapshot for the display.
 
+*(**⤳ AS-RULED 06-11-26 — the deployment layout; mock `docs/mockups/droid-deployment.html`.** All **CAP (20)** slots
+show as a **4×5 grid** (empties dashed — superseding the "descending list" above); **Available** is a **thermometer**
+(fill = available ÷ CAP), not a bare number; each slot's **condition** is a thermometer **colour-coded
+green/yellow/red** by a presentation threshold (green > 60% · yellow 30–60% · red < 30% — the RP z-band pattern);
+**Deploy** fills **reading order** (left→right, then down) with the first empty marked *next*, and assigns the
+**lowest-id assignable idle droid**; **no legend / no source-colour key**. The **CAP** is mirrored client-side and
+**pinned by a served-page tripwire** (as RP_FLOOR / RP_SOFT_CAP are), not published. The **auto-replace toggle** the
+mock draws is **§13.2 (slice 2)**, not this slice.)*
+
 ### 13.2 Auto-replace — a new per-venture mechanic (engine + a popup toggle)
 
 A per-venture **`autoReplace`** flag (a venture field, default **off**, omitted when off so a galaxy with it off
