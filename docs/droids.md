@@ -477,7 +477,75 @@ default as `DROID_COMPONENT_RESERVE_DEFAULT` (0), all in `sim/droids.js`. The on
    per-system reserve floor), removal at 0 with a `droids_spent` notice and no id reissued, the snapshot's
    `maintained` flag and per-system `droidUpkeep` row (§5 AS-BUILT). **The droid engine is complete.** Next: the
    client (step 2 below).)*
-2. **Client** — buy / build / assign / unassign + the boosted-rate and coverage display; renders the
-   snapshot, computes no game number.
+2. **Client** — the droid affordances and displays, detailed in §13 below (deployment in the Venture
+   Management popup, the per-venture auto-replace, and the maintenance tab); renders the snapshot,
+   computes no game number.
 
 Each slice: suite green + count, the §9 tripwires, "do NOT push — open a PR."
+
+## 13. Client design (the UI pass) — RULED 05-11-26
+
+The engine is complete (§8); this section is the client. Everything is **per-system**, because droids are
+system-specific: a droid carries a `systemId`, is assigned only within its own system (§1), is maintained from
+that system's local `droid_components` pool (§5), and **cannot move between systems** (relocation stays deferred).
+There is **no guild-wide droid pool** — each system holds, assigns and maintains its own droids, so every droid
+surface is per-system.
+
+### 13.1 Deployment — the Venture Management popup
+
+Droid **deployment and the complement** live in the existing **Venture Management popup** (the "Open Venture
+Management" per-venture popup) — the one surface already scoped to *this* venture, committed or 0%-commitment alike,
+which is exactly the per-venture home droids need (the per-system Production Console is good-centric and lists only
+*committed* ventures, so it is the wrong host). The popup gains a droid section:
+
+- **Available** — a count of idle droids standing in **this venture's system** that could be assigned here: idle
+  (`assignedToVentureId` absent) · same system · and, for a Syndicate droid, this venture licensed. A
+  **client-derived** count over the snapshot's own-guild droids — no engine number.
+- **Slots** — a descending list, one slot per droid currently assigned to this venture (`assignedToVentureId` ===
+  the venture), each showing the droid's **id** and its **condition** as a depleting thermometer (the snapshot's
+  `condition`, 0→1). Up to **CAP (20)** slots.
+- **Fill / clear** — filling an empty slot assigns an available idle droid (`assignDroid`); clearing a slot returns
+  that droid to idle in its system (`unassignDroid`). Both are the **existing** actions; the client offers only
+  assignable droids, so the engine never refuses a presented option.
+
+This section is **client-only**: it reads existing snapshot state and calls existing actions — no new engine or
+snapshot for the display.
+
+### 13.2 Auto-replace — a new per-venture mechanic (engine + a popup toggle)
+
+A per-venture **`autoReplace`** flag (a venture field, default **off**, omitted when off so a galaxy with it off
+stays byte-identical). When a deployed droid is **destroyed at zero condition** (§5's decay step) on a venture
+whose `autoReplace` is on, the **same tick** the vacated slot is refilled by **assigning an idle droid from that
+system** that passes the normal assign gate (idle · same-system · licence-ok for a Syndicate droid), chosen
+**deterministically** — the **lowest assignable idle droid id** (invariant 9). When several auto-replacing ventures
+in a system draw on the same idle buffer the same tick, they are served in **venture establishment order**.
+
+It is **free**: it reassigns a spare the guild already owns — **no credits, parts, or build delay** (this is why
+"stock" means idle droids, not components or credits). If no assignable idle droid is available the slot stays empty
+(the complement drops) until the player replenishes the buffer. A refilled droid is an ordinary fresh assignment
+(condition NEW, `updatedAtTick` stamped, cap respected). **GP/RP- and conservation-neutral** — nothing is minted or
+spent. **No new numbers.** The toggle is set from the popup through a small new action.
+
+### 13.3 Maintenance — its own tab, next to Operations (design pending)
+
+`droid_components` **upkeep** gets **its own top-level tab, beside Operations** — a **separate design pass**, not
+ruled here. The engine is already built (§5): per-system weekly coverage, lowest-condition triage, a per-system
+reserve floor. The tab will surface, per system, the stock, the weekly upkeep need and coverage, the runway, and a
+control for the **reserve floor** — which **reuses the existing per-good `reserveLevel`**
+(`production-console-model.md`), not a bespoke setter. Layout and wiring are the maintenance-tab pass.
+
+### 13.4 Carry-overs folded in
+
+The commission list's incidental "droid" entry (engine slice 2) gets a coherent affordance or is hidden until
+deployment exists; the `droids_spent` notice's player-facing wording (engine slice 5) is settled at the client slice.
+
+### 13.5 Client slices (build order)
+
+1. **Deployment** — the droid section in the Venture Management popup (client-only: available, slots,
+   assign / unassign).
+2. **Auto-replace** — the `autoReplace` venture flag + the fill-on-death-from-idle engine mechanic + the popup
+   toggle.
+3. **The maintenance tab** — after its own design pass.
+
+The client renders the snapshot and computes no game number; the counts and conditions it shows are read, not
+computed.
