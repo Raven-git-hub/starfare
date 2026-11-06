@@ -23,7 +23,8 @@ const {
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
 const {
-  DROID, DROID_SOURCE_SYNDICATE, SYNDICATE_DROID_TARIFF, DROID_CAP, mintDroid, isDroidIdle, assignedDroidCount, unassign,
+  DROID, DROID_SOURCE_SYNDICATE, SYNDICATE_DROID_TARIFF, mintDroid, isDroidIdle, unassign,
+  assignDroidRefusal, assignDroidTo,
 } = require('./droids.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
@@ -1667,6 +1668,17 @@ function createUnassignDroidAction({ guildId, droidId }) {
   if (guildId === undefined) throw new Error('createUnassignDroidAction: guildId is required');
   if (droidId === undefined) throw new Error('createUnassignDroidAction: droidId is required');
   return { type: 'unassignDroid', guildId, droidId };
+}
+
+// setAutoReplace: switch a venture's droid AUTO-REPLACE on or off (droid client slice 2; docs/droids.md §13.2).
+// While on, a droid on that venture that WEARS OUT is replaced the same tick by an idle spare from the same
+// system (sim/droids.js refillAutoReplaceVacancies). Shape is exactly `{ guildId, ventureId, on }`, `on` a
+// boolean. Switching it never moves a droid by itself — it only changes what happens at the next death.
+function createSetAutoReplaceAction({ guildId, ventureId, on }) {
+  if (guildId === undefined) throw new Error('createSetAutoReplaceAction: guildId is required');
+  if (ventureId === undefined) throw new Error('createSetAutoReplaceAction: ventureId is required');
+  if (on === undefined) throw new Error('createSetAutoReplaceAction: on is required');
+  return { type: 'setAutoReplace', guildId, ventureId, on };
 }
 
 // cancelSyndicateCommission: withdraw a Syndicate commission that HAS NOT STARTED building
@@ -3980,37 +3992,11 @@ function validateAction(state, action) {
     if (!venture) {
       return { valid: false, reason: `guild ${guild.id} owns no venture ${JSON.stringify(action.ventureId)}` };
     }
-    // 1b. A PRODUCING VENTURE (droid engine slice 4) — a droid's only job is the production boost, and the
-    // boost multiplies a venture's output good. A venture that makes no good (a dockyard, an illegal
-    // deuterium refinery, a bare shell) can never be boosted, so a droid there would be dead weight the
-    // player paid for. Refused, naming it: assignable now means exactly boostable. `producedGoodFor` is the
-    // engine's one definition of "what does this venture make" (sim/baseline.js).
-    if (producedGoodFor(venture) == null) {
-      return { valid: false, reason: `venture ${venture.id} produces no good, so a droid there could boost nothing — a droid may be assigned only to a producing venture (a mine or a factory)` };
-    }
-    // 2. IDLE — a droid staffs one venture at a time. Unassign it first (this names where it is).
-    if (!isDroidIdle(droid)) {
-      return { valid: false, reason: `droid ${droid.id} is already assigned to venture ${JSON.stringify(droid.assignedToVentureId)} — unassign it first` };
-    }
-    // 3. SAME SYSTEM — assignment is instant and moves nothing (docs/droids.md §1, the asset Gate-2 shape),
-    // so the droid must already stand in the venture's system.
-    if (droid.systemId !== venture.systemId) {
-      return { valid: false, reason: `droid ${droid.id} is in system ${JSON.stringify(droid.systemId)}, but venture ${venture.id} is in ${JSON.stringify(venture.systemId)} — a droid is assigned only within its own system` };
-    }
-    // 4. THE LICENCE GATE — the payoff (docs/droids.md §4): a SYNDICATE droid staffs only a licensed venture.
-    // "Licensed" means EITHER licence a venture can hold: the windowed `licence` (Tier-1/2/3), or the
-    // windowless `deuteriumLicence` of a licensed deuterium mine (sim/baseline.js isLicensedDeuteriumMine —
-    // the existing predicate, reused so the two can never disagree). A guild droid may staff any venture.
-    // This is ASSIGN-TIME ONLY: a licence that lapses later leaves an assigned Syndicate droid where it is.
-    const licensed = Boolean(venture.licence) || isLicensedDeuteriumMine(venture);
-    if (droid.source === DROID_SOURCE_SYNDICATE && !licensed) {
-      return { valid: false, reason: `droid ${droid.id} is a Syndicate droid and venture ${venture.id} is unlicensed — a Syndicate droid may be assigned only to a licensed venture (docs/droids.md §4)` };
-    }
-    // 5. THE CAP — at most DROID_CAP assigned droids per venture, every source counted.
-    const held = assignedDroidCount(guild, venture.id);
-    if (held >= DROID_CAP) {
-      return { valid: false, reason: `venture ${venture.id} already holds ${held} droids, the cap of ${DROID_CAP} — unassign one first` };
-    }
+    // 2–5. THE ASSIGN GATE — producing venture · idle · same system · the licence gate · the cap. One function,
+    // sim/droids.js assignDroidRefusal, which auto-replace's refill also runs (docs/droids.md §13.2), so the
+    // player's Deploy and the engine's refill can never disagree about what is allowed.
+    const refusal = assignDroidRefusal(guild, droid, venture);
+    if (refusal) return { valid: false, reason: refusal };
     return { valid: true };
   }
 
@@ -4027,6 +4013,24 @@ function validateAction(state, action) {
     }
     if (isDroidIdle(droid)) {
       return { valid: false, reason: `droid ${droid.id} is idle — it is assigned to no venture` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'setAutoReplace') {
+    // Switch a venture's auto-replace on or off (droid client slice 2; docs/droids.md §13.2). Refusals: no
+    // guild, not the guild's venture, `on` not a boolean. Any venture the guild owns may carry the flag — a
+    // venture no droid can staff simply never has a death to refill.
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    const venture = (guild.ventures || []).find((v) => v.id === action.ventureId);
+    if (!venture) {
+      return { valid: false, reason: `guild ${guild.id} owns no venture ${JSON.stringify(action.ventureId)}` };
+    }
+    if (typeof action.on !== 'boolean') {
+      return { valid: false, reason: `setAutoReplace needs on: true or false, got ${JSON.stringify(action.on)}` };
     }
     return { valid: true };
   }
@@ -6093,10 +6097,8 @@ function applyAction(state, action) {
     // and WHEN (§15.2: every mutation records its tick). From the next tick on, the droid boosts that
     // venture's production (droid engine slice 4 — sim/production.js resolveProduction reads it).
     const guild = findGuild(next, action.guildId);
-    const droid = guild.droids.find((d) => d.id === action.droidId);
-    droid.assignedToVentureId = action.ventureId;
-    droid.deployedAtTick = next.tick;
-    droid.updatedAtTick = next.tick;
+    // assignDroidTo is the one assign mutation (sim/droids.js) — auto-replace's refill uses it too.
+    assignDroidTo(guild.droids.find((d) => d.id === action.droidId), action.ventureId, next.tick);
     return next;
   }
 
@@ -6104,6 +6106,18 @@ function applyAction(state, action) {
     // Back to idle, in the system it already stands in (assignment never moved it).
     const guild = findGuild(next, action.guildId);
     unassign(guild.droids.find((d) => d.id === action.droidId), next.tick);
+    return next;
+  }
+
+  if (action.type === 'setAutoReplace') {
+    // On writes `autoReplace: true`; off REMOVES the key — so a venture that is off carries no key at all,
+    // exactly like one that was never switched on (the omit-when-off convention; byte-identical saves). The
+    // venture records the tick of the change (§15.2). Nothing else moves: no droid, credit, good or fuel.
+    const guild = findGuild(next, action.guildId);
+    const venture = guild.ventures.find((v) => v.id === action.ventureId);
+    if (action.on) venture.autoReplace = true;
+    else delete venture.autoReplace;
+    venture.updatedAtTick = next.tick;
     return next;
   }
 
@@ -6844,6 +6858,7 @@ module.exports = {
   createBuyAssetFromSyndicateAction,
   createAssignDroidAction,
   createUnassignDroidAction,
+  createSetAutoReplaceAction,
   createCancelSyndicateCommissionAction,
   createAddOrderLineAction,
   createRemoveOrderLineAction,
