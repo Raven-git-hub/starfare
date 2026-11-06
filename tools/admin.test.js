@@ -978,3 +978,29 @@ test('knownCounts: counts what geography.known holds — the map, one system, or
   assert.deepEqual(A.knownCounts(known, { systemId: 'sys_9999' }), { planets: 0, nodes: 0, slots: 0 }, 'an unknown system');
   assert.deepEqual(A.knownCounts(undefined, {}), { planets: 0, nodes: 0, slots: 0 }, 'a view with no known block');
 });
+
+// --- grant-droid (roadmap 2.6, droid test-enablement) -----------------------------------------------------
+
+test('grantDroidBody: builds the POST /admin/guild/grant-droid body; --count defaults to 1; no --guild', () => {
+  assert.deepEqual(
+    A.grantDroidBody(A.parseArgs(['grant-droid', '--system', 'sys_0001', '--source', 'guild']).flags),
+    { systemId: 'sys_0001', source: 'guild', count: 1 },
+  );
+  assert.deepEqual(
+    A.grantDroidBody(A.parseArgs(['grant-droid', '--system', 'sys_0001', '--source', 'syndicate', '--count', '5']).flags),
+    { systemId: 'sys_0001', source: 'syndicate', count: 5 },
+  );
+  // A bad source or count is passed through for the ENGINE to refuse (its vocabulary, its reason) —
+  // the CLI does not re-author the rule. A non-integer count still fails at parse time, as every int flag does.
+  assert.deepEqual(A.grantDroidBody({ system: 's', source: 'pirate', count: 0 }), { systemId: 's', source: 'pirate', count: 0 });
+  assert.throws(() => A.parseArgs(['grant-droid', '--count', '1.5']), /count/);
+  assert.throws(() => A.grantDroidBody({ source: 'guild' }), /grant-droid: --system is required/);
+  assert.throws(() => A.grantDroidBody({ system: 's' }), /grant-droid: --source is required/);
+});
+
+test('DROID_COMMANDS lists grant-droid, and --help documents it', () => {
+  assert.deepEqual([...A.DROID_COMMANDS], ['grant-droid']);
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'admin.js'), 'utf8');
+  assert.match(src, /grant-droid {5}--system ID --source guild\|syndicate \[--count N\]/);
+  assert.match(src, /case 'grant-droid': await cmdGrantDroid\(base, flags\); return;/);
+});

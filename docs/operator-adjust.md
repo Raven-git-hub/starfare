@@ -181,6 +181,31 @@ operator reveal can never write a shape the game would not):
 Proved in `sim/tests/reveal.test.js` (the three forms, idempotence, every refusal, the tick, the
 economy no-op, and a headless round-trip over the real server).
 
+### 3.8 `grantDroid { systemId, source, count }` ✅ BUILT 06-11-26
+
+The droid **test** lever (roadmap 2.6, droid test-enablement): staff a venture without building or buying.
+Mints `count` **idle** droids of one `source` (`'guild'` / `'syndicate'`, `sim/droids.js` `DROID_SOURCES`)
+at `systemId`, through **the one droid mint**, `mintDroid` -- the same one a dockyard build and a Syndicate buy
+use, so a granted droid is indistinguishable from an earned one: a fresh `asset_<guild>_droid_NN` id off the
+guild's `droidSerial`, condition NEW, `updatedAtTick` = the grant's tick (sec. 15.2).
+
+- **No `guildId`.** Unlike sec. 3.4 / `grantKit`, which name their guild and place freely, the droids go to
+  the guild that **holds** the system (`systemHolder`, `sim/claims.js`) -- a droid serves only a venture in its
+  own system, and a guild's ventures stand only where it holds. *(Decision checklist: confirm holder-resolved
+  over a named `--guild`.)*
+- **Invariant-neutral.** A droid is not a good and is priced at nothing here: no credits, fuel, goods or supply
+  move, so there is no counter-move and no cache refresh.
+- **Reject** (state untouched, refused whole -- every droid or none): a `systemId` the seed lacks; a system no
+  guild holds; a `source` not in `DROID_SOURCES` (spelled exactly); a `count` that is not a whole number >= 1.
+- **No negative form** -- a droid leaves by wearing out or by its venture's closure (`docs/droids.md` §5), not
+  by an operator lever.
+- **Operator surface:** `POST /admin/guild/grant-droid { systemId, source, count }` (beside `grant-kit`, routed
+  through the same validate -> journal -> apply path) and `node tools/admin.js grant-droid --system <id>
+  --source guild|syndicate [--count N]` (N defaults to 1). Not a player action; no client surfaces it.
+
+Proved in `sim/tests/grant-droid.test.js` (the mint's count / source / tick / ids, the holder rule, every
+refusal minting nothing, a granted droid assignable through `assignDroid`, and the CLI against a real server).
+
 ## 4. The removal matrix (the four operator intents)
 
 The asset<->venture pair has two entities; a removal can touch each independently. Three combinations

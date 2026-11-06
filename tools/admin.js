@@ -46,7 +46,7 @@ const FLAG_SPEC = Object.freeze({
   // The operator adjust levers (docs/operator-adjust.md §5).
   guild: 'string',    // which guild the adjust / reveal acts on; snapshot: read that guild's fogged view
   delta: 'int',       // signed integer: a grant (+) or remove (−) for the scalar levers
-  system: 'string',   // adjust-goods / grant-asset / grant-kit: which system's cell / where to mint; reveal: which system
+  system: 'string',   // adjust-goods / grant-asset / grant-kit / grant-droid: which system's cell / where to mint; reveal: which system
   good: 'string',     // adjust-goods: which stockpile good
   kind: 'string',     // grant-asset: miner | factory; grant-kit: outpost | deepScan | prefecture (the kit's kind)
   asset: 'string',    // remove-asset / load-kit / plant-prefecture / salvage-load: which asset id
@@ -68,6 +68,9 @@ const FLAG_SPEC = Object.freeze({
   repeat: 'string',   // dispatch-route: the launch mode — once | continuous[:CADENCE] | nRun:N[:CADENCE]
   load: 'string',     // transfer-cargo: "good:qty|max,…" to load pool -> hold
   unload: 'string',   // transfer-cargo: "good:qty|max,…" to unload hold -> pool
+  // The droid test lever (roadmap 2.6, droid test-enablement).
+  source: 'string',   // grant-droid: guild | syndicate (the droid's source)
+  count: 'int',       // grant-droid: how many droids to mint (default 1)
   help: 'bool',
 });
 
@@ -630,6 +633,23 @@ function grantKitBody(flags) {
   };
 }
 
+// The droid test lever (roadmap 2.6, droid test-enablement) — a thin HTTP client over POST
+// /admin/guild/grant-droid. It takes no --guild: the droids go to whichever guild holds --system (the engine
+// resolves that, and refuses an unheld system).
+const DROID_COMMANDS = Object.freeze(['grant-droid']);
+
+// grantDroidBody(flags) -> the POST /admin/guild/grant-droid request body. --count defaults to 1 (one droid,
+// as grant-asset mints one machine). --source and --count are passed through as given: WHICH sources exist
+// and what count is legal are the engine's rules (sim/droids.js DROID_SOURCES, validateAction), so a bad one
+// is refused there, loudly, with the engine's own reason. PURE and exported (admin.test.js).
+function grantDroidBody(flags) {
+  return {
+    systemId: requireFlag(flags, 'system', 'grant-droid'),
+    source: requireFlag(flags, 'source', 'grant-droid'),
+    count: flags.count === undefined ? 1 : flags.count,
+  };
+}
+
 // loadKitBody(flags) -> the POST /admin/vehicle/load-kit request body: the heavy (--id) and the idle kit
 // asset to load onto it (--asset). PURE and exported.
 function loadKitBody(flags) {
@@ -824,6 +844,7 @@ module.exports = {
   parseCargoFlag, transferCargoBody,
   spawnOutpostBody, removeOutpostBody, OUTPOST_COMMANDS,
   grantKitBody, loadKitBody, unloadKitBody, deployAssetBody, DEPLOY_COMMANDS, KIT_KINDS, idleKitsIn, structureUnder,
+  grantDroidBody, DROID_COMMANDS,
   plantPrefectureBody, abandonPrefectureBody, CLAIM_COMMANDS,
   salvageLoadBody, salvageUnloadBody, SALVAGE_COMMANDS,
   saveRouteBody, deleteRouteBody, ROUTE_COMMANDS,
@@ -1421,6 +1442,23 @@ async function cmdGrantKit(base, flags) {
   printIdleKits(kits);
 }
 
+// grant-droid: POST the body, then print the droids now standing idle in that system. The guild is read back
+// off the snapshot's system claim (the holder the engine minted for), since the CLI never named it.
+async function cmdGrantDroid(base, flags) {
+  const body = grantDroidBody(flags);
+  const out = await postJson(base, '/admin/guild/grant-droid', body);
+  if (!out.accepted) throw new Error(`grant-droid refused: ${out.reason}`);
+  const holder = ((out.snapshot.claims || []).find((c) => c.landmarkKind === 'system' && c.landmarkId === body.systemId) || {}).ownerGuildId;
+  const guild = (out.snapshot.guilds || []).find((g) => g.id === holder) || {};
+  const here = (guild.droids || []).filter((d) => d.systemId === body.systemId);
+  const idle = here.filter((d) => d.assignedToVentureId == null);
+  row('action', 'grantDroid');
+  row('guild', holder || '?');
+  row('source', body.source);
+  row('minted', `${body.count}`);
+  row('idle here', `${idle.length} (of ${here.length} in ${body.systemId})`);
+}
+
 async function cmdLoadKit(base, flags) {
   const body = loadKitBody(flags);
   const out = await postJson(base, '/admin/vehicle/load-kit', body);
@@ -1640,6 +1678,9 @@ Operator adjust levers (docs/operator-adjust.md — dev/steward, exit 1 on a ref
   adjust-fuel     --guild ID --delta N     grant (+) / remove (−) legal fuel hoard
   adjust-goods    --guild ID --system ID --good G --delta N   a (guild, system) stockpile cell
   grant-asset     --guild ID --kind miner|factory --system ID   mint one idle asset
+  grant-droid     --system ID --source guild|syndicate [--count N]
+                  mint N (default 1) idle droids into a system, for the guild that holds it
+                  (refused: an unheld system, an unknown source, a count below 1)
   remove-asset    --guild ID --asset ID [--close]   remove an asset (occupied: detach, or --close)
   remove-venture  --guild ID --venture ID [--remove-asset]   tear a venture down (keep / remove asset)
 
@@ -1745,7 +1786,7 @@ Flags
   --guild ID     adjust levers / reveal: which guild it acts on;
                  snapshot: read that guild's fogged view instead of the god's-eye one
   --delta N      adjust-credits/fuel/goods: a SIGNED integer (grant +, remove −)
-  --system ID    adjust-goods / grant-asset / grant-kit: which system's cell / where to mint;
+  --system ID    adjust-goods / grant-asset / grant-kit / grant-droid: which system's cell / where to mint;
                  spawn-outpost: the system the outpost anchors to; reveal: the system to reveal
   --planet ID    reveal: the one planet to reveal (instead of --system)
   --l1           reveal --system: its planets' archetypes only (default: every surface too)
@@ -1773,6 +1814,8 @@ Flags
                  a repeating mode optionally + :immediate (default) | :perCycle (one lap per fuel cycle)
   --load G:N,…   transfer-cargo: goods to load pool -> hold ("good:qty" or "good:max", comma-sep)
   --unload G:N,… transfer-cargo: goods to unload hold -> pool ("good:qty" or "good:max", comma-sep)
+  --source S     grant-droid: guild | syndicate (the droid's source)
+  --count N      grant-droid: how many droids to mint (default 1)
   --help, -h     this text
 `;
 
@@ -1798,6 +1841,7 @@ async function main(argv) {
     case 'spawn-outpost': await cmdSpawnOutpost(base, flags); return;
     case 'remove-outpost': await cmdRemoveOutpost(base, flags); return;
     case 'grant-kit': await cmdGrantKit(base, flags); return;
+    case 'grant-droid': await cmdGrantDroid(base, flags); return;
     case 'load-kit': await cmdLoadKit(base, flags); return;
     case 'unload-kit': await cmdUnloadKit(base, flags); return;
     case 'deploy-asset': await cmdDeployAsset(base, flags); return;
