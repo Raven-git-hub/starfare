@@ -5637,7 +5637,8 @@ boundary so the later hex-map swap doesn't touch it.
     licence test the filter now shares. The slice-1 served-page test is extended: each source's partition is checked
     against the engine's `validateAction` on every fixture venture (licensed, unlicensed, deuterium-licensed, the
     far system), each button sends its own `[0]`, and the cap pin, filter cross-check and no-auto-replace assertion
-    still hold. Closes slice-1 call (1) below. **Next:** client slice 2, auto-replace.
+    still hold. Closes slice-1 call (1) below. Sim **2,694** (unchanged — the slice-1 test extended, no new test),
+    tools **98** (unchanged). **Next:** client slice 2, auto-replace.
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
