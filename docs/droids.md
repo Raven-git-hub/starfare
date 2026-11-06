@@ -562,17 +562,35 @@ auto-replace toggle (§13.2) — still absent, the test still asserts it.)*
 ### 13.2 Auto-replace — a new per-venture mechanic (engine + a popup toggle)
 
 A per-venture **`autoReplace`** flag (a venture field, default **off**, omitted when off so a galaxy with it off
-stays byte-identical). When a deployed droid is **destroyed at zero condition** (§5's decay step) on a venture
-whose `autoReplace` is on, the **same tick** the vacated slot is refilled by **assigning an idle droid from that
-system** that passes the normal assign gate (idle · same-system · licence-ok for a Syndicate droid), chosen
-**deterministically** — the **lowest assignable idle droid id** (invariant 9). When several auto-replacing ventures
-in a system draw on the same idle buffer the same tick, they are served in **venture establishment order**.
+stays byte-identical). When a deployed droid is **destroyed at zero condition** (§5's decay step) on a venture whose `autoReplace`
+is on — **and only then**; a player's unassign or a closure's release never triggers a refill — the **same tick** the
+vacated slot is refilled by **assigning an idle droid from that system** that passes the normal assign gate (idle ·
+same-system · licence-ok for a Syndicate droid). The refill **honours the source of the droid that died**:
+
+- a **Syndicate** vacancy is filled only by the **lowest-id idle Syndicate droid** the gate allows; if none, the slot
+  stays empty — **never a guild droid**;
+- a **guild** vacancy is filled by the **lowest-id idle guild droid**; if none, it **falls back** to the lowest-id
+  idle Syndicate droid the gate allows; if neither, empty.
+
+So auto-replace may **downgrade** a guild slot to Syndicate to keep a venture running, but **never upgrades** a
+Syndicate slot to guild — that switch is the player's alone (only the player spends a guild droid onto a new slot).
+When several vacancies in a system compete for the same idle buffer the same tick, the fill is **two passes, both in
+venture-establishment order (lowest-id within a source)**: first every vacancy is served **from its own source**,
+then the remaining **guild** vacancies take their **Syndicate fallback** — so a fallback can never consume a
+Syndicate droid a genuine Syndicate vacancy needed. Deterministic throughout (invariant 9).
 
 It is **free**: it reassigns a spare the guild already owns — **no credits, parts, or build delay** (this is why
 "stock" means idle droids, not components or credits). If no assignable idle droid is available the slot stays empty
 (the complement drops) until the player replenishes the buffer. A refilled droid is an ordinary fresh assignment
 (condition NEW, `updatedAtTick` stamped, cap respected). **GP/RP- and conservation-neutral** — nothing is minted or
 spent. **No new numbers.** The toggle is set from the popup through a small new action.
+
+*(**Licence lapse** — a Syndicate vacancy on a venture whose licence has since lapsed finds no gate-allowed Syndicate
+droid, so it stays empty: the venture's Syndicate complement **erodes** as those droids wear out (its already-assigned
+droids stay — the §13.1 gate is assign-time only — and its guild deaths still refill with guild). **Deferred
+alternative, parked 06-11-26 — evict-on-lapse:** a lapse could instead unassign the venture's Syndicate droids back
+to idle at once ("their software refuses unlicensed work"), a crisper fiction that returns them as redeployable
+spares — but it reverses the assign-time-only gate and is its own slice.)*
 
 ### 13.3 Maintenance — its own tab, next to Operations (design pending)
 
