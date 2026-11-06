@@ -542,6 +542,23 @@ fails if either moves alone); the same test runs the page's own `droidsAvailable
 auto-replace toggle (§13.2), the maintenance tab (§13.3), a guild-vs-Syndicate source chooser on Deploy, the §13.4
 carry-overs, a boost indicator.)*
 
+*(**⤳ AS-BUILT 06-11-26 — client slice 1b, the deploy source chooser.** Client-only: no `sim/` engine or snapshot
+source changed. **Supersedes** slice 1's "Deploy … assigns the lowest-id assignable idle droid" (of any source): a
+single Deploy could spend a flexible guild droid on a licensed venture while Syndicate droids sat idle — and only a
+guild droid can staff an unlicensed venture (§3/§4). The one button is now **two source buttons, ＋ Guild · n and
+＋ Syndicate · n**, each labelled with that source's assignable count here. The choice is **source-level**, not per
+droid: within a source, Deploy sends the **lowest-id** assignable idle droid of **that** source (the snapshot's id
+order — string order, as before; slice-1 call (2) still stands). The counts are **`splitBySource(droidsAvailableFor(me,
+v))`** — the one gate partitioned by `source`, not a second gate — so on an unlicensed venture the Syndicate
+partition is empty by the gate itself. Each button is disabled when its partition is empty, the venture is at
+`DROID_CAP`, or an action is in flight; both send the same `assignDroid` through the same `WF.busy` flow. On an
+unlicensed venture a presentation-only hint ("Syndicate needs licence") sits beside the buttons; it reads
+**`ventureLicensed(v)`**, the licence test the filter itself now calls, so the hint and the gate cannot disagree.
+The available thermometer and total count are unchanged (total = the two partitions summed). The served-page test
+now also checks each source's partition against the engine's `validateAction` for every fixture venture, and that
+each button sends its own partition's `[0]`. Mock updated to match. **Not built:** a per-droid picker; the
+auto-replace toggle (§13.2) — still absent, the test still asserts it.)*
+
 ### 13.2 Auto-replace — a new per-venture mechanic (engine + a popup toggle)
 
 A per-venture **`autoReplace`** flag (a venture field, default **off**, omitted when off so a galaxy with it off

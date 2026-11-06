@@ -35,8 +35,14 @@
                    (empties dashed). Each filled slot: droid id · condition thermometer · % · ✕.
     Condition   : the thermometer, colour by PRESENTATION threshold (like the RP z-band already in the
                    wire): green > 60% · yellow 30–60% · red < 30%. Depletes live on the poll.
-    Deploy (＋)  : assigns the lowest-id assignable idle droid — __sendAction({type:'assignDroid',
-                   guildId, droidId, ventureId}). The first empty slot is marked "next".
+    Deploy (＋)  : TWO source buttons (client slice 1b, supersedes the single Deploy): ＋ Guild · n and
+                   ＋ Syndicate · n, n = that source's assignable count here — the Available set above
+                   partitioned by d.source (not a second gate). Each assigns the lowest-id droid OF ITS
+                   SOURCE — __sendAction({type:'assignDroid', guildId, droidId, ventureId}). Each is
+                   disabled when its source has none here, the venture is at CAP, or an action is in flight.
+                   On an UNLICENSED venture the Syndicate partition is empty by the gate, so ＋ Syndicate · 0
+                   is disabled and a short inline hint ("Syndicate needs licence") sits beside it.
+                   The first empty slot is marked "next".
     Unassign(✕) : __sendAction({type:'unassignDroid', guildId, droidId}) — returns it to idle in-system.
     CAP         : DROID_CAP = 20 (sim/droids.js). Not published — MIRROR it client-side and PIN it with
                    a served-page tripwire, exactly as RP_FLOOR / RP_SOFT_CAP are pinned.
@@ -148,7 +154,8 @@
   .avtherm i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,var(--teal-dim),var(--teal))}
   .avbox b{font-family:"Cinzel";font-size:19px;color:var(--teal);line-height:1}
   .avbox .avsub{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
-  .deploy{margin-left:auto;padding:8px 16px;border:1px solid var(--line2);border-radius:7px;color:var(--amber-bright);
+  .deploys{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .deploy{padding:8px 16px;border:1px solid var(--line2);border-radius:7px;color:var(--amber-bright);
     font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;cursor:default;background:rgba(231,200,108,.05)}
 
   .slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 10px}
@@ -231,7 +238,13 @@
             <div class="avtherm"><i style="width:25%"></i></div>
             <b>5</b><span class="avsub">idle · in system</span>
           </div>
-          <div class="deploy">＋ Deploy droid</div>
+          <!-- client slice 1b: one button per source, each with its count. Drawn on a LICENSED venture (both live).
+               On an unlicensed venture ＋ Syndicate · 0 is disabled (dimmed) with a short "Syndicate needs licence"
+               hint beside it — Syndicate droids may staff only a licensed venture. -->
+          <div class="deploys">
+            <div class="deploy">＋ Guild · 3</div>
+            <div class="deploy">＋ Syndicate · 2</div>
+          </div>
         </div>
 
         <div class="slots">

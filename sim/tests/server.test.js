@@ -3263,11 +3263,13 @@ test('GET / serves the droid deployment section — the cap pinned to the engine
   assert.match(html, /for\(var i = 0; i < DROID_CAP; i\+\+\)\{/, 'the grid draws DROID_CAP slots');
 
   // 3. THE FILTER — run the page's own droidsAvailableFor against the engine's validateAction.
+  const lic = html.match(/\n  function ventureLicensed\(v\)\{[\s\S]*?\n  \}\n/);
   const src = html.match(/\n  function droidsAvailableFor\(me, v\)\{[\s\S]*?\n  \}\n/);
+  const split = html.match(/\n  function splitBySource\(available\)\{[\s\S]*?\n  \}\n/);
   const band = html.match(/\n  function conditionBand\(condition\)\{[\s\S]*?\n  \}\n/);
-  assert.ok(src && band, 'droidsAvailableFor and conditionBand are found');
+  assert.ok(lic && src && split && band, 'ventureLicensed, droidsAvailableFor, splitBySource and conditionBand are found');
   const page = {};
-  vm.runInNewContext(src[0] + band[0], page);
+  vm.runInNewContext(lic[0] + src[0] + split[0] + band[0], page);
 
   // A galaxy where every branch of the gate is live: in g1's HOME a licensed, an unlicensed and a licensed
   // deuterium venture; in a second system g1 holds, one more. Droids of both sources in both systems, and
@@ -3310,6 +3312,52 @@ test('GET / serves the droid deployment section — the cap pinned to the engine
   assert.deepEqual(ids('v_far'), [g1.droids[3].id], 'the far system: only its guild droid (its venture is unlicensed)');
   // Omit-when-empty: a guild with no droids renders all-empty and does not throw.
   assert.equal(page.droidsAvailableFor({ id: 'g9' }, snap.ventures[0]).length, 0, 'no `droids` field → nothing available');
+
+  // 4. THE SOURCE CHOOSER (client slice 1b, §13.1) — two Deploy buttons, Guild and Syndicate, each sending the
+  //    lowest-id droid of its own source. The buttons are served and wired to the one assignDroid handler...
+  assert.match(html, /deployButton\('guild', 'Guild', bySource\.guild\)/, 'the Guild deploy button, fed the guild partition');
+  assert.match(html, /deployButton\('syndicate', 'Syndicate', bySource\.syndicate\)/, 'the Syndicate deploy button, fed the Syndicate partition');
+  assert.match(html, /data-wf="deploy" data-source="'\+source\+'"/, 'each source button is a data-wf="deploy" control (the assignDroid handler)');
+  assert.match(html, /\(can \? ' data-droid="'\+esc\(list\[0\]\.id\)\+'"' : ' disabled'\)/, 'each sends its partition\'s [0], else is disabled');
+  assert.match(html, /var can = list\.length > 0 && !full && !WF\.busy;/, 'disabled when its source is empty, the venture full, or an action in flight');
+  assert.match(html, /splitBySource\(droidsAvailableFor\(me, v\)\)/, 'the partition is of the one gate, not a second gate');
+  assert.doesNotMatch(html, /Deploy droid</, 'the single slice-1 Deploy button is gone');
+  // ...and each partition agrees with the engine, droid for droid: every droid in a source's partition is one the
+  // engine accepts, every engine-accepted droid of that source is in it, and [0] is that source's lowest id.
+  const parts = (vid) => page.splitBySource(page.droidsAvailableFor(me, snap.ventures.find((x) => x.id === vid)));
+  for (const ventureId of ['v_lic', 'v_unlic', 'v_deut', 'v_far']) {
+    const p = parts(ventureId);
+    for (const source of ['guild', 'syndicate']) {
+      const accepted = me.droids
+        .filter((d) => d.source === source)
+        .filter((d) => validateAction(s, createAssignDroidAction({ guildId: 'g1', droidId: d.id, ventureId })).valid)
+        .map((d) => d.id)
+        .sort();
+      assert.deepEqual(Array.from(p[source], (d) => d.id), accepted, `${ventureId} · ${source}: the partition matches the engine`);
+      for (const d of p[source]) assert.equal(d.source, source, `${d.id} sits in its own source's partition`);
+    }
+  }
+  // Spot-checks: on a licensed venture both sources offer; on an unlicensed one Syndicate is empty, guild still offers.
+  const ids2 = (arr) => Array.from(arr, (d) => d.id);
+  assert.deepEqual(ids2(parts('v_lic').guild), [g1.droids[0].id], 'licensed: the idle HOME guild droid');
+  assert.deepEqual(ids2(parts('v_lic').syndicate), [g1.droids[1].id], 'licensed: the idle HOME Syndicate droid');
+  assert.deepEqual(ids2(parts('v_deut').syndicate), [g1.droids[1].id], 'deuterium-licensed: the Syndicate droid too');
+  assert.deepEqual(ids2(parts('v_unlic').guild), [g1.droids[0].id], 'unlicensed: guild still offers');
+  assert.deepEqual(ids2(parts('v_unlic').syndicate), [], 'unlicensed: the Syndicate partition is empty (its button disabled)');
+  assert.deepEqual(ids2(parts('v_far').syndicate), [], 'the far system (unlicensed): its Syndicate droid is held back');
+  // The "needs licence" hint reads the same licence test as the gate.
+  assert.equal(page.ventureLicensed(snap.ventures.find((x) => x.id === 'v_lic')), true);
+  assert.equal(page.ventureLicensed(snap.ventures.find((x) => x.id === 'v_deut')), true);
+  assert.equal(page.ventureLicensed(snap.ventures.find((x) => x.id === 'v_unlic')), false);
+  assert.match(html, /ventureLicensed\(v\) \? '' : '<span class="vm-wf-hint">/, 'the Syndicate hint shows only on an unlicensed venture');
+  // Lowest id within a source: two idle guild droids → the partition is in id order, so [0] is the lower one.
+  const twoGuild = { droids: [
+    { id: 'asset_g1_droid_02', source: 'guild', systemId: 'X' },
+    { id: 'asset_g1_droid_03', source: 'syndicate', systemId: 'X' },
+    { id: 'asset_g1_droid_05', source: 'guild', systemId: 'X' },
+  ] };
+  const pp = page.splitBySource(page.droidsAvailableFor(twoGuild, { systemId: 'X', licence: {} }));
+  assert.deepEqual([pp.guild[0].id, pp.syndicate[0].id], ['asset_g1_droid_02', 'asset_g1_droid_03'], 'each source sends its own lowest id');
 
   // The condition colour's presentation thresholds (§13.1): green > 60% · yellow 30–60% · red < 30%.
   assert.deepEqual([1, 0.61, 0.6, 0.3, 0.29, 0].map((c) => page.conditionBand(c)),
