@@ -581,8 +581,10 @@ Syndicate droid a genuine Syndicate vacancy needed. Deterministic throughout (in
 
 It is **free**: it reassigns a spare the guild already owns — **no credits, parts, or build delay** (this is why
 "stock" means idle droids, not components or credits). If no assignable idle droid is available the slot stays empty
-(the complement drops) until the player replenishes the buffer. A refilled droid is an ordinary fresh assignment
-(condition NEW, `updatedAtTick` stamped, cap respected). **GP/RP- and conservation-neutral** — nothing is minted or
+(the complement drops) until the player replenishes the buffer. A refilled droid is an ordinary assignment
+(`updatedAtTick` stamped, cap respected) that **keeps the spare's own condition** — NEW only if the spare was freshly
+minted; a worn spare deploys worn, since resetting it would be the free repair §5 forbids. *(⤳ corrected 06-11-26 at
+the build, client slice 2: this read "condition NEW", which would have repaired a worn spare for free.)* **GP/RP- and conservation-neutral** — nothing is minted or
 spent. **No new numbers.** The toggle is set from the popup through a small new action.
 
 *(**Licence lapse** — a Syndicate vacancy on a venture whose licence has since lapsed finds no gate-allowed Syndicate
@@ -591,6 +593,41 @@ droids stay — the §13.1 gate is assign-time only — and its guild deaths sti
 alternative, parked 06-11-26 — evict-on-lapse:** a lapse could instead unassign the venture's Syndicate droids back
 to idle at once ("their software refuses unlicensed work"), a crisper fiction that returns them as redeployable
 spares — but it reverses the assign-time-only gate and is its own slice.)*
+
+*(**⤳ AS-BUILT 06-11-26 — client slice 2, auto-replace (engine + snapshot + client).** **No new number.**
+**The flag:** `venture.autoReplace` — `true` or omitted (`createVenture` carries it, the `deuteriumRefinery`
+convention); `checkDroids` halts on any other stored value (`venture-auto-replace-valid`). **The action:**
+`setAutoReplace { guildId, ventureId, on }` (`sim/actions.js`) — refused for an unknown guild, a venture the guild
+does not own, or an `on` that is not a boolean; on writes `autoReplace: true`, off **deletes the key**, and the venture
+is stamped `updatedAtTick`. Any owned venture may carry it (a non-producing one simply never has a death). **The one
+gate, the one mutation:** the `assignDroid` checks after ownership (producing · idle · same system · Syndicate →
+licensed · CAP) moved verbatim into `assignDroidRefusal(guild, droid, venture)` and the apply's three-field write into
+`assignDroidTo(droid, ventureId, tick)` (`sim/droids.js`); `assignDroid` and the refill both call them, so the refill
+can place nothing the player's Deploy would be refused and never touches `condition`. **The hook — two phases in
+`stepDroidUpkeep`** (`sim/tick.js`, per system, inside `stepProduction`'s loop): **A** — `decayDroidsIn` destroys this
+tick's zero-condition droids and the `droids_spent` notice records them, both unchanged; **B** — right after,
+`refillAutoReplaceVacancies(guild, systemId, spent, producingTick)` makes one vacancy per spent droid that staffed an
+`autoReplace` venture in the system (with that droid's source), in `guild.ventures` array order, and fills them in
+the two passes above, each pick the **lowest-numbered** idle droid of the source in the system that
+`assignDroidRefusal` passes (re-run per pick, so the cap and licence hold refill by refill). It runs **before** the
+week-boundary upkeep, so on a boundary a refilled droid is paid for like any deployed droid; a refill is otherwise
+unmaintained (no `maintained` key) until the next boundary. Stamped `deployedAtTick` / `updatedAtTick` with the
+producing tick (as a closure's release is). **Death-only by construction:** it reads only `spent`, so an unassign or
+a closure release never reaches it. **Silent:** no notice (deferred — decision checklist). Tripwires halt if refills
+outnumber vacancies or a venture passes CAP. **"Lowest id" is the id's number** (droid 99 before droid 100), not
+string order — see the checklist: the client's Deploy still takes the snapshot's string order. **Snapshot:** the
+venture row carries `autoReplace: true` while on, **omitted** when off (unlike its always-present boolean
+neighbours, so a galaxy that never switches it on publishes byte-identically); a rival's venture row is cut to
+`RIVAL_VENTURE_FIELDS`, so it never sees it. **Client:** `renderWorkforce` draws the mock's **Auto-replace** switch
+beside the WORKFORCE heading (`#vmWfAuto`, none on a non-producing venture), reading `autoReplaceOn(v)` off the
+snapshot; a click sends `setAutoReplace` with the opposite state through `sendDroidAction` — no optimistic change,
+the poll re-renders. **Proof** (`sim/tests/droid-autoreplace.test.js`): a galaxy with it off everywhere — both
+sources deployed, three wearing out, idle spares of both sources, a licensed venture, a week boundary crossed —
+hashes exactly as at ef14e01 (`droid-autoreplace-noop-script.js`); the source rule both ways; the thin-buffer
+two-pass case; the lapsed-licence erosion; same-system only; CAP (one death, one refill); a worn spare keeps its
+condition; an unassign is never refilled; a refill moves no credit, good, fuel, GP or RP; two runs and a save/restore
+byte-identical; the snapshot flag and its fog; the invariant. **Not built:** a "droid auto-replaced" notice; the
+maintenance tab (§13.3); evict-on-lapse (parked above).)*
 
 ### 13.3 Maintenance — its own tab, next to Operations (design pending)
 
@@ -610,7 +647,7 @@ deployment exists; the `droids_spent` notice's player-facing wording (engine sli
 1. **Deployment** — the droid section in the Venture Management popup (client-only: available, slots,
    assign / unassign).
 2. **Auto-replace** — the `autoReplace` venture flag + the fill-on-death-from-idle engine mechanic + the popup
-   toggle.
+   toggle. *(⤳ BUILT 06-11-26 — §13.2's AS-BUILT note.)*
 3. **The maintenance tab** — after its own design pass.
 
 The client renders the snapshot and computes no game number; the counts and conditions it shows are read, not

@@ -3253,8 +3253,12 @@ test('GET / serves the droid deployment section — the cap pinned to the engine
   assert.match(html, /type:'assignDroid', droidId:droidId, ventureId:VM\.ventureId/, 'Deploy sends the existing assignDroid');
   assert.match(html, /type:'unassignDroid', droidId:droidId/, 'the ✕ sends the existing unassignDroid');
   assert.match(html, /if\(producedGood\(v\) == null\)\{/, 'a non-producing venture gets no slots (the engine refuses it)');
-  // Slice 2's toggle is NOT built in slice 1.
-  assert.doesNotMatch(html, /autoReplace|Auto-replace/, 'no auto-replace toggle this slice (§13.2 is slice 2)');
+  // Slice 2's AUTO-REPLACE toggle (§13.2): it reads the published flag and sends the new setAutoReplace action,
+  // asking for the opposite of what is shown — and never mutates the drawn state itself (the poll re-renders).
+  assert.match(html, /id="vmWfAuto"/, 'the toggle sits beside the heading');
+  assert.match(html, /function autoReplaceOn\(v\)\{\s*return Boolean\(v && v\.autoReplace === true\);\s*\}/, 'the toggle reads the snapshot flag');
+  assert.match(html, /data-wf="auto" data-on="'\+\(on \? 'false' : 'true'\)\+'"/, 'clicked, it asks for the opposite state');
+  assert.match(html, /type:'setAutoReplace', ventureId:VM\.ventureId, on:btn\.getAttribute\('data-on'\) === 'true'/, 'and sends setAutoReplace');
 
   // 2. THE CAP MIRROR — pinned to the engine's own constant, and the only cap the section uses.
   const cap = html.match(/\n  var DROID_CAP = (\d+);\n/);

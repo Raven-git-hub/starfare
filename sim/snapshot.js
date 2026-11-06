@@ -809,6 +809,7 @@ function computeAttention(state) {
 //                   committedFromTick: int | null,                            // 3b-ii
 //                   deuteriumLicence: { signedTick } | null,   // §1.4 licensed mine marker
 //                   deuteriumRefinery: bool,                   // §1.4 illegal refinery marker
+//                   autoReplace?: true,                        // droids.md §13.2; omitted when off
 //                   dockyard: bool,                            // build-yard.md §2 Tier-4 marker
 //                   buildQueue: [ { commissionId, assetKind, remainingTicks } ], // §3 commission queue
 //                   recipeId, productionRate, syndicateCommitment,
@@ -1877,6 +1878,12 @@ function buildGodsEyeSnapshot(state) {
         // what has been done with it.
         deuteriumLicence: v.deuteriumLicence ? { ...v.deuteriumLicence } : null,
         deuteriumRefinery: !!v.deuteriumRefinery,
+        // autoReplace (droid client slice 2, docs/droids.md §13.2): `true` while the venture's droid
+        // auto-replace is on, so the Venture Management popup's toggle shows the live flag. OMITTED when off
+        // (unlike the booleans around it), mirroring the stored venture, so a galaxy that never switches it on
+        // publishes exactly the snapshot it did before the slice. A rival never sees it: a rival venture row is
+        // cut to RIVAL_VENTURE_FIELDS (sim/fog.js).
+        ...(v.autoReplace === true ? { autoReplace: true } : {}),
         // The DOCKYARD marker + its commission queue (docs/build-yard.md §2/§3, roadmap 2.1b) —
         // surfaced so the later client slice can render the queue. `dockyard` is true on a Tier-4
         // build yard, false otherwise (echoed off stored state like `deuteriumRefinery`).

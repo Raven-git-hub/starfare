@@ -33,6 +33,7 @@ const {
 const { assetBill, kitKindForBill, BUILD_TICKS } = require('./asset-recipes.js');
 const {
   DROID, DROID_SOURCE_GUILD, DROID_WEEK_TICKS, mintDroid, decayDroidsIn, fundDroidUpkeep,
+  refillAutoReplaceVacancies,
 } = require('./droids.js');
 const { getSystem } = require('./seed.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
@@ -229,7 +230,13 @@ function stepProduction(state, _actions, ctx) {
 //      maintained); idle droids are untouched (decayDroidsIn, sim/droids.js).
 //   2. DESTROY — a droid that reached 0 is removed, and the loss is RECORDED: one `droids_spent` notice for the
 //      system, listing the spent droids and the ventures they staffed (docs/event-log.md §17). Its venture
-//      simply has one droid fewer from the next tick; nothing replaces it automatically.
+//      simply has one droid fewer from the next tick — unless the venture has AUTO-REPLACE on (step 2b).
+//   2b. REFILL (droid client slice 2, docs/droids.md §13.2) — every slot a death just vacated on an
+//      `autoReplace` venture in this system is refilled, the same tick, from the system's idle spares: the
+//      source-honouring two-pass fill (refillAutoReplaceVacancies, sim/droids.js), each pick through the one
+//      assign gate and the one assign mutation. Death-only by construction: it reads only `spent`, so a
+//      player's unassign or a closure's release never reaches it. Silent — no notice (deferred). It runs
+//      BEFORE upkeep, so on a week boundary a refilled droid is a deployed droid like any other and is paid for.
 //   3. UPKEEP — on a WEEK boundary only, the system's droid_components pay for next week's maintenance
 //      (fundDroidUpkeep). It runs AFTER the wear, so the boundary tick itself still wears at last week's rate,
 //      and a droid that wore out on the boundary is not paid for.
@@ -247,6 +254,8 @@ function stepDroidUpkeep(state, guild, systemId) {
       systemName: (system && system.name) || systemId,
       spent: spent.map((d) => ({ droidId: d.id, source: d.source, ventureId: d.assignedToVentureId })).sort(byId),
     });
+    // Stamped with the producing tick, like the notice above and a closure's release of droids.
+    refillAutoReplaceVacancies(guild, systemId, spent, producingTick);
   }
   const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
   if (isWindowBoundary(producingTick, DROID_WEEK_TICKS, dayAnchorTick)) {

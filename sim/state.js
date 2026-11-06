@@ -484,6 +484,7 @@ function createVenture({
   licence = null,
   deuteriumLicence = null,
   deuteriumRefinery = false,
+  autoReplace = false,
   committedFromTick = null,
   reputation = 0,
   dockyard = false,
@@ -643,6 +644,11 @@ function createVenture({
     // OMITTED when false, exactly like `deuteriumLicence` above: an ordinary venture carries no
     // key, so any galaxy without an illegal refinery is byte-identical to pre-slice.
     ...(deuteriumRefinery ? { deuteriumRefinery: true } : {}),
+    // autoReplace (droid client slice 2, docs/droids.md §13.2): when true, a droid on this venture that wears
+    // out is replaced the same tick by an idle spare from the same system (sim/droids.js). Set and cleared
+    // only by the `setAutoReplace` action. OMITTED when off, exactly like `deuteriumRefinery` above, so a
+    // galaxy that never switches it on is byte-identical to before the slice.
+    ...(autoReplace ? { autoReplace: true } : {}),
     // dockyard + buildQueue + nextCommissionId: the Tier-4 CONSTRUCT venture (docs/build-yard.md
     // §2, roadmap 2.1b slice 1). A Dockyard is a FACTORY venture (type 'refining', so it occupies
     // a factory asset and `checkAssetOccupancy` wants one) in construct mode: it carries NO

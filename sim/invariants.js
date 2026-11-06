@@ -1564,6 +1564,13 @@ function checkDroids(state) {
         }
       }
     }
+    // autoReplace (droid client slice 2, docs/droids.md §13.2) is stored as exactly `true` or omitted — never
+    // `false`, which would be a key holding its own default and break the byte-identical off state.
+    for (const v of g.ventures || []) {
+      if (v.autoReplace !== undefined && v.autoReplace !== true) {
+        out.push({ rule: 'venture-auto-replace-valid (docs/droids.md §13.2)', where: `guild:${g.id}.venture:${v.id}.autoReplace`, detail: { autoReplace: v.autoReplace } });
+      }
+    }
     // The cap, per venture, every source counted. Counted over the droids' pointers (the stored side).
     const perVenture = new Map();
     for (const d of g.droids || []) {

@@ -2040,6 +2040,16 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-slot.empty .e{font-size:13px; opacity:.45; line-height:1}
 #vm-overlay .vm-slot.next{border-color:var(--amber-dim); background:var(--amber-ghost)}
 #vm-overlay .vm-slot.next .e{color:var(--amber); opacity:1; font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase}
+/* The Auto-replace toggle (client slice 2, docs/droids.md §13.2) — the mock's switch, in the popup's palette. */
+#vm-overlay .vm-wf-top{display:flex; align-items:center; justify-content:space-between; gap:12px}
+#vm-overlay .vm-wf-ar{display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink2); background:none; border:none; padding:0; cursor:pointer}
+#vm-overlay .vm-wf-ar:disabled{cursor:not-allowed; opacity:.6}
+#vm-overlay .vm-wf-ar .sw{width:34px; height:18px; border-radius:10px; background:var(--void); border:1px solid var(--line2); position:relative}
+#vm-overlay .vm-wf-ar .sw i{position:absolute; top:1px; left:1px; width:14px; height:14px; border-radius:50%; background:var(--ink3)}
+#vm-overlay .vm-wf-ar.on .sw{border-color:var(--green)}
+#vm-overlay .vm-wf-ar.on .sw i{left:17px; background:var(--green)}
+#vm-overlay .vm-wf-ar b{font-weight:500; color:var(--ink3)}
+#vm-overlay .vm-wf-ar.on b{color:var(--green)}
 #vm-overlay .vm-wf-note{font-family:var(--mono); font-size:10px; color:var(--ink3); margin-top:10px; min-height:12px; line-height:1.5}
 @media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} #vm-overlay .vm-slots{grid-template-columns:repeat(2,1fr)} #vm-overlay .vm-wf-meta{flex-wrap:wrap} }
 
@@ -3654,10 +3664,13 @@ select.field{appearance:none; cursor:pointer;}
       </div>
     </div>
     <!-- WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1). Filled by renderWorkforce on
-         every render: the available thermometer + the Guild / Syndicate Deploy buttons (slice 1b), then the CAP
-         slots. Empty markup here on purpose. -->
+         every render: the Auto-replace toggle beside the heading (slice 2, §13.2), the available thermometer +
+         the Guild / Syndicate Deploy buttons (slice 1b), then the CAP slots. Empty markup here on purpose. -->
     <div class="vm-wf" id="vmWorkforce">
-      <div class="vm-wf-h">Workforce · <b>Droids</b></div>
+      <div class="vm-wf-top">
+        <div class="vm-wf-h">Workforce · <b>Droids</b></div>
+        <div id="vmWfAuto"></div>
+      </div>
       <div id="vmWfBody"></div>
       <div class="vm-wf-note" id="vmWfNote"></div>
     </div>
@@ -13703,6 +13716,13 @@ function paintInventoryHero(d){
     return 'c-red';
   }
 
+  // autoReplaceOn(v) -> is the venture's droid auto-replace switched on? Read straight off the snapshot's venture
+  // row, which carries `autoReplace: true` while it is on and omits the key when off (client slice 2, §13.2).
+  // The engine does the replacing; the page only shows the flag and sends setAutoReplace to flip it.
+  function autoReplaceOn(v){
+    return Boolean(v && v.autoReplace === true);
+  }
+
   // The short name a slot shows: the engine's id is `asset_<guild>_droid_NN`, and in the player's own popup
   // the guild part says nothing, so the slot reads `droid_NN` with the full id on hover.
   function droidLabel(id){ var m = String(id).match(/droid_\d+$/); return m ? m[0] : String(id); }
@@ -13715,12 +13735,21 @@ function paintInventoryHero(d){
 
   function renderWorkforce(s, v){
     var body = $('vmWfBody');
+    var auto = $('vmWfAuto');
     // A droid's only job is the production boost, so the engine refuses one on a venture that makes no good
-    // (a dockyard, a deuterium refinery, a bare shell). Say so calmly and draw no slots.
+    // (a dockyard, a deuterium refinery, a bare shell). Say so calmly and draw no slots — and no toggle, since
+    // no droid can ever wear out here.
     if(producedGood(v) == null){
+      auto.innerHTML = '';
       body.innerHTML = '<div class="vm-wf-calm">This venture produces no good — nothing for a droid to boost.</div>';
       return;
     }
+    // THE AUTO-REPLACE TOGGLE (client slice 2, §13.2). It shows the published flag and, clicked, asks for the
+    // opposite (data-on). When on, a droid here that wears out is replaced by an idle spare of the same system.
+    var on = autoReplaceOn(v);
+    auto.innerHTML = '<button class="vm-wf-ar'+(on ? ' on' : '')+'" type="button" data-wf="auto" data-on="'+(on ? 'false' : 'true')+'"'
+      + ' title="When on, a droid here that wears out is replaced the same tick by an idle droid of this system — Syndicate by Syndicate only, guild by guild (or Syndicate if no guild droid is idle)"'
+      + (WF.busy ? ' disabled' : '') + '>Auto-replace <span class="sw"><i></i></span> <b>'+(on ? 'on' : 'off')+'</b></button>';
     var me = myGuildRow(s) || {};
     var byId = {};
     (me.droids || []).forEach(function(d){ byId[d.id] = d; });
@@ -13779,7 +13808,10 @@ function paintInventoryHero(d){
     var player = window.__player ? window.__player() : null;
     if(!player || !player.guildId){ note.textContent = 'No guild — cannot assign droids.'; return; }
     action.guildId = player.guildId;
-    WF.busy = true; note.textContent = action.type === 'assignDroid' ? 'Deploying…' : 'Returning to idle…';
+    WF.busy = true;
+    note.textContent = action.type === 'assignDroid' ? 'Deploying…'
+      : action.type === 'setAutoReplace' ? 'Switching auto-replace…'
+      : 'Returning to idle…';
     renderVM();
     var out;
     try { out = await window.__sendAction(action); }
@@ -13793,6 +13825,11 @@ function paintInventoryHero(d){
   function onWorkforceClick(e){
     var btn = e.target.closest ? e.target.closest('[data-wf]') : null;
     if(!btn || btn.disabled || WF.busy || !VM.ventureId) return;
+    // The toggle names no droid: it asks the engine for the state its data-on carries.
+    if(btn.getAttribute('data-wf') === 'auto'){
+      sendDroidAction({ type:'setAutoReplace', ventureId:VM.ventureId, on:btn.getAttribute('data-on') === 'true' });
+      return;
+    }
     var droidId = btn.getAttribute('data-droid'); if(!droidId) return;
     if(btn.getAttribute('data-wf') === 'deploy'){
       sendDroidAction({ type:'assignDroid', droidId:droidId, ventureId:VM.ventureId });

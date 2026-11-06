@@ -20,9 +20,10 @@
 // sim/state.js, beside the other entity constructors.
 
 const { createDroid } = require('./state.js');
-const { assetId } = require('./assets.js');
+const { assetId, assetNumberOf } = require('./assets.js');
 const { getStock, addStock } = require('./stock.js');
 const { TIER3_WINDOW_N } = require('./windows.js');
+const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
 
 // The bill kind a dockyard queue entry carries for a droid build. Spelled ONCE, here.
 const DROID = 'droid';
@@ -101,6 +102,56 @@ function isDroidIdle(droid) {
 // what the cap gate and the cap invariant both count. Counts every source (the cap is source-blind).
 function assignedDroidCount(guild, ventureId) {
   return (guild.droids || []).filter((d) => d.assignedToVentureId === ventureId).length;
+}
+
+// ventureIsLicensed(venture) -> does the venture hold EITHER licence a Syndicate droid accepts: the windowed
+// `licence` (Tier-1/2/3), or the windowless `deuteriumLicence` of a licensed deuterium mine (sim/baseline.js
+// isLicensedDeuteriumMine — the existing predicate, reused so the two can never disagree).
+function ventureIsLicensed(venture) {
+  return Boolean(venture.licence) || isLicensedDeuteriumMine(venture);
+}
+
+// assignDroidRefusal(guild, droid, venture) -> null when `droid` may be assigned to `venture` right now, else
+// the reason it may not. THE ONE ASSIGN GATE (docs/droids.md §1/§4): the `assignDroid` action's validate calls
+// it after its ownership checks, and auto-replace's refill (below) calls it for every droid it places — so the
+// refill can never place a droid the player's own Deploy would be refused (docs/droids.md §13.2). The checks
+// run in this order so the player learns WHICH way a request was wrong:
+//   1. a PRODUCING venture — a droid's only job is the boost, and the boost multiplies an output good
+//      (`producedGoodFor`, the engine's one definition of "what does this venture make");
+//   2. the droid is IDLE — a droid staffs one venture at a time;
+//   3. SAME SYSTEM — assignment is instant and moves nothing, so the droid must already stand there;
+//   4. THE LICENCE GATE — a SYNDICATE droid staffs only a licensed venture (a guild droid any). Assign-time
+//      only: a licence that lapses later leaves an assigned Syndicate droid where it is;
+//   5. THE CAP — at most DROID_CAP assigned droids per venture, every source counted.
+// A pure read: it mutates nothing.
+function assignDroidRefusal(guild, droid, venture) {
+  if (producedGoodFor(venture) == null) {
+    return `venture ${venture.id} produces no good, so a droid there could boost nothing — a droid may be assigned only to a producing venture (a mine or a factory)`;
+  }
+  if (!isDroidIdle(droid)) {
+    return `droid ${droid.id} is already assigned to venture ${JSON.stringify(droid.assignedToVentureId)} — unassign it first`;
+  }
+  if (droid.systemId !== venture.systemId) {
+    return `droid ${droid.id} is in system ${JSON.stringify(droid.systemId)}, but venture ${venture.id} is in ${JSON.stringify(venture.systemId)} — a droid is assigned only within its own system`;
+  }
+  if (droid.source === DROID_SOURCE_SYNDICATE && !ventureIsLicensed(venture)) {
+    return `droid ${droid.id} is a Syndicate droid and venture ${venture.id} is unlicensed — a Syndicate droid may be assigned only to a licensed venture (docs/droids.md §4)`;
+  }
+  const held = assignedDroidCount(guild, venture.id);
+  if (held >= DROID_CAP) {
+    return `venture ${venture.id} already holds ${held} droids, the cap of ${DROID_CAP} — unassign one first`;
+  }
+  return null;
+}
+
+// assignDroidTo(droid, ventureId, tick) -> MUTATES an idle droid onto a venture. THE ONE assign mutation: the
+// `assignDroid` apply and auto-replace's refill both call it, AFTER assignDroidRefusal said yes. It records
+// only WHICH venture and WHEN (§15.2) — it moves no credit, good or fuel, and it NEVER touches `condition`:
+// a worn spare deploys still worn, because nothing in the game repairs a droid in place (docs/droids.md §5).
+function assignDroidTo(droid, ventureId, tick) {
+  droid.assignedToVentureId = ventureId;
+  droid.deployedAtTick = tick;
+  droid.updatedAtTick = tick;
 }
 
 // unassign(droid, tick) -> MUTATES the droid back to idle, in the system it already sits in (a droid never
@@ -308,6 +359,104 @@ function fundDroidUpkeep(guild, systemId, tick) {
   return { drawn, covered, uncovered: deployed.length - covered };
 }
 
+// ── AUTO-REPLACE (droid client slice 2; docs/droids.md §13.2) ───────────────────────────────────────────────
+//
+// A venture with `autoReplace: true` refills, the SAME tick, a slot a droid vacated by WEARING OUT (decay's
+// destroy-at-zero) — never a slot the player emptied or a closure released. The refill takes a spare the guild
+// already has: an IDLE droid standing in the same system. It is free (nothing is minted, bought or spent) and
+// it goes through the one assign gate and the one assign mutation above, so it can never do anything the
+// player's own Deploy could not.
+
+// isAutoReplaceOn(venture) -> is auto-replace switched on for this venture? Stored as `autoReplace: true`,
+// omitted when off — so a galaxy that never switches it on carries no new key anywhere.
+function isAutoReplaceOn(venture) {
+  return venture.autoReplace === true;
+}
+
+// byDroidNumber — orders droids by their id's NUMBER (droid 2 before droid 10), which is the order they were
+// minted in. Ids are `asset_<guild>_droid_NN` with NN padded to two digits only, so comparing the strings would
+// put droid 100 before droid 99; the number is what "lowest id" means.
+function byDroidNumber(a, b) {
+  return assetNumberOf(a.id) - assetNumberOf(b.id);
+}
+
+// autoReplaceVacancies(guild, systemId, spent) -> the slots auto-replace must try to fill, as
+// `[{ venture, source }]`: one per droid in `spent` (the droids decay just destroyed in this system) that
+// staffed an auto-replace venture, carrying the SOURCE of the droid that died there. In venture order — the
+// guild's `ventures` array, which is establishment order — so the fill below is deterministic (invariant 9).
+// A pure read.
+function autoReplaceVacancies(guild, systemId, spent) {
+  const vacancies = [];
+  for (const venture of guild.ventures || []) {
+    if (venture.systemId !== systemId || !isAutoReplaceOn(venture)) continue;
+    for (const d of spent) {
+      if (d.assignedToVentureId === venture.id) vacancies.push({ venture, source: d.source });
+    }
+  }
+  return vacancies;
+}
+
+// lowestAssignable(guild, systemId, source, venture) -> the lowest-numbered IDLE droid of `source` in the system
+// that the assign gate allows onto `venture`, or null. No preference for fresh over worn — strictly lowest id
+// within the source (docs/droids.md §13.2).
+function lowestAssignable(guild, systemId, source, venture) {
+  const candidates = (guild.droids || [])
+    .filter((d) => d.source === source && d.systemId === systemId && isDroidIdle(d))
+    .sort(byDroidNumber);
+  return candidates.find((d) => assignDroidRefusal(guild, d, venture) === null) || null;
+}
+
+// refillAutoReplaceVacancies(guild, systemId, spent, tick) -> the refills made, as `[{ droidId, ventureId }]`,
+// having MUTATED `guild`. Run by sim/tick.js right after decay destroyed `spent` in this system (the same tick).
+//
+// THE SOURCE RULE is asymmetric (docs/droids.md §13.2):
+//   - a SYNDICATE vacancy takes only a Syndicate spare; if there is none it stays empty — never a guild droid
+//     (only the player spends a guild droid onto a new slot);
+//   - a GUILD vacancy takes a guild spare, else FALLS BACK to a Syndicate spare, else stays empty.
+// THE FILL is two passes over the vacancies, both in venture order:
+//   pass 1 — every vacancy from its OWN source;
+//   pass 2 — every guild vacancy still empty takes its Syndicate fallback.
+// So when one thin buffer must serve several deaths the same tick, a guild fallback can never take a Syndicate
+// spare that a genuine Syndicate vacancy needed. Each pick re-runs the assign gate against the guild as it is
+// at that moment, so the licence rule and the cap hold refill by refill (a Syndicate vacancy on a venture whose
+// licence has lapsed finds no allowed spare and stays empty — the §13.2 erosion).
+//
+// A guild with no auto-replace venture here makes no vacancies and changes nothing.
+function refillAutoReplaceVacancies(guild, systemId, spent, tick) {
+  const vacancies = autoReplaceVacancies(guild, systemId, spent);
+  if (vacancies.length === 0) return [];
+  const refills = [];
+  const fill = (vacancy, source) => {
+    const droid = lowestAssignable(guild, systemId, source, vacancy.venture);
+    if (!droid) return false;
+    assignDroidTo(droid, vacancy.venture.id, tick);
+    refills.push({ droidId: droid.id, ventureId: vacancy.venture.id });
+    return true;
+  };
+  // Pass 1 — each vacancy from its own source. Remember the ones left empty.
+  const stillOpen = [];
+  for (const vacancy of vacancies) {
+    if (!fill(vacancy, vacancy.source)) stillOpen.push(vacancy);
+  }
+  // Pass 2 — only now may an empty GUILD vacancy fall back to a Syndicate spare. A Syndicate vacancy left
+  // empty in pass 1 stays empty: it never takes a guild droid.
+  for (const vacancy of stillOpen) {
+    if (vacancy.source === DROID_SOURCE_GUILD) fill(vacancy, DROID_SOURCE_SYNDICATE);
+  }
+  // Tripwires — a refill only ever REPLACES a death, so it can never put more droids on a venture than the
+  // deaths took away, and never past the cap. The gate already guarantees both; this halts loudly if not.
+  if (refills.length > vacancies.length) {
+    throw new Error(`refillAutoReplaceVacancies: guild ${guild.id} system ${systemId} at tick ${tick}: ${refills.length} refills for ${vacancies.length} vacancies`);
+  }
+  for (const { ventureId } of refills) {
+    const n = assignedDroidCount(guild, ventureId);
+    if (n > DROID_CAP) {
+      throw new Error(`refillAutoReplaceVacancies: guild ${guild.id} venture ${ventureId} at tick ${tick} holds ${n} droids after a refill, over the cap of ${DROID_CAP}`);
+    }
+  }
+  return refills;
+}
+
 // droidId(guildId, n) -> `asset_<guildId>_droid_NN`. The same shape as every other asset id
 // (sim/assets.js assetId), so the id names its owner and its number the same way.
 function droidId(guildId, n) {
@@ -357,8 +506,14 @@ module.exports = {
   workingDroidCounts,
   isDroidIdle,
   assignedDroidCount,
+  ventureIsLicensed,
+  assignDroidRefusal,
+  assignDroidTo,
   unassign,
   releaseDroidsFrom,
+  isAutoReplaceOn,
+  autoReplaceVacancies,
+  refillAutoReplaceVacancies,
   droidId,
   nextDroidSerial,
   mintDroid,
