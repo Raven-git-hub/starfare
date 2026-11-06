@@ -2009,7 +2009,8 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-reneg:hover{background:var(--amber-dim); color:var(--void)}
 #vm-overlay .vm-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
 /* WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1, mock docs/mockups/droid-deployment.html).
-   A full-width band under the two columns, in the popup's own palette: the available thermometer + Deploy, then
+   A full-width band under the two columns, in the popup's own palette: the available thermometer + the two
+   source Deploy buttons (Guild / Syndicate, client slice 1b), then
    the CAP slots as a 4×5 grid. The overlay already scrolls (overflow-y:auto), so a tall popup stays reachable. */
 #vm-overlay .vm-wf{border-top:1px solid var(--line2); padding:18px 22px 22px}
 #vm-overlay .vm-wf-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
@@ -2023,7 +2024,9 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-therm{flex:1; height:8px; min-width:60px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
 #vm-overlay .vm-therm i{display:block; height:100%; border-radius:4px; background:var(--green)}
 #vm-overlay .vm-therm i.c-yellow{background:var(--amber)} #vm-overlay .vm-therm i.c-red{background:var(--red)}
-#vm-overlay .vm-wf-deploy{margin-left:auto; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:8px; padding:8px 14px; cursor:pointer}
+#vm-overlay .vm-wf-deploys{margin-left:auto; display:flex; align-items:center; gap:8px}
+#vm-overlay .vm-wf-hint{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
+#vm-overlay .vm-wf-deploy{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:8px; padding:8px 14px; cursor:pointer}
 #vm-overlay .vm-wf-deploy:hover{background:var(--amber-dim); color:var(--void)}
 #vm-overlay .vm-wf-deploy:disabled{color:var(--ink3); background:transparent; border-color:var(--line); cursor:not-allowed}
 #vm-overlay .vm-slots{display:grid; grid-template-columns:repeat(4,1fr); gap:8px 10px}
@@ -3651,7 +3654,8 @@ select.field{appearance:none; cursor:pointer;}
       </div>
     </div>
     <!-- WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1). Filled by renderWorkforce on
-         every render: the available thermometer + Deploy, then the CAP slots. Empty markup here on purpose. -->
+         every render: the available thermometer + the Guild / Syndicate Deploy buttons (slice 1b), then the CAP
+         slots. Empty markup here on purpose. -->
     <div class="vm-wf" id="vmWorkforce">
       <div class="vm-wf-h">Workforce · <b>Droids</b></div>
       <div id="vmWfBody"></div>
@@ -13657,17 +13661,38 @@ function paintInventoryHero(d){
   // --- WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1) ------------------
   // The pure pieces below are kept free of the DOM so the served-page test can run them as written.
 
+  // ventureLicensed(v) -> true when a Syndicate droid may staff venture `v`: it holds a licence or a deuterium
+  // licence (§3/§4). One test, shared by the filter below and the Syndicate button's "needs licence" hint, so the
+  // two can never disagree about what counts as licensed.
+  function ventureLicensed(v){
+    return Boolean(v && v.licence) || Boolean(v && v.deuteriumLicence);
+  }
+
   // droidsAvailableFor(me, v) -> the player's droids the engine would let it assign to venture `v`, in the
-  // snapshot's own order (sorted by id), so [0] is the lowest-id one Deploy sends. It mirrors the assignDroid
-  // gate in sim/actions.js exactly — idle · same system · a Syndicate droid only on a licensed venture — so
-  // the client never offers a droid the engine would refuse. The cap and the producing-venture check are
-  // the venture's, not the droid's, so the caller applies those. `me` may carry no `droids` (omit-when-empty).
+  // snapshot's own order (sorted by id). It mirrors the assignDroid gate in sim/actions.js exactly — idle ·
+  // same system · a Syndicate droid only on a licensed venture — so the client never offers a droid the
+  // engine would refuse. The cap and the producing-venture check are the venture's, not the droid's, so the
+  // caller applies those. `me` may carry no `droids` (omit-when-empty).
   function droidsAvailableFor(me, v){
     if(!me || !v) return [];
-    var licensed = Boolean(v.licence) || Boolean(v.deuteriumLicence);
+    var licensed = ventureLicensed(v);
     return (me.droids || []).filter(function(d){
       return !d.assignedToVentureId && d.systemId === v.systemId && (d.source !== 'syndicate' || licensed);
     });
+  }
+
+  // splitBySource(available) -> { guild:[...], syndicate:[...] } — droidsAvailableFor's result partitioned by
+  // `source` (client slice 1b). Not a second gate: it only sorts what the gate already passed, so on an
+  // unlicensed venture `syndicate` is empty because the gate dropped those droids. Each list keeps the
+  // snapshot's id order, so [0] is the lowest-id droid of that source — the one its Deploy button sends.
+  // Why two buttons: a guild droid can staff any producing venture, a Syndicate droid only a licensed one, so
+  // the player chooses which kind to spend here instead of the client picking across both.
+  function splitBySource(available){
+    var out = { guild:[], syndicate:[] };
+    (available || []).forEach(function(d){
+      if(d.source === 'syndicate') out.syndicate.push(d); else out.guild.push(d);
+    });
+    return out;
   }
 
   // conditionBand(condition) -> the thermometer's colour class. PRESENTATION thresholds (§13.1, like the RP
@@ -13700,19 +13725,31 @@ function paintInventoryHero(d){
     var byId = {};
     (me.droids || []).forEach(function(d){ byId[d.id] = d; });
     var assigned = (me.droidComplement && me.droidComplement[v.id]) || [];   // already sorted by the engine
-    var available = droidsAvailableFor(me, v);
+    var bySource = splitBySource(droidsAvailableFor(me, v));
+    var total = bySource.guild.length + bySource.syndicate.length;
     var full = assigned.length >= DROID_CAP;
-    var canDeploy = available.length > 0 && !full && !WF.busy;
 
-    var avPct = Math.min(1, available.length / DROID_CAP) * 100;
+    // One Deploy button per source. Enabled only with a droid of that source to send, room on the venture,
+    // and nothing in flight; it carries the lowest-id droid of its source, which the click handler assigns.
+    function deployButton(source, label, list){
+      var can = list.length > 0 && !full && !WF.busy;
+      return '<button class="vm-wf-deploy" type="button" data-wf="deploy" data-source="'+source+'"'
+        +   (can ? ' data-droid="'+esc(list[0].id)+'"' : ' disabled')
+        +   (full ? ' title="This venture holds the most droids it can"' : '')
+        + '>＋ '+label+' · '+list.length+'</button>';
+    }
+
+    var avPct = Math.min(1, total / DROID_CAP) * 100;
     var html = '<div class="vm-wf-meta"><div class="vm-wf-av">'
       + '<span class="lab">Available to deploy</span>'
       + '<div class="vm-therm"><i style="width:'+avPct.toFixed(1)+'%"></i></div>'
-      + '<span class="num">'+available.length+'</span><span class="sub">idle · in system</span></div>'
-      + '<button class="vm-wf-deploy" type="button" data-wf="deploy"'
-      +   (canDeploy ? ' data-droid="'+esc(available[0].id)+'"' : ' disabled')
-      +   (full ? ' title="This venture holds the most droids it can"' : '')
-      + '>＋ Deploy droid</button></div>';
+      + '<span class="num">'+total+'</span><span class="sub">idle · in system</span></div>'
+      + '<div class="vm-wf-deploys">'
+      + deployButton('guild', 'Guild', bySource.guild)
+      + deployButton('syndicate', 'Syndicate', bySource.syndicate)
+      // Presentation only: say why the Syndicate button is dead here, so it does not read as "none idle".
+      + (ventureLicensed(v) ? '' : '<span class="vm-wf-hint">Syndicate needs licence</span>')
+      + '</div></div>';
 
     // All CAP slots in reading order: the complement first, then empties, the first empty marked "next".
     html += '<div class="vm-slots">';
