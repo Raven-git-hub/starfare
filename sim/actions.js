@@ -23,7 +23,7 @@ const {
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
 const {
-  DROID, DROID_SOURCE_SYNDICATE, SYNDICATE_DROID_TARIFF, mintDroid, isDroidIdle, unassign,
+  DROID, DROID_SOURCE_SYNDICATE, DROID_SOURCES, SYNDICATE_DROID_TARIFF, mintDroid, isDroidIdle, unassign,
   assignDroidRefusal, assignDroidTo,
 } = require('./droids.js');
 const {
@@ -1367,6 +1367,20 @@ function createGrantKitAction({ guildId, systemId, kind }) {
   if (systemId === undefined) throw new Error('createGrantKitAction: systemId is required');
   if (kind === undefined) throw new Error('createGrantKitAction: kind is required');
   return { type: 'grantKit', guildId, systemId, kind };
+}
+
+// grantDroid: mint `count` IDLE droids of one source into a held system — the operator TEST lever for
+// droids (roadmap 2.6, droid test-enablement), so a tester can staff a venture without building or buying.
+// It names no guild: the droids go to the guild that HOLDS the system (`systemHolder`), because a droid
+// serves only a venture in its own system and a guild's ventures stand only where it holds. `source` is
+// 'guild' or 'syndicate' (DROID_SOURCES); `count` is a whole number >= 1. The constructor only enforces
+// the required fields; validateAction judges them. Operator tooling, reached through POST
+// /admin/guild/grant-droid — not a player action.
+function createGrantDroidAction({ systemId, source, count }) {
+  if (systemId === undefined) throw new Error('createGrantDroidAction: systemId is required');
+  if (source === undefined) throw new Error('createGrantDroidAction: source is required');
+  if (count === undefined) throw new Error('createGrantDroidAction: count is required');
+  return { type: 'grantDroid', systemId, source, count };
 }
 
 // deployAsset: place the structure a craft's kit packs, at the bare hex the craft is idle on, consuming
@@ -4580,6 +4594,26 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'grantDroid') {
+    // Roadmap 2.6, droid test-enablement. Each failure is its own reason, so a typo'd operator command
+    // is named rather than half-applied. Refused whole: either every droid mints or none does.
+    if (typeof action.systemId !== 'string' || !getSystem(action.systemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is not a system on the seed` };
+    }
+    // Unlike grantAsset / grantKit, which name their guild and place freely, this lever has no guild to
+    // name — it takes the system's holder. An unheld system has none, so it is refused.
+    if (systemHolder(state, action.systemId) === null) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is held by no guild — a granted droid goes to the guild that holds its system` };
+    }
+    if (!DROID_SOURCES.includes(action.source)) {
+      return { valid: false, reason: `${JSON.stringify(action.source)} is not a droid source (known: ${DROID_SOURCES.join(', ')})` };
+    }
+    if (!Number.isSafeInteger(action.count) || action.count < 1) {
+      return { valid: false, reason: `count must be a whole number of droids, at least 1 (got ${JSON.stringify(action.count)})` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'deployAsset') {
     // Roadmap 2.2 deploy pipeline slice 1 (docs/territory-model.md §5, the SPACE lane): a craft idle on a
     // bare hex places the structure its kit packs — an Outpost, or (2.5 (b1)) a Deep Scan Array; an array also
@@ -6577,6 +6611,19 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'grantDroid') {
+    // Roadmap 2.6, droid test-enablement: `count` idle droids through THE ONE droid mint, the same one a
+    // dockyard build and a Syndicate buy use — so a granted droid is indistinguishable from an earned one.
+    // mintDroid stamps each row's systemId, source and updatedAtTick (§15.2), at condition NEW, with a
+    // fresh id from the guild's droidSerial. A droid is not a good, so nothing is conserved and the supply
+    // cache needs no refresh.
+    const guild = findGuild(next, systemHolder(next, action.systemId));
+    for (let i = 0; i < action.count; i += 1) {
+      mintDroid(guild, action.source, action.systemId, next.tick);
+    }
+    return next;
+  }
+
   if (action.type === 'loadKit') {
     // design.md §4: instant — carrier and kit sit in the same system. THE ONE load apply.
     const guild = findGuild(next, action.guildId);
@@ -6880,6 +6927,7 @@ module.exports = {
   createDispatchVehicleAction,
   createTransferCargoAction,
   createGrantKitAction,
+  createGrantDroidAction,
   createLoadKitAction,
   createUnloadKitAction,
   createLoadAssetAction,

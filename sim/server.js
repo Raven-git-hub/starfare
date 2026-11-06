@@ -102,7 +102,7 @@ const {
   createDispatchVehicleAction, createTransferCargoAction, createDispatchRouteWithActionsAction, quoteDispatch,
   createSpawnOutpostAction, createRemoveOutpostAction,
   createSaveRouteAction, createDeleteRouteAction, createStopRouteAfterRunAction, createCancelRouteAction,
-  createGrantKitAction, createDeployAssetAction, createLoadKitAction, createUnloadKitAction,
+  createGrantKitAction, createGrantDroidAction, createDeployAssetAction, createLoadKitAction, createUnloadKitAction,
   createPlantPrefectureAction,
   createAbandonPrefectureAction,
   createLoadAssetAction, createUnloadAssetAction,
@@ -1261,6 +1261,38 @@ async function handleRequest(req, res) {
       sendJson(res, 200, applyOneAction(action));
     } catch (err) {
       sendJson(res, 500, { error: 'error applying grantKit (invariant violation or engine throw)', detail: String((err && err.message) || err) });
+    }
+    return;
+  }
+
+  // POST /admin/guild/grant-droid { systemId, source, count } — mint `count` idle droids of one source
+  // ('guild' / 'syndicate') into a system, for the guild that holds it (roadmap 2.6, droid test-enablement).
+  // The operator's droid test seam, beside grant-kit and routed the same way: the constructor checks the
+  // fields are present, validateAction (inside applyOneAction) judges them, so it journals and replays.
+  if (method === 'POST' && path === '/admin/guild/grant-droid') {
+    if (!hasGalaxy()) { sendJson(res, 409, NO_GALAXY); return; }
+    let body;
+    try {
+      body = JSON.parse((await readBody(req)) || 'null');
+    } catch {
+      sendJson(res, 400, { error: 'request body must be valid JSON, e.g. {"systemId":"sys_0001","source":"guild","count":1}' });
+      return;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'request body must be a single JSON object with systemId, source and count' });
+      return;
+    }
+    let action;
+    try {
+      action = createGrantDroidAction({ systemId: body.systemId, source: body.source, count: body.count });
+    } catch (err) {
+      sendJson(res, 400, { error: 'malformed grant-droid request', detail: String((err && err.message) || err) });
+      return;
+    }
+    try {
+      sendJson(res, 200, applyOneAction(action));
+    } catch (err) {
+      sendJson(res, 500, { error: 'error applying grantDroid (invariant violation or engine throw)', detail: String((err && err.message) || err) });
     }
     return;
   }

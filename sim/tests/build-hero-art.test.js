@@ -78,3 +78,14 @@ test('both pages: each installation kit\'s "Building" hero has its own portrait,
     assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'client', art)), `${art} is missing`);
   }
 });
+
+// The droid (roadmap 2.6, droid test-enablement): a dockyard droid build shows the droid's own portrait in the
+// "Commission a Build" popup's Tier-4 construction hero (#dkc-art) and the current-build hero, both off DKC_ART,
+// keyed by the bill kind a commission names ('droid', sim/droids.js DROID) — not the construction fallback.
+test('console.html: a droid build has its own portrait in DKC_ART, and the file exists', () => {
+  assert.match(consoleHtml, /droid: 'assets\/units\/droid\.jpg'/);
+  assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'client', 'assets', 'units', 'droid.jpg')), 'droid.jpg is missing');
+  // The popup's hero reads the map by the picked kind (so the entry above is what it shows).
+  assert.match(consoleHtml, /document\.getElementById\('dkc-art'\)\.style\.backgroundImage =\s*"url\('" \+ \(DKC_ART\[kind\] \|\| DKC_ART\.miner\) \+ "'\)";/);
+  assert.equal(require('../droids.js').DROID, 'droid', 'the bill kind the map is keyed by');
+});

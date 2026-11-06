@@ -65,6 +65,8 @@ top-level `outposts` / `claims`.
 - `save-route "NAME" --guild ID --route "w;w;…"` / `delete-route --guild ID --id ROUTE_ID`.
 - `stop-route-after-run --guild ID --id VEHICLE_ID` / `cancel-route --guild ID --id VEHICLE_ID`.
 - `spawn-vehicle` / `spawn-outpost` / `remove-outpost` / the `adjust-*` levers / `tick [n]`.
+- `grant-droid --system ID --source guild|syndicate [--count N]` — mint N (default 1) idle droids into a
+  held system, for its holder (the droid test lever, `operator-adjust.md` §3.8).
 - `grant-kit --guild ID --system ID --kind outpost` / `load-kit --guild ID --id VEHICLE_ID --asset ASSET_ID` /
   `unload-kit --guild ID --id VEHICLE_ID` / `deploy-asset --guild ID --id VEHICLE_ID` — the deploy pipeline
   (next section; not part of the automation demo). `dispatch-route` also takes a last stop
