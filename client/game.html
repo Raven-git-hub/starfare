@@ -2008,7 +2008,37 @@ select.field{appearance:none; cursor:pointer;}
 #vm-overlay .vm-reneg{width:100%; margin-top:10px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:8px; padding:11px; cursor:pointer}
 #vm-overlay .vm-reneg:hover{background:var(--amber-dim); color:var(--void)}
 #vm-overlay .vm-note{font-family:var(--mono); font-size:10px; color:var(--ink3); text-align:center; margin-top:9px; letter-spacing:.03em; line-height:1.5; min-height:12px}
-@media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} }
+/* WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1, mock docs/mockups/droid-deployment.html).
+   A full-width band under the two columns, in the popup's own palette: the available thermometer + Deploy, then
+   the CAP slots as a 4×5 grid. The overlay already scrolls (overflow-y:auto), so a tall popup stays reachable. */
+#vm-overlay .vm-wf{border-top:1px solid var(--line2); padding:18px 22px 22px}
+#vm-overlay .vm-wf-h{font-family:var(--mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber)}
+#vm-overlay .vm-wf-h b{color:var(--green); font-weight:500}
+#vm-overlay .vm-wf-calm{font-family:var(--mono); font-size:11px; color:var(--ink3); margin-top:10px}
+#vm-overlay .vm-wf-meta{display:flex; align-items:center; gap:14px; margin:12px 0 14px}
+#vm-overlay .vm-wf-av{display:flex; align-items:center; gap:12px; flex:1; max-width:440px}
+#vm-overlay .vm-wf-av .lab{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink2); white-space:nowrap}
+#vm-overlay .vm-wf-av .num{font-family:var(--serif); font-size:19px; font-weight:600; color:var(--green); line-height:1; font-variant-numeric:tabular-nums}
+#vm-overlay .vm-wf-av .sub{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); white-space:nowrap}
+#vm-overlay .vm-therm{flex:1; height:8px; min-width:60px; border-radius:5px; background:var(--void); border:1px solid var(--line); overflow:hidden}
+#vm-overlay .vm-therm i{display:block; height:100%; border-radius:4px; background:var(--green)}
+#vm-overlay .vm-therm i.c-yellow{background:var(--amber)} #vm-overlay .vm-therm i.c-red{background:var(--red)}
+#vm-overlay .vm-wf-deploy{margin-left:auto; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); background:var(--amber-ghost); border:1px solid var(--amber-dim); border-radius:8px; padding:8px 14px; cursor:pointer}
+#vm-overlay .vm-wf-deploy:hover{background:var(--amber-dim); color:var(--void)}
+#vm-overlay .vm-wf-deploy:disabled{color:var(--ink3); background:transparent; border-color:var(--line); cursor:not-allowed}
+#vm-overlay .vm-slots{display:grid; grid-template-columns:repeat(4,1fr); gap:8px 10px}
+#vm-overlay .vm-slot{display:flex; align-items:center; gap:8px; padding:7px 9px; min-height:34px; border:1px solid var(--line); border-radius:7px; background:var(--void)}
+#vm-overlay .vm-slot .did{font-family:var(--mono); font-size:11px; color:var(--ink); white-space:nowrap}
+#vm-overlay .vm-slot .vm-therm{height:7px; min-width:36px}
+#vm-overlay .vm-slot .pct{font-family:var(--mono); font-size:10px; color:var(--ink2); width:32px; text-align:right; font-variant-numeric:tabular-nums}
+#vm-overlay .vm-slot .un{background:none; border:none; color:var(--ink3); font-size:12px; padding:0 2px; cursor:pointer}
+#vm-overlay .vm-slot .un:hover{color:var(--red)} #vm-overlay .vm-slot .un:disabled{cursor:not-allowed}
+#vm-overlay .vm-slot.empty{border-style:dashed; background:transparent; justify-content:center; color:var(--ink3)}
+#vm-overlay .vm-slot.empty .e{font-size:13px; opacity:.45; line-height:1}
+#vm-overlay .vm-slot.next{border-color:var(--amber-dim); background:var(--amber-ghost)}
+#vm-overlay .vm-slot.next .e{color:var(--amber); opacity:1; font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase}
+#vm-overlay .vm-wf-note{font-family:var(--mono); font-size:10px; color:var(--ink3); margin-top:10px; min-height:12px; line-height:1.5}
+@media(max-width:820px){ #vm-overlay .est-body{grid-template-columns:1fr} #vm-overlay .est-main{border-right:none; border-bottom:1px solid var(--line)} #vm-overlay .vm-sub{grid-template-columns:1fr} #vm-overlay .vm-slots{grid-template-columns:repeat(2,1fr)} #vm-overlay .vm-wf-meta{flex-wrap:wrap} }
 
 /* ===== #dispatch-overlay — the DISPATCH popup (2.2 spawn client; roadmap 2.2 spawn). The MIRROR of
    #vm-overlay, wearing the same est card/hero/ledger language: head = eyebrow + the craft's name +
@@ -3619,6 +3649,13 @@ select.field{appearance:none; cursor:pointer;}
           </div>
         </div>
       </div>
+    </div>
+    <!-- WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1). Filled by renderWorkforce on
+         every render: the available thermometer + Deploy, then the CAP slots. Empty markup here on purpose. -->
+    <div class="vm-wf" id="vmWorkforce">
+      <div class="vm-wf-h">Workforce · <b>Droids</b></div>
+      <div id="vmWfBody"></div>
+      <div class="vm-wf-note" id="vmWfNote"></div>
     </div>
   </div>
 </div>
@@ -13532,7 +13569,16 @@ function paintInventoryHero(d){
   // forced-lease / dividend EFFECTS are designed, not built; these marks are structure, not mechanics.
   var RP_FLOOR = -500, RP_SOFT_CAP = 1500;
 
+  // Mirror of DROID_CAP (sim/droids.js; docs/phase-1-tuning.md §Droids) — the most droids one venture may hold.
+  // Not a published snapshot field, so it is mirrored here and pinned by the served-page tripwire in
+  // sim/tests/server.test.js, which reads the engine's own constant: if the engine's cap moves, that test fails
+  // before the grid can draw the wrong number of slots. Use this name — never a bare 20.
+  var DROID_CAP = 20;
+
   var VM = { open:false, ventureId:null };
+  // The droid section's one piece of local state: an assign / unassign is on its way, so the controls hold
+  // still until it resolves (a double-click would send the same droid twice).
+  var WF = { busy:false };
 
   // --- biome × type hero art (client-only, docs/venture-management.md Part 3) ------------------
   // EXPLICIT tables — the filenames are irregular; do NOT derive them. Keyed biome → file.
@@ -13605,6 +13651,117 @@ function paintInventoryHero(d){
     renderDonut(s, v);
     renderInvestors(v);
     renderHero(s, v);
+    renderWorkforce(s, v);
+  }
+
+  // --- WORKFORCE · DROIDS (roadmap 2.6, client slice 1; docs/droids.md §13.1) ------------------
+  // The pure pieces below are kept free of the DOM so the served-page test can run them as written.
+
+  // droidsAvailableFor(me, v) -> the player's droids the engine would let it assign to venture `v`, in the
+  // snapshot's own order (sorted by id), so [0] is the lowest-id one Deploy sends. It mirrors the assignDroid
+  // gate in sim/actions.js exactly — idle · same system · a Syndicate droid only on a licensed venture — so
+  // the client never offers a droid the engine would refuse. The cap and the producing-venture check are
+  // the venture's, not the droid's, so the caller applies those. `me` may carry no `droids` (omit-when-empty).
+  function droidsAvailableFor(me, v){
+    if(!me || !v) return [];
+    var licensed = Boolean(v.licence) || Boolean(v.deuteriumLicence);
+    return (me.droids || []).filter(function(d){
+      return !d.assignedToVentureId && d.systemId === v.systemId && (d.source !== 'syndicate' || licensed);
+    });
+  }
+
+  // conditionBand(condition) -> the thermometer's colour class. PRESENTATION thresholds (§13.1, like the RP
+  // z-band above): green above 60%, yellow from 30% to 60%, red below 30%. Not a game rule — nothing acts on it.
+  function conditionBand(condition){
+    if(condition > 0.6) return 'c-green';
+    if(condition >= 0.3) return 'c-yellow';
+    return 'c-red';
+  }
+
+  // The short name a slot shows: the engine's id is `asset_<guild>_droid_NN`, and in the player's own popup
+  // the guild part says nothing, so the slot reads `droid_NN` with the full id on hover.
+  function droidLabel(id){ var m = String(id).match(/droid_\d+$/); return m ? m[0] : String(id); }
+
+  function myGuildRow(s){
+    var player = window.__player ? window.__player() : null;
+    if(!s || !player || !player.guildId) return null;
+    return (s.guilds || []).filter(function(g){ return g.id === player.guildId; })[0] || null;
+  }
+
+  function renderWorkforce(s, v){
+    var body = $('vmWfBody');
+    // A droid's only job is the production boost, so the engine refuses one on a venture that makes no good
+    // (a dockyard, a deuterium refinery, a bare shell). Say so calmly and draw no slots.
+    if(producedGood(v) == null){
+      body.innerHTML = '<div class="vm-wf-calm">This venture produces no good — nothing for a droid to boost.</div>';
+      return;
+    }
+    var me = myGuildRow(s) || {};
+    var byId = {};
+    (me.droids || []).forEach(function(d){ byId[d.id] = d; });
+    var assigned = (me.droidComplement && me.droidComplement[v.id]) || [];   // already sorted by the engine
+    var available = droidsAvailableFor(me, v);
+    var full = assigned.length >= DROID_CAP;
+    var canDeploy = available.length > 0 && !full && !WF.busy;
+
+    var avPct = Math.min(1, available.length / DROID_CAP) * 100;
+    var html = '<div class="vm-wf-meta"><div class="vm-wf-av">'
+      + '<span class="lab">Available to deploy</span>'
+      + '<div class="vm-therm"><i style="width:'+avPct.toFixed(1)+'%"></i></div>'
+      + '<span class="num">'+available.length+'</span><span class="sub">idle · in system</span></div>'
+      + '<button class="vm-wf-deploy" type="button" data-wf="deploy"'
+      +   (canDeploy ? ' data-droid="'+esc(available[0].id)+'"' : ' disabled')
+      +   (full ? ' title="This venture holds the most droids it can"' : '')
+      + '>＋ Deploy droid</button></div>';
+
+    // All CAP slots in reading order: the complement first, then empties, the first empty marked "next".
+    html += '<div class="vm-slots">';
+    for(var i = 0; i < DROID_CAP; i++){
+      var id = assigned[i];
+      if(id){
+        var d = byId[id] || {};
+        var c = Math.max(0, Math.min(1, Number(d.condition) || 0));
+        html += '<div class="vm-slot" title="'+esc(id)+'"><span class="did">'+esc(droidLabel(id))+'</span>'
+          + '<div class="vm-therm"><i class="'+conditionBand(c)+'" style="width:'+(c*100).toFixed(1)+'%"></i></div>'
+          + '<span class="pct">'+Math.round(c*100)+'%</span>'
+          + '<button class="un" type="button" data-wf="unassign" data-droid="'+esc(id)+'" title="Return to idle"'+(WF.busy?' disabled':'')+'>✕</button></div>';
+      } else if(i === assigned.length){
+        html += '<div class="vm-slot empty next"><span class="e">＋ next</span></div>';
+      } else {
+        html += '<div class="vm-slot empty"><span class="e">·</span></div>';
+      }
+    }
+    html += '</div>';
+    body.innerHTML = html;
+  }
+
+  // Send one droid action. Like Close venture: no optimistic change to what is drawn — the snapshot is
+  // re-read and the next render shows the result. A refusal is shown quietly in the section's note.
+  async function sendDroidAction(action){
+    var note = $('vmWfNote');
+    var player = window.__player ? window.__player() : null;
+    if(!player || !player.guildId){ note.textContent = 'No guild — cannot assign droids.'; return; }
+    action.guildId = player.guildId;
+    WF.busy = true; note.textContent = action.type === 'assignDroid' ? 'Deploying…' : 'Returning to idle…';
+    renderVM();
+    var out;
+    try { out = await window.__sendAction(action); }
+    catch(err){ out = { accepted:false, reason:'the Syndicate could not be reached: ' + err.message }; }
+    WF.busy = false;
+    note.textContent = (out && out.accepted) ? '' : ('Refused: ' + ((out && out.reason) || 'the engine declined'));
+    if(window.__refreshNow){ try{ await window.__refreshNow(); }catch(e){} }
+    renderVM();
+  }
+
+  function onWorkforceClick(e){
+    var btn = e.target.closest ? e.target.closest('[data-wf]') : null;
+    if(!btn || btn.disabled || WF.busy || !VM.ventureId) return;
+    var droidId = btn.getAttribute('data-droid'); if(!droidId) return;
+    if(btn.getAttribute('data-wf') === 'deploy'){
+      sendDroidAction({ type:'assignDroid', droidId:droidId, ventureId:VM.ventureId });
+    } else {
+      sendDroidAction({ type:'unassignDroid', droidId:droidId });
+    }
   }
 
   function renderRep(v){
@@ -13799,6 +13956,7 @@ function paintInventoryHero(d){
     if(!id) return;
     VM.open = true; VM.ventureId = id;
     $('vmNote').textContent = '';
+    $('vmWfNote').textContent = '';
     renderVM();
     $('vm-overlay').classList.add('open');
   }
@@ -13811,6 +13969,8 @@ function paintInventoryHero(d){
   $('vmClose').addEventListener('click', closeVM);
   $('vm-overlay').addEventListener('click', function(e){ if(e.target === this) closeVM(); });
   $('vmCloseBtn').addEventListener('click', function(){ if(!$('vmCloseBtn').disabled) onCloseVenture(); });
+  // One delegated listener: renderWorkforce redraws the section's buttons on every poll.
+  $('vmWorkforce').addEventListener('click', onWorkforceClick);
   // The VM "Renegotiate ▸" control (shown only once the window has elapsed) is the SECOND
   // entry point to the shared renegotiation popup (#64 Slice 1b, §5). It opens the same popup
   // the Messages row opens, for the venture the VM popup is managing.

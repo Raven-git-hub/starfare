@@ -520,6 +520,28 @@ green/yellow/red** by a presentation threshold (green > 60% · yellow 30–60% �
 **pinned by a served-page tripwire** (as RP_FLOOR / RP_SOFT_CAP are), not published. The **auto-replace toggle** the
 mock draws is **§13.2 (slice 2)**, not this slice.)*
 
+*(**⤳ AS-BUILT 06-11-26 — client slice 1, deployment.** Client-only: no `sim/` engine or snapshot source changed. In
+`client/game.html`, the `#vm-overlay` card gains a full-width `#vmWorkforce` band under its two columns (CSS
+`.vm-wf` / `.vm-slots` / `.vm-slot` / `.vm-therm`, in the popup's own palette — condition green / yellow / red are
+the popup's `--green` / `--amber` / `--red`); the overlay already scrolls, so a tall popup stays reachable. In the
+venture-management-wire IIFE, `renderVM()` now calls **`renderWorkforce(s, v)`**, so the section fills on open and
+re-renders on every poll. It reads the player's own guild row (`window.__player().guildId`) — `droids` and
+`droidComplement`, both tolerated absent — and the venture. **Producing gate:** `producedGood(v) == null` shows the
+calm "produces no good — nothing for a droid to boost" line and no slots. **Available** is
+**`droidsAvailableFor(me, v)`**, a pure function mirroring the `assignDroid` gate (idle · same system · a Syndicate
+droid only where `licence` or `deuteriumLicence`); its thermometer is `available ÷ DROID_CAP`, clamped full.
+**Slots:** all `DROID_CAP` cells, the complement in reading order, the first empty marked *next*; each filled cell
+shows `droid_NN` (the full id on hover), a condition thermometer coloured by **`conditionBand(condition)`** and a %,
+and a ✕. **Deploy** sends `assignDroid` for `droidsAvailableFor(...)[0]` — the first in the snapshot's id order —
+and is disabled when none is available or the venture is full; **✕** sends `unassignDroid`. Neither changes what
+is drawn: the snapshot is re-read (`__refreshNow`) and the next render shows the result; a refusal shows in the
+section's note (`#vmWfNote`), and the controls hold while an action is in flight. **The cap:** `var DROID_CAP = 20`,
+one named constant, pinned by `sim/tests/server.test.js` against `sim/droids.js`'s own `DROID_CAP` (the test
+fails if either moves alone); the same test runs the page's own `droidsAvailableFor` against the engine's
+`validateAction` for every droid × venture pair of a fixture covering each branch of the gate. **Not built:** the
+auto-replace toggle (§13.2), the maintenance tab (§13.3), a guild-vs-Syndicate source chooser on Deploy, the §13.4
+carry-overs, a boost indicator.)*
+
 ### 13.2 Auto-replace — a new per-venture mechanic (engine + a popup toggle)
 
 A per-venture **`autoReplace`** flag (a venture field, default **off**, omitted when off so a galaxy with it off

@@ -3232,6 +3232,90 @@ test('GET / serves the Venture Management popup shell, wired to the published fi
   assert.match(html, /openNodeOverlay\('Settlement Slot '/, 'a rival Settlement slot keeps the read-only overlay');
 });
 
+// THE DROID DEPLOYMENT SECTION (roadmap 2.6, droid client slice 1; docs/droids.md §13.1). Three tripwires:
+//   1. the WORKFORCE · DROIDS section is in the served popup and renderVM fills it;
+//   2. the client's DROID_CAP mirror equals the engine's DROID_CAP — read from sim/droids.js, so moving the
+//      engine's cap fails this test (the RP_FLOOR / RP_SOFT_CAP pin's pattern, made to follow the engine);
+//   3. the page's own "available" filter agrees with the engine's assignDroid gate droid-for-droid, so the
+//      popup can never offer a droid the engine would refuse, nor hide one it would accept.
+test('GET / serves the droid deployment section — the cap pinned to the engine, the filter matching assignDroid', async () => {
+  const { DROID_CAP: ENGINE_DROID_CAP, mintDroid } = require('../droids.js');
+  const { validateAction, createAssignDroidAction } = require('../actions.js');
+  const { buildSnapshot } = require('../snapshot.js');
+  const { getStarterSystems } = require('../seed.js');
+  const { HOME, RIVAL, kitGalaxy, accept, g1Of } = require('./installation-kit-fixtures.js');
+  const html = await (await fetch(base + '/')).text();
+
+  // 1. THE SECTION — the markup, and renderVM calling the renderer on every render (open and each poll).
+  assert.match(html, /id="vmWorkforce"/, 'the WORKFORCE · DROIDS section');
+  assert.match(html, /Workforce · <b>Droids<\/b>/, 'its heading');
+  assert.match(html, /renderHero\(s, v\);\s*renderWorkforce\(s, v\);/, 'renderVM fills the section every render');
+  assert.match(html, /type:'assignDroid', droidId:droidId, ventureId:VM\.ventureId/, 'Deploy sends the existing assignDroid');
+  assert.match(html, /type:'unassignDroid', droidId:droidId/, 'the ✕ sends the existing unassignDroid');
+  assert.match(html, /if\(producedGood\(v\) == null\)\{/, 'a non-producing venture gets no slots (the engine refuses it)');
+  // Slice 2's toggle is NOT built in slice 1.
+  assert.doesNotMatch(html, /autoReplace|Auto-replace/, 'no auto-replace toggle this slice (§13.2 is slice 2)');
+
+  // 2. THE CAP MIRROR — pinned to the engine's own constant, and the only cap the section uses.
+  const cap = html.match(/\n  var DROID_CAP = (\d+);\n/);
+  assert.ok(cap, 'the client mirrors DROID_CAP as one named constant');
+  assert.equal(Number(cap[1]), ENGINE_DROID_CAP, `the client DROID_CAP (${cap[1]}) must equal sim/droids.js DROID_CAP (${ENGINE_DROID_CAP})`);
+  assert.match(html, /for\(var i = 0; i < DROID_CAP; i\+\+\)\{/, 'the grid draws DROID_CAP slots');
+
+  // 3. THE FILTER — run the page's own droidsAvailableFor against the engine's validateAction.
+  const src = html.match(/\n  function droidsAvailableFor\(me, v\)\{[\s\S]*?\n  \}\n/);
+  const band = html.match(/\n  function conditionBand\(condition\)\{[\s\S]*?\n  \}\n/);
+  assert.ok(src && band, 'droidsAvailableFor and conditionBand are found');
+  const page = {};
+  vm.runInNewContext(src[0] + band[0], page);
+
+  // A galaxy where every branch of the gate is live: in g1's HOME a licensed, an unlicensed and a licensed
+  // deuterium venture; in a second system g1 holds, one more. Droids of both sources in both systems, and
+  // one already assigned. The ventures name a recipe / resource (so they produce) but carry no rate (so the
+  // tick leaves them alone) — the droid-assignment fixtures' shape.
+  let s = kitGalaxy({ credits: 1_000_000 });
+  const g1 = g1Of(s);
+  const OTHER = getStarterSystems().map((x) => x.id).find((id) => id !== HOME.id && id !== RIVAL);
+  s.claims.push({ claimId: `claim_g1_${OTHER}`, ownerGuildId: 'g1', landmarkId: OTHER, landmarkKind: 'system', claimedAtTick: 0, contested: false });
+  const bare = (id, systemId, extra = {}) => ({ id, ownerGuildId: 'g1', type: 'refining', systemId, recipeId: 'titanium_alloy', ...extra });
+  const licence = { committedOutputPct: 0, windowDays: 7, signedTick: 0, basicFee: 0, discountedFee: 0, lockedPrice: 1 };
+  g1.ventures.push(bare('v_lic', HOME.id, { licence }));
+  g1.ventures.push(bare('v_unlic', HOME.id));
+  g1.ventures.push({ id: 'v_deut', ownerGuildId: 'g1', type: 'mining', systemId: HOME.id, resourceType: 'deuterium', deuteriumLicence: { signedTick: 0 } });
+  g1.ventures.push(bare('v_far', OTHER));
+  for (const [source, systemId] of [['guild', HOME.id], ['syndicate', HOME.id], ['guild', HOME.id], ['guild', OTHER], ['syndicate', OTHER]]) {
+    mintDroid(g1, source, systemId, s.tick);
+  }
+  s = accept(s, createAssignDroidAction({ guildId: 'g1', droidId: g1.droids[2].id, ventureId: 'v_lic' }));
+
+  const snap = buildSnapshot(s);
+  const me = snap.guilds.find((g) => g.id === 'g1');
+  let checked = 0;
+  for (const ventureId of ['v_lic', 'v_unlic', 'v_deut', 'v_far']) {
+    const v = snap.ventures.find((x) => x.id === ventureId);
+    assert.ok(v, `the snapshot publishes venture ${ventureId}`);
+    const offered = new Set(Array.from(page.droidsAvailableFor(me, v), (d) => d.id));
+    for (const d of me.droids) {
+      const engine = validateAction(s, createAssignDroidAction({ guildId: 'g1', droidId: d.id, ventureId }));
+      assert.equal(offered.has(d.id), engine.valid,
+        `${d.id} (${d.source}, ${d.systemId}${d.assignedToVentureId ? ', assigned' : ''}) on ${ventureId}: client offers ${offered.has(d.id)}, engine says ${engine.valid}${engine.reason ? ' — ' + engine.reason : ''}`);
+      checked += 1;
+    }
+  }
+  assert.equal(checked, 20, 'every droid × venture pair was compared');
+  // Spot-checks that the comparison above really exercises each branch.
+  const ids = (vid) => Array.from(page.droidsAvailableFor(me, snap.ventures.find((x) => x.id === vid)), (d) => d.id);
+  assert.deepEqual(ids('v_lic'), [g1.droids[0].id, g1.droids[1].id], 'licensed: both HOME idle droids, the assigned one not');
+  assert.deepEqual(ids('v_unlic'), [g1.droids[0].id], 'unlicensed: the Syndicate droid is held back');
+  assert.deepEqual(ids('v_far'), [g1.droids[3].id], 'the far system: only its guild droid (its venture is unlicensed)');
+  // Omit-when-empty: a guild with no droids renders all-empty and does not throw.
+  assert.equal(page.droidsAvailableFor({ id: 'g9' }, snap.ventures[0]).length, 0, 'no `droids` field → nothing available');
+
+  // The condition colour's presentation thresholds (§13.1): green > 60% · yellow 30–60% · red < 30%.
+  assert.deepEqual([1, 0.61, 0.6, 0.3, 0.29, 0].map((c) => page.conditionBand(c)),
+    ['c-green', 'c-green', 'c-yellow', 'c-yellow', 'c-red', 'c-red']);
+});
+
 // The Guild Hall MESSAGES panel — the email-style inbox (event-log.md §9): the renegotiation popup,
 // the two reneg entry points, and the redesigned Notices (subject-line rows + a per-type notice
 // popup, read on open). Pinned on the SERVED BYTES — a page that quietly reverted would still render
