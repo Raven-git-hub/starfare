@@ -5646,10 +5646,11 @@ boundary so the later hex-map swap doesn't touch it.
     assign gate and mutation (`assignDroidRefusal` / `assignDroidTo`, now shared with `assignDroid`): a Syndicate
     vacancy only from a Syndicate spare, a guild vacancy from a guild spare else a Syndicate one, in two passes (own
     source first, then the fallbacks) so a fallback never takes a spare a Syndicate vacancy needed; lowest id within
-    a source; the spare keeps its condition (§13.2's "condition NEW" corrected — it would have been a free repair).
+    a source (lexicographic, the §5 triage's `byDroidId`); the spare keeps its condition (§13.2's "condition NEW" corrected — it would have been a free repair).
     Death-only and silent. The popup's WORKFORCE band gains the mock's Auto-replace switch. A galaxy with it off
-    everywhere is byte-identical to ef14e01 (pinned). Sim 2,694 → **2,717** (23 new tests in
-    `droid-autoreplace.test.js`; the served-page test's slice-1 "no toggle" assertion now pins the toggle), tools
+    everywhere is byte-identical to ef14e01 (pinned). Sim 2,694 → **2,718** (24 new tests in
+    `droid-autoreplace.test.js`, one pinning that the refill and the §5 triage share the lexicographic id order past
+    serial 99; the served-page test's slice-1 "no toggle" assertion now pins the toggle), tools
     **98** (unchanged). **Next:** client slice 3, the maintenance tab (after its design pass). Checklist item below
     ("Droids: client slice-2 calls …").
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
@@ -5736,6 +5737,8 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   sorts them as strings, so past the 99th droid `droid_100` sorts before `droid_11`. Deploy takes the snapshot's
   order. Harmless now, but §13.2's engine auto-replace also picks "the lowest assignable idle droid id" — rule
   whether that means string or numeric order before slice 2 builds it, and the client should follow the same rule.
+  *(⤳ 06-11-26: RULED — lexicographic, the shipped convention; one `byDroidId` comparator for the triage and the
+  refill. CLOSED, client slice 2 — `docs/droids.md` §13.2.)*
   **(3) The available thermometer saturates.** Its fill is available ÷ CAP, clamped at full, so 20 idle droids and
   40 read the same bar (the count beside it is exact). Confirm, or name a different scale. **(4) The boost
   indicator** (slice-4 call (5)) is still not surfaced — slice 1 shows the complement and conditions but no
@@ -5748,11 +5751,10 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   `droids_spent` notice still reports the death. Rule whether a refill should also be told (its own notice, or a line
   on `droids_spent`), and its words. **(2) Worn-spare refills.** The refill takes strictly the lowest id within a
   source, with no preference for a fresh spare over a worn one, so a nearly-spent spare may be placed and wear out
-  soon after (and be refilled again). Confirm, or rule a preference. **(3) "Lowest id" — numeric, built
+  soon after (and be refilled again). Confirm, or rule a preference. ~~**(3) "Lowest id" — numeric, built
   provisionally (slice-1 call (2) above).** The engine refill orders by the id's number (droid 99 before droid
-  100), the plain meaning of "lowest id" and mint order; the client's Deploy still takes the snapshot's string
-  order, so the two diverge only past a guild's 99th droid. Confirm numeric (and move the snapshot / client to it),
-  or rule string order for both.
+  100); the client's Deploy takes the snapshot's string order, so the two diverge past a guild's 99th droid.~~
+  *(⤳ 06-11-26: RULED — lexicographic for both; the refill now shares the §5 triage's `byDroidId`. CLOSED.)*
 - **Droids: slice-5 calls (03-11-26, droid engine slice 5, `docs/droids.md` §5) — built the plainest way, flagged
   rather than ruled.** **(1) THE GUILD DROID'S LIFE — a conflict to rule first.** The slice prompt gave the guild
   lives as **1.5 wk / 3 wk** "locked" in `phase-1-tuning.md` §Droids; that section and `droids.md` §3 / §11 say

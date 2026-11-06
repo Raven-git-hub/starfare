@@ -579,6 +579,13 @@ venture-establishment order (lowest-id within a source)**: first every vacancy i
 then the remaining **guild** vacancies take their **Syndicate fallback** — so a fallback can never consume a
 Syndicate droid a genuine Syndicate vacancy needed. Deterministic throughout (invariant 9).
 
+**"Lowest id" — RULED 06-11-26.** Every droid-id tie-break and "lowest id" pick is the **lexicographic order of the
+id string** — the order the snapshot sorts droids in (which the client's Deploy reads) and the §5 maintenance
+triage's tie-break. One comparator, `byDroidId` (`sim/droids.js`), serves the triage and this refill alike, so they
+cannot drift apart. Deterministic (invariant 9): ids are unique, so it is a total order. Lexicographic and numeric
+order agree through serial 99 and part at 100 (`…droid_100` sorts before `…droid_99`); **lexicographic is the
+convention** — the numeric alternative was considered and declined 06-11-26.
+
 It is **free**: it reassigns a spare the guild already owns — **no credits, parts, or build delay** (this is why
 "stock" means idle droids, not components or credits). If no assignable idle droid is available the slot stays empty
 (the complement drops) until the player replenishes the buffer. A refilled droid is an ordinary assignment
@@ -608,14 +615,15 @@ can place nothing the player's Deploy would be refused and never touches `condit
 tick's zero-condition droids and the `droids_spent` notice records them, both unchanged; **B** — right after,
 `refillAutoReplaceVacancies(guild, systemId, spent, producingTick)` makes one vacancy per spent droid that staffed an
 `autoReplace` venture in the system (with that droid's source), in `guild.ventures` array order, and fills them in
-the two passes above, each pick the **lowest-numbered** idle droid of the source in the system that
+the two passes above, each pick the **lowest-id** (`byDroidId`, lexicographic) idle droid of the source in the system that
 `assignDroidRefusal` passes (re-run per pick, so the cap and licence hold refill by refill). It runs **before** the
 week-boundary upkeep, so on a boundary a refilled droid is paid for like any deployed droid; a refill is otherwise
 unmaintained (no `maintained` key) until the next boundary. Stamped `deployedAtTick` / `updatedAtTick` with the
 producing tick (as a closure's release is). **Death-only by construction:** it reads only `spent`, so an unassign or
 a closure release never reaches it. **Silent:** no notice (deferred — decision checklist). Tripwires halt if refills
-outnumber vacancies or a venture passes CAP. **"Lowest id" is the id's number** (droid 99 before droid 100), not
-string order — see the checklist: the client's Deploy still takes the snapshot's string order. **Snapshot:** the
+outnumber vacancies or a venture passes CAP. **"Lowest id" is lexicographic** (the ruling above): the refill and the §5 triage share
+`byDroidId`, and a test pins that both pick the same droid among serials 99 / 100 / 101 and that the snapshot lists
+them in that order. *(Built first as numeric order; amended in the same PR, 06-11-26.)* **Snapshot:** the
 venture row carries `autoReplace: true` while on, **omitted** when off (unlike its always-present boolean
 neighbours, so a galaxy that never switches it on publishes byte-identically); a rival's venture row is cut to
 `RIVAL_VENTURE_FIELDS`, so it never sees it. **Client:** `renderWorkforce` draws the mock's **Auto-replace** switch

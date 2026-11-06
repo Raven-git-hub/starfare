@@ -35,7 +35,7 @@ const { buildSnapshot } = require('../snapshot.js');
 const { guildPoints } = require('../points.js');
 const { expectedReputation } = require('../meanline.js');
 const {
-  DROID_CAP, DROID_WEAR_SCALE, wearPerTick, refillAutoReplaceVacancies,
+  DROID_CAP, DROID_WEAR_SCALE, wearPerTick, refillAutoReplaceVacancies, fundDroidUpkeep, byDroidId,
 } = require('../droids.js');
 const {
   validateAction, applyAction, intake, createSetAutoReplaceAction, createUnassignDroidAction,
@@ -212,13 +212,42 @@ test('a guild death on an UNLICENSED venture with only Syndicate spares stays em
   assert.deepEqual(crewOf(s, 'm'), []);
 });
 
-test('"lowest id" is the id NUMBER: droid 99 is chosen before droid 100', () => {
+test('"lowest id" is the LEXICOGRAPHIC order of the id string: droid_100 is chosen before droid_99', () => {
   const s = run(galaxy({
     ventures: [mine('m', { autoReplace: true })],
-    droids: [droid(1, 'guild', { ventureId: 'm', dying: true }), droid(100, 'guild', { idle: true }), droid(99, 'guild', { idle: true })],
+    droids: [droid(1, 'guild', { ventureId: 'm', dying: true }), droid(99, 'guild', { idle: true }), droid(100, 'guild', { idle: true })],
   }), 1);
-  assert.equal(ventureOf(s, 99), 'm');
-  assert.equal(ventureOf(s, 100), undefined);
+  assert.equal(ventureOf(s, 100), 'm', "'…droid_100' < '…droid_99' as strings — the shipped convention (§13.2)");
+  assert.equal(ventureOf(s, 99), undefined);
+});
+
+test('one order: the refill and the §5 maintenance triage pick the SAME droid past serial 99, and the snapshot agrees', () => {
+  // byDroidId is lexicographic: it agrees with mint order through 99 and departs from it at 100.
+  const ids = (ns) => ns.map((n) => ({ id: idFor(n) })).sort(byDroidId).map((d) => d.id);
+  assert.deepEqual(ids([12, 3, 7]), [idFor(3), idFor(7), idFor(12)], 'agrees with number order through 99');
+  assert.deepEqual(ids([99, 100, 101, 9]), [idFor(9), idFor(100), idFor(101), idFor(99)], "string order past it ('09' < '100' < '101' < '99')");
+
+  // The refill's pick among idle 99 / 100 / 101 …
+  const refilled = run(galaxy({
+    ventures: [mine('m', { autoReplace: true })],
+    droids: [droid(1, 'guild', { ventureId: 'm', dying: true }), droid(99, 'guild', { idle: true }),
+      droid(101, 'guild', { idle: true }), droid(100, 'guild', { idle: true })],
+  }), 1);
+  const refillPick = (g1Of(refilled).droids.find((d) => d.assignedToVentureId === 'm') || {}).id;
+  // … and the triage's pick among deployed 99 / 100 / 101 at EQUAL condition, with stock for only one: the id
+  // tie-break alone decides which is maintained.
+  const triage = galaxy({
+    ventures: [mine('m')],
+    droids: [droid(99, 'guild', { ventureId: 'm' }), droid(101, 'guild', { ventureId: 'm' }), droid(100, 'guild', { ventureId: 'm' })],
+  });
+  g1Of(triage).stockpiles[SYS].droid_components = 1;
+  fundDroidUpkeep(g1Of(triage), SYS, triage.tick);
+  const triagePick = g1Of(triage).droids.filter((d) => d.maintained).map((d) => d.id);
+  assert.equal(refillPick, idFor(100));
+  assert.deepEqual(triagePick, [refillPick], 'the triage and the refill agree on the lowest id');
+  // The snapshot (which the client's Deploy reads) lists the guild's droids in the same order.
+  const snapIds = buildSnapshot(triage, 'g1').guilds.find((g) => g.id === 'g1').droids.map((d) => d.id);
+  assert.deepEqual(snapIds, ids([99, 100, 101]), 'the snapshot sorts droids by the same order');
 });
 
 // --- 4. the two-pass fill -----------------------------------------------------------------------------------

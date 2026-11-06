@@ -20,7 +20,7 @@
 // sim/state.js, beside the other entity constructors.
 
 const { createDroid } = require('./state.js');
-const { assetId, assetNumberOf } = require('./assets.js');
+const { assetId } = require('./assets.js');
 const { getStock, addStock } = require('./stock.js');
 const { TIER3_WINDOW_N } = require('./windows.js');
 const { producedGoodFor, isLicensedDeuteriumMine } = require('./baseline.js');
@@ -96,6 +96,17 @@ function workingDroidCounts(guild) {
 // (invariant 5): `assignedToVentureId` is present exactly while the droid is assigned, and absent otherwise.
 function isDroidIdle(droid) {
   return droid.assignedToVentureId === undefined;
+}
+
+// byDroidId(a, b) -> THE ONE droid-id order: the LEXICOGRAPHIC order of the id string (docs/droids.md §13.2,
+// ruled 06-11-26). Every droid tie-break and every "lowest id" pick uses it — the §5 maintenance triage and
+// auto-replace's refill — and it is the order the snapshot sorts droids in, which the client reads. One
+// definition, so the engine and the client can never disagree about which droid is "lowest". Note it is string
+// order, not number order: it matches mint order up to serial 99, and past that `droid_100` sorts before
+// `droid_99`. That is the convention; the numeric alternative was considered and declined. Deterministic
+// (invariant 9): ids are unique, so this is a total order.
+function byDroidId(a, b) {
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 // assignedDroidCount(guild, ventureId) -> how many of the guild's droids are assigned to that venture —
@@ -327,7 +338,7 @@ function fundDroidUpkeep(guild, systemId, tick) {
   const deployed = deployedDroidsIn(guild, systemId);
   if (deployed.length === 0) return { drawn: 0, covered: 0, uncovered: 0 };
   const order = [...deployed].sort((a, b) => (
-    a.condition - b.condition || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    a.condition - b.condition || byDroidId(a, b)
   ));
   const reserve = droidComponentReserveFor(guild, systemId);
   const stockBefore = getStock(guild, systemId, DROID_COMPONENTS);
@@ -373,13 +384,6 @@ function isAutoReplaceOn(venture) {
   return venture.autoReplace === true;
 }
 
-// byDroidNumber — orders droids by their id's NUMBER (droid 2 before droid 10), which is the order they were
-// minted in. Ids are `asset_<guild>_droid_NN` with NN padded to two digits only, so comparing the strings would
-// put droid 100 before droid 99; the number is what "lowest id" means.
-function byDroidNumber(a, b) {
-  return assetNumberOf(a.id) - assetNumberOf(b.id);
-}
-
 // autoReplaceVacancies(guild, systemId, spent) -> the slots auto-replace must try to fill, as
 // `[{ venture, source }]`: one per droid in `spent` (the droids decay just destroyed in this system) that
 // staffed an auto-replace venture, carrying the SOURCE of the droid that died there. In venture order — the
@@ -396,13 +400,13 @@ function autoReplaceVacancies(guild, systemId, spent) {
   return vacancies;
 }
 
-// lowestAssignable(guild, systemId, source, venture) -> the lowest-numbered IDLE droid of `source` in the system
+// lowestAssignable(guild, systemId, source, venture) -> the lowest-id (byDroidId) IDLE droid of `source` in the system
 // that the assign gate allows onto `venture`, or null. No preference for fresh over worn — strictly lowest id
 // within the source (docs/droids.md §13.2).
 function lowestAssignable(guild, systemId, source, venture) {
   const candidates = (guild.droids || [])
     .filter((d) => d.source === source && d.systemId === systemId && isDroidIdle(d))
-    .sort(byDroidNumber);
+    .sort(byDroidId);
   return candidates.find((d) => assignDroidRefusal(guild, d, venture) === null) || null;
 }
 
@@ -505,6 +509,7 @@ module.exports = {
   isDroidWorking,
   workingDroidCounts,
   isDroidIdle,
+  byDroidId,
   assignedDroidCount,
   ventureIsLicensed,
   assignDroidRefusal,
