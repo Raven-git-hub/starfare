@@ -46,6 +46,8 @@ const { hashState } = require('../serialize.js');
 const { createState } = require('../state.js');
 const { saveState, appendJournal, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { checkInvariants } = require('../invariants.js');
 const { computeOccupancy } = require('../occupancy.js');
@@ -414,7 +416,7 @@ test('BYTE-IDENTICAL: a galaxy that never abandons serializes exactly as it did 
   s = ticks(s, 40);
   const sha = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
   assert.deepEqual({
-    tick: s.tick, state: hashState(s), god: sha(buildSnapshot(s)), own: sha(buildSnapshot(s, 'g1')), rival: sha(buildSnapshot(s, 'g2')),
+    tick: s.tick, state: hashState(s), god: sha(withoutDroidBatchQuote(buildSnapshot(s))), own: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g1'))), rival: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g2'))),
   }, GOLDEN_NO_ABANDON);
 });
 

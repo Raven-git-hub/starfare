@@ -39,6 +39,8 @@ const { hashState } = require('../serialize.js');
 const { advance } = require('../run.js');
 const { tick: tickOnce } = require('../tick.js'); // one bare tick (no invariant check) — the determinism test's tool
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { checkInvariants } = require('../invariants.js');
 const { getSystem, getSystemLayout, getStarterSystems } = require('../seed.js');
 const { hexDistance } = require('../transport.js');
@@ -387,7 +389,7 @@ test('BYTE-IDENTITY: a galaxy that evicts nothing crosses midnight with no remin
   assert.equal(remindedOn(s, DAY).length, 0);
   const sha = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
   assert.deepEqual({
-    tick: s.tick, state: hashState(s), god: sha(buildSnapshot(s)), g1: sha(buildSnapshot(s, 'g1')), g2: sha(buildSnapshot(s, 'g2')),
+    tick: s.tick, state: hashState(s), god: sha(withoutDroidBatchQuote(buildSnapshot(s))), g1: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g1'))), g2: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g2'))),
   }, GOLDEN_NEVER_EVICTS);
 });
 

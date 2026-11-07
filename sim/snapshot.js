@@ -34,7 +34,7 @@
 const { computeGalacticSupply } = require('./supply.js');
 const {
   REFERENCE_FUEL_PRICE, routeFuelBurnByTierFromHex, fuelValue,
-  volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
+  volumeOf, HAULER_TIERS, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME, DROID_BATCH_CARGO_VOLUME,
 } = require('./fuel.js');
 const {
   nearestWaystation, nearestWaystationToHex, systemHex, arrivalTickFor, hexDistance, hexesWithin, legFuelBurn,
@@ -48,7 +48,7 @@ const { deployedAssetIds, carriedAssetIds } = require('./assets.js');
 const { SYNDICATE_SELLABLE_KINDS, BUILD_TICKS, priceAssetForPurchase } = require('./asset-recipes.js');
 const {
   DROID, DROID_WEEK_TICKS, DROID_COMPONENTS, deployedDroidsIn, droidComponentReserveFor,
-  isDroidMaintained, weeklyUpkeepFor,
+  isDroidMaintained, weeklyUpkeepFor, SYNDICATE_DROID_TARIFF, SYNDICATE_DROID_BATCHES,
 } = require('./droids.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
@@ -867,6 +867,11 @@ function computeAttention(state) {
 //       // (priceAssetForPurchase) and the `buildTicks` (BUILD_TICKS[kind]). The TRADE tab's
 //       // "4 · Constructed" buy view reads these; the delivery leg of the arrival estimate
 //       // comes from fuelCost[dest].travelTicks, not from here. Derived-on-read, no stored byte.
+//     droidBatchQuote: { perDroid, haulerTier, batches: [ { size, price } ] },  // droids.md §3 (07-11-26)
+//       // The Syndicate droid batches (5 / 10 / 50) and each one's credit price (size × the flat tariff),
+//       // plus the hauler tier the delivery flies on ('medium'). Build time is 0, so the only wait is the
+//       // delivery: the client reads it from fuelCost[dest].travelTicks and the fuel from
+//       // fuelCost[dest].fuelBurnByTier[haulerTier]. Public (the same for every guild). Derived-on-read.
 //     attention: { renegotiations: [ { guildId, ventureId, ventureName, standing, offer } ],
 //                  notices: [ { guildId, id, tick, type, payload } ] },
 //       // §5 attention derive (#64 Slice 1b + event-log Slice): the guild's open action-items,
@@ -2055,6 +2060,10 @@ function buildGodsEyeSnapshot(state) {
     // an asset shipment — the same distinction stepArrivals reads to mint instead of deposit. The
     // distance-derived leg fields below are unchanged (an asset flies the same Syndicate leg).
     if (ship.assetKind) row.assetKind = ship.assetKind;
+    // A SYNDICATE DROID BATCH (docs/droids.md §3, RE-RULED 07-11-26) is an asset delivery of kind `droid` that
+    // also carries how many droids it will land, so the manifest can say "50 droids", not "a droid". Present
+    // only on such a row.
+    if (ship.droidCount !== undefined) row.droidCount = ship.droidCount;
     // A DELIVERY TO AN OUTPOST (docs/syndicate-orders.md §9.1, trading to/from outposts slice 1b)
     // names a `destinationOutpostId` instead of a `destinationSystemId`, surfaced additively (present
     // only on such a row).
@@ -2376,15 +2385,27 @@ function buildGodsEyeSnapshot(state) {
     // from the per-system `fuelCost[dest].travelTicks` above, exactly as the goods-buy popup does.
     // Additive DERIVED-ON-READ telemetry like `syndicateBuilds` above: no serialized byte, no
     // schema bump, no golden move — a galaxy that buys nothing serializes byte-identically.
-    // THE DROID IS LEFT OUT (droid engine slice 3): it is Syndicate-sellable, but not a commission — a flat
-    // tariff handed over at once, with no build time and no delivery leg — so this row's `buildTicks` (the
-    // DOCKYARD's 360) would mislead. Surfacing the tariff to the client is the droid client slice's job.
+    // THE DROID IS LEFT OUT: it is Syndicate-sellable, but not a commission — it is sold in batches with build
+    // time 0 (docs/droids.md §3, RE-RULED 07-11-26), so this row's `buildTicks` (the DOCKYARD's 360) would
+    // mislead. Its own quote is `droidBatchQuote`, just below.
     assetPurchaseQuote: Object.fromEntries(
       SYNDICATE_SELLABLE_KINDS.filter((kind) => kind !== DROID).map((kind) => [
         kind,
         { price: priceAssetForPurchase(state, kind, state.tick), buildTicks: BUILD_TICKS[kind] },
       ]),
     ),
+    // THE DROID BATCH QUOTE (docs/droids.md §3, RE-RULED 07-11-26) — what the buy card shows, so the browser
+    // multiplies nothing and knows no tariff (§18: the client computes no game number). Each batch's `price` is
+    // exactly what `buyDroidBatch` charges (size × SYNDICATE_DROID_TARIFF, the same two constants). `haulerTier`
+    // is the tier DROID_BATCH_CARGO_VOLUME selects — the key the client reads in `fuelCost[dest].fuelBurnByTier`
+    // for the delivery fuel. The arrival estimate is NOT here: build time is 0, so arrival is just the delivery
+    // leg, `fuelCost[dest].travelTicks` — the same per-system quote every other Syndicate delivery reads. The
+    // block does not depend on state at all (flat prices, fixed sizes), so it is the same at every tick.
+    droidBatchQuote: {
+      perDroid: SYNDICATE_DROID_TARIFF,
+      haulerTier: haulerTierForSpace(DROID_BATCH_CARGO_VOLUME),
+      batches: SYNDICATE_DROID_BATCHES.map((size) => ({ size, price: size * SYNDICATE_DROID_TARIFF })),
+    },
     // The ATTENTION derive (design.md §5 "attention derive", #64 Slice 1b) — the guild's open
     // action-items, aggregated top-level so the Guild Hall MESSAGES panel and its tab badge read
     // one place. For this slice that is exactly the open renegotiation offers, under

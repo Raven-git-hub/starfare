@@ -40,6 +40,8 @@ const assert = require('node:assert/strict');
 
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { createZeroState } = require('../scenarios/zero-state.js');
 const { advance } = require('../run.js');
 const { checkInvariants } = require('../invariants.js');
@@ -133,8 +135,8 @@ function digestsOf(name, run, strip, stripSnapshot) {
   for (const [step, s] of Object.entries(run.steps)) {
     out[`${name}.${step}`] = {
       state: hashState(strip(s)),
-      godsEye: hashState(stripSnapshot(buildSnapshot(s))),
-      ownView: hashState(stripSnapshot(buildSnapshot(s, s.guilds[0].id))),
+      godsEye: hashState(stripSnapshot(withoutDroidBatchQuote(buildSnapshot(s)))),
+      ownView: hashState(stripSnapshot(withoutDroidBatchQuote(buildSnapshot(s, s.guilds[0].id)))),
     };
   }
   out[`${name}.reasons`] = hashState(run.reasons);

@@ -32,8 +32,8 @@ const {
 } = require('./vehicles.js');
 const { assetBill, kitKindForBill, BUILD_TICKS } = require('./asset-recipes.js');
 const {
-  DROID, DROID_SOURCE_GUILD, DROID_WEEK_TICKS, mintDroid, decayDroidsIn, fundDroidUpkeep,
-  refillAutoReplaceVacancies,
+  DROID, DROID_SOURCE_GUILD, DROID_SOURCE_SYNDICATE, SYNDICATE_DROID_BATCHES, DROID_WEEK_TICKS, mintDroid,
+  decayDroidsIn, fundDroidUpkeep, refillAutoReplaceVacancies,
 } = require('./droids.js');
 const { getSystem } = require('./seed.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
@@ -333,8 +333,8 @@ function refineDeuterium(state, guild) {
 //     `mintDroid` (sim/droids.js), id from the guild's `droidSerial`. NOT through mintKitAsset — a droid is
 //     not a kit and has no KIT_KIND_FOR_BILL row — and it must be caught before the ground-asset fallthrough,
 //     which would otherwise mint an `asset_<guild>_droid_NN` ASSET no asset rule knows. The source is always
-//     'guild' today, because the only path that reaches here with a droid is the dockyard: the Syndicate
-//     buy refuses a droid at intake until the flat-tariff slice, which decides how its source reaches here.
+//     'guild', because the only path that reaches here with a droid is the dockyard: a Syndicate droid BATCH
+//     lands through its own branch in stepArrivals (mintDroidBatch, below), never through here.
 //   - a VEHICLE class → mint a Vehicle into `guild.vehicles`, stamping the per-class spec
 //     (sim/vehicles.js VEHICLE_SPECS) + a SYSTEM-LANDMARK location for `systemId` (a bought/
 //     built craft always lands at a system — design.md §15.4); the id's `NN` is the per-GUILD
@@ -1235,6 +1235,22 @@ function stepScheduledEvents(state, _actions) {
   return state;
 }
 
+// mintDroidBatch(guild, ship, thisTick) — land ONE Syndicate droid-batch delivery (docs/droids.md §3, RE-RULED
+// 07-11-26): mint `ship.droidCount` idle SYNDICATE-source droids at the destination, through THE ONE droid mint
+// (`mintDroid`), each stamped with the arrival tick (§15.2). They take consecutive `droidSerial` numbers, in mint
+// order, so a re-run numbers them identically (invariant 9). The count is checked against the ruled sizes FIRST
+// and the step halts on anything else: the buy only ever writes 5 / 10 / 50, so any other count means the record
+// was corrupted, and minting a guessed number of droids would be the silent violation §15.5 forbids.
+// Moves no credit and no fuel — both were paid at the buy.
+function mintDroidBatch(guild, ship, thisTick) {
+  if (!SYNDICATE_DROID_BATCHES.includes(ship.droidCount)) {
+    throw new Error(`stepArrivals: a droid delivery for guild ${guild.id} arriving at tick ${thisTick} carries droidCount ${JSON.stringify(ship.droidCount)} — not one of the Syndicate batches ${SYNDICATE_DROID_BATCHES.join(' / ')}`);
+  }
+  for (let i = 0; i < ship.droidCount; i += 1) {
+    mintDroid(guild, DROID_SOURCE_SYNDICATE, ship.destinationSystemId, thisTick);
+  }
+}
+
 // landOutpostDelivery(state, guild, ship, thisTick) — land ONE Syndicate goods delivery bound for a
 // guild Outpost (a shipment with `destinationOutpostId`; docs/syndicate-orders.md §9.4, roadmap 2.2
 // trading to/from outposts slice 1b). MUTATES the Outpost's stockpile, or the guild's event log.
@@ -1358,6 +1374,15 @@ function stepArrivals(state, _actions) {
     // never in inventory, so dropping it imbalances nothing.
     if (ship.assetKind) {
       if (!guild) continue;
+      // A DROID BATCH (docs/droids.md §3, RE-RULED 07-11-26) mints N Syndicate droids, not one asset — the one
+      // kind that lands as a COUNT. Same owner guard as any asset delivery (a torn-down guild's batch is dropped),
+      // and like an asset it lands whether or not the guild still holds the system: an idle droid is guild
+      // inventory located at a system (§1). The buy required a held system; if it is lost mid-flight the droids
+      // still land idle there (what a lost system does to droids is not ruled — docs/roadmap.md checklist).
+      if (ship.assetKind === DROID) {
+        mintDroidBatch(guild, ship, thisTick);
+        continue;
+      }
       // The dockyard's EXACT mint (mintFinishedKind, shared with buildDockyards): the finished kind
       // — a ground asset or an installation KIT into guild.assets, a guild transport into guild.vehicles — IDLE at the
       // destination system, on the kind's own id sequence (the kit serial for a kit), guarded by the duplicate-id

@@ -214,9 +214,12 @@ test('validate: the buy gate ACCEPTS each of the five sellable kinds and REFUSES
   // Fund past the priciest baseline (heavy transport, 200M) and its own delivery burn, so this is
   // a pure KIND-gate check — no accept turns on a credits/fuel shortfall.
   const s = buyState({ credits: 500_000_000, fuelHoard: 5_000 });
-  for (const kind of SYNDICATE_SELLABLE_KINDS) {
+  // ⤳ 07-11-26: the droid is still SELLABLE but is bought through buyDroidBatch, not this action (docs/droids.md §3,
+  // RE-RULED) — so here it is refused, naming the batch action. Its batch buy is pinned in droid-batch-buy.test.js.
+  for (const kind of SYNDICATE_SELLABLE_KINDS.filter((k) => k !== 'droid')) {
     assert.equal(validateAction(s, buy(kind, DEST)).valid, true, `buy ${kind} accepted`);
   }
+  reject(s, buy('droid', DEST), /send buyDroidBatch/);
   // A spycraft buy is refused LOUDLY, naming it guild-build-only (not merely hidden from the UI) — and so is a
   // Prefecture buy (16-10-26), naming its own kind.
   reject(s, buy(SPYCRAFT, DEST), /the Syndicate does not sell spycraft, it is guild-build-only/);

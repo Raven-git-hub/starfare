@@ -8,8 +8,8 @@
 //
 //   1. THE ROW: an idle droid is slice 2's four fields; an assigned one adds assignedToVentureId + deployedAtTick.
 //   2. NO-OP BYTE-IDENTICAL: a run that buys and assigns no droid hashes exactly as it did at b226b3a.
-//   3. THE BUY: one idle Syndicate-source droid at the destination for exactly 10,000 cr, ledgered (invariant 2);
-//      refused on insufficient credits (naming the shortfall) and on a system the guild does not hold.
+//   3. THE BUY: ⤳ 07-11-26 the instant one-droid buy is retired and refused (docs/droids.md §3, RE-RULED); the
+//      batched, shipped buy that replaced it is pinned in droid-batch-buy.test.js.
 //   4. ASSIGN / UNASSIGN flip the derived idle/deployed state and record their tick.
 //   5. THE GATE: each refusal in order with its own reason; a Syndicate droid is refused on an unlicensed venture
 //      (naming it) while a guild droid is allowed there; the 21st is refused (source-blind); cross-system refused.
@@ -75,6 +75,7 @@ function assignGalaxy({ credits = 1_000_000 } = {}) {
   return s;
 }
 
+// The RETIRED instant one-droid buy (docs/droids.md §3, RE-RULED 07-11-26): still built, so its refusal can be pinned.
 const buy = (systemId = HOME.id, guildId = 'g1') => createBuyAssetFromSyndicateAction({
   guildId, assetKind: DROID, destinationSystemId: systemId,
 });
@@ -91,6 +92,18 @@ const D2 = 'asset_g1_droid_02';
 function withGuildDroid(s, systemId = HOME.id) {
   const next = structuredClone(s);
   mintDroid(g1Of(next), 'guild', systemId, next.tick);
+  assert.deepEqual(checkInvariants(next, next.tick), []);
+  return next;
+}
+
+// withSyndicateDroid(s, systemId) -> a copy of `s` holding one more SYNDICATE droid, minted through THE ONE droid
+// mint at the current tick. ⤳ 07-11-26: this file used to get its Syndicate droids from the instant one-droid
+// `buyAssetFromSyndicate`. That path is retired — Syndicate droids now arrive in shipped batches (docs/droids.md §3,
+// RE-RULED; pinned in droid-batch-buy.test.js) — so a test here that only needs a Syndicate droid to EXIST mints
+// one directly, exactly as the arrival does (same mint, same source, same stamp), without flying a batch in.
+function withSyndicateDroid(s, systemId = HOME.id) {
+  const next = structuredClone(s);
+  mintDroid(g1Of(next), 'syndicate', systemId, next.tick);
   assert.deepEqual(checkInvariants(next, next.tick), []);
   return next;
 }
@@ -143,40 +156,16 @@ test('tariff: the droid is Syndicate-sellable at a FLAT 10,000, whatever the tic
   assert.equal(priceAssetForPurchase(later, DROID, later.tick), 10_000);
 });
 
-test('buy: exactly ONE idle Syndicate droid at the destination for exactly 10,000, ledgered (invariant 2)', () => {
+test('buy: the instant one-droid buyAssetFromSyndicate is RETIRED — refused, naming buyDroidBatch, and nothing moves', () => {
+  // ⤳ 07-11-26 (docs/droids.md §3, RE-RULED): slice 3 minted one Syndicate droid at once for 10,000. Droids are now
+  // sold only in shipped batches (droid-batch-buy.test.js pins the new buy, its refusals and conservation). The
+  // droid stays Syndicate-SELLABLE (the tariff test above) — it is just bought through the other action.
   const s = assignGalaxy({ credits: 25_000 });
-  const before = { credits: g1Of(s).credits, ledger: s.syndicate.ledger, fuel: g1Of(s).fuelHoard, consumed: s.audit.totalConsumed };
-  const after = accept(s, buy()); // accept() runs every invariant with no tick between (credit conservation too)
-  assert.deepEqual(droidsOf(after), [{ id: D1, systemId: HOME.id, source: 'syndicate', condition: 1, updatedAtTick: s.tick }]);
-  assert.equal(g1Of(after).credits, before.credits - 10_000);
-  assert.equal(after.syndicate.ledger, before.ledger + 10_000);
-  assert.equal(g1Of(after).credits + after.syndicate.ledger, before.credits + before.ledger, 'credits moved, none made');
-  assert.equal(g1Of(after).droidSerial, 1);
-  // Instant: no commission, no flight, no fuel, no asset.
-  assert.equal(after.syndicateBuilds, undefined, 'no Syndicate commission was queued');
-  assert.equal(g1Of(after).fuelHoard, before.fuel);
-  assert.equal(after.audit.totalConsumed, before.consumed);
-  assert.equal(g1Of(after).assets, undefined);
-  assert.equal(g1Of(after).syndicateCommissionSerial, undefined);
-  // And it survives ticking (every invariant, every tick).
-  assert.deepEqual(droidsOf(ticks(after, 5)), droidsOf(after));
-});
-
-test('buy: refused on insufficient credits, naming the shortfall — and nothing moves', () => {
-  const s = assignGalaxy({ credits: 9_999 });
-  const reason = refuse(s, buy());
-  assert.match(reason, /holds 9999 credits, cannot pay the Syndicate droid tariff of 10000 — short by 1/);
-  // Exactly 10,000 is enough.
-  const exact = accept(assignGalaxy({ credits: 10_000 }), buy());
-  assert.equal(g1Of(exact).credits, 0);
-});
-
-test('buy: refused into a system the guild does not hold, or one not on the seed', () => {
-  const s = assignGalaxy();
-  assert.match(refuse(s, buy(RIVAL)), new RegExp(`does not hold system "${RIVAL}"`));
-  assert.match(refuse(s, buy('sys_nope')), /is not a system on the seed/);
-  // A system g1 does hold, away from home, is fine.
-  assert.equal(droidsOf(accept(s, buy(OTHER)))[0].systemId, OTHER);
+  const reason = refuse(s, buy()); // refuse() also proves the state is untouched
+  assert.match(reason, /sells droids only in batches of 5 \/ 10 \/ 50 — send buyDroidBatch/);
+  // Refused whatever the destination or the guild's purse — it is the action, not the gate, that is gone.
+  assert.match(refuse(assignGalaxy({ credits: 0 }), buy()), /send buyDroidBatch/);
+  assert.match(refuse(s, buy(OTHER)), /send buyDroidBatch/);
 });
 
 test('buy: the commissioned-asset quote does not list the droid (no build time, no delivery leg)', () => {
@@ -188,7 +177,7 @@ test('buy: the commissioned-asset quote does not list the droid (no build time, 
 // --- 4. assign / unassign -----------------------------------------------------------------------------------
 
 test('assign / unassign flip idle ↔ deployed and record their tick', () => {
-  let s = accept(assignGalaxy(), buy());
+  let s = withSyndicateDroid(assignGalaxy());
   s = ticks(s, 7); // so the assign tick is not 0
   const assignTick = s.tick;
   s = accept(s, assign(D1, LICENSED));
@@ -216,14 +205,14 @@ test('assign / unassign flip idle ↔ deployed and record their tick', () => {
 });
 
 test('assign moves nothing but the droid: no credit, fuel, good, venture or asset field changes', () => {
-  const s = accept(assignGalaxy(), buy());
+  const s = withSyndicateDroid(assignGalaxy());
   const after = accept(s, assign(D1, LICENSED));
   const strip = (st) => { const c = structuredClone(st); for (const g of c.guilds) delete g.droids; return c; };
   assert.deepEqual(strip(after), strip(s));
 });
 
 test('unassign refusals: not the guild\'s droid, or already idle', () => {
-  const s = accept(assignGalaxy(), buy());
+  const s = withSyndicateDroid(assignGalaxy());
   assert.match(refuse(s, unassignA('asset_g1_droid_99')), /guild g1 owns no droid "asset_g1_droid_99"/);
   assert.match(refuse(s, unassignA(D1, 'g2')), /guild g2 owns no droid "asset_g1_droid_01"/);
   assert.match(refuse(s, unassignA(D1)), /droid asset_g1_droid_01 is idle — it is assigned to no venture/);
@@ -233,7 +222,7 @@ test('unassign refusals: not the guild\'s droid, or already idle', () => {
 // --- 5. the gate --------------------------------------------------------------------------------------------
 
 test('gate: ownership — the guild must own both the droid and the venture', () => {
-  const s = accept(assignGalaxy(), buy());
+  const s = withSyndicateDroid(assignGalaxy());
   assert.match(refuse(s, assign('asset_g1_droid_99', LICENSED)), /guild g1 owns no droid "asset_g1_droid_99"/);
   assert.match(refuse(s, assign(D1, LICENSED, 'g2')), /guild g2 owns no droid "asset_g1_droid_01"/, 'a rival cannot assign g1\'s droid');
   assert.match(refuse(s, assign(D1, RIVAL_VENTURE)), /guild g1 owns no venture "v_rival"/, 'nor can g1 staff a rival\'s venture');
@@ -256,7 +245,7 @@ test('gate: same-system only — a cross-system assign is refused, naming both s
 });
 
 test('THE GATE: a Syndicate droid is refused on an UNLICENSED venture, naming it — a GUILD droid is allowed there', () => {
-  let s = accept(assignGalaxy(), buy()); // D1 — Syndicate
+  let s = withSyndicateDroid(assignGalaxy()); // D1 — Syndicate
   s = withGuildDroid(s); // D2 — guild
   assert.equal(droidOf(s, D1).source, 'syndicate');
   assert.equal(droidOf(s, D2).source, 'guild');
@@ -286,14 +275,14 @@ function withDeuteriumMine(s, licensed = true) {
 }
 
 test('THE GATE: a licensed DEUTERIUM mine (deuteriumLicence, no windowed licence) takes a Syndicate droid', () => {
-  let s = withDeuteriumMine(accept(assignGalaxy(), buy())); // D1 — Syndicate
+  let s = withDeuteriumMine(withSyndicateDroid(assignGalaxy())); // D1 — Syndicate
   s = withGuildDroid(s); // D2 — guild
   const mine = g1Of(s).ventures.find((v) => v.id === DEUTERIUM_MINE);
   assert.equal(mine.licence, undefined, 'no windowed licence — only the deuterium one');
   s = accept(s, assign(D1, DEUTERIUM_MINE));
   assert.equal(droidOf(s, D1).assignedToVentureId, DEUTERIUM_MINE);
   // The gate is unchanged for a genuinely unlicensed venture (a second Syndicate droid, 03) …
-  s = accept(s, buy());
+  s = withSyndicateDroid(s);
   assert.match(refuse(s, assign('asset_g1_droid_03', UNLICENSED)), /is a Syndicate droid and venture v_unlic is unlicensed/);
   // … and a guild droid still goes anywhere, the deuterium mine included.
   s = accept(s, assign(D2, DEUTERIUM_MINE));
@@ -302,7 +291,7 @@ test('THE GATE: a licensed DEUTERIUM mine (deuteriumLicence, no windowed licence
 });
 
 test('THE GATE: an UNLICENSED deuterium mine still refuses a Syndicate droid, naming it — a guild droid is allowed', () => {
-  let s = withDeuteriumMine(accept(assignGalaxy(), buy()), false);
+  let s = withDeuteriumMine(withSyndicateDroid(assignGalaxy()), false);
   s = withGuildDroid(s);
   assert.match(refuse(s, assign(D1, DEUTERIUM_MINE)), /is a Syndicate droid and venture v_deut is unlicensed/);
   accept(s, assign(D2, DEUTERIUM_MINE));
@@ -316,7 +305,7 @@ test('gate: a guild droid may staff a LICENSED venture too', () => {
 test('THE CAP: 20 droids fill a venture, the 21st is refused — source-blind', () => {
   assert.equal(DROID_CAP, 20);
   let s = assignGalaxy({ credits: 20 * SYNDICATE_DROID_TARIFF });
-  for (let i = 0; i < 10; i += 1) s = accept(s, buy()); // 10 Syndicate droids
+  for (let i = 0; i < 10; i += 1) s = withSyndicateDroid(s); // 10 Syndicate droids
   for (let i = 0; i < 11; i += 1) s = withGuildDroid(s); // 11 guild droids
   const ids = droidsOf(s).map((d) => d.id);
   assert.equal(ids.length, 21);
@@ -337,7 +326,7 @@ test('THE CAP: 20 droids fill a venture, the 21st is refused — source-blind', 
 test('gate order: ownership, then idle, then system, then licence, then cap', () => {
   // A Syndicate droid in OTHER, already assigned, aimed at the unlicensed HOME venture: "assigned" is reported
   // first, not the system or the licence.
-  let s = accept(assignGalaxy(), buy(OTHER));
+  let s = withSyndicateDroid(assignGalaxy(), OTHER);
   s.guilds[0].ventures.find((v) => v.id === FAR).licence = { ...g1Of(s).ventures.find((v) => v.id === LICENSED).licence };
   s = accept(s, assign(D1, FAR));
   assert.match(refuse(s, assign(D1, UNLICENSED)), /already assigned/);
@@ -349,8 +338,8 @@ test('gate order: ownership, then idle, then system, then licence, then cap', ()
 // --- 6. the licence lapse -----------------------------------------------------------------------------------
 
 test('THE LAPSE: a Syndicate droid on a venture whose licence then lapses keeps running — no halt, no eviction', () => {
-  let s = accept(assignGalaxy(), buy());
-  s = accept(s, buy());
+  let s = withSyndicateDroid(assignGalaxy());
+  s = withSyndicateDroid(s);
   s = accept(s, assign(D1, LICENSED));
   const deployedAt = droidOf(s, D1).deployedAtTick;
 
@@ -376,7 +365,7 @@ test('THE LAPSE: a Syndicate droid on a venture whose licence then lapses keeps 
 // --- 7. closure releases droids -----------------------------------------------------------------------------
 
 test('closure: a closed venture\'s droids return to idle, where they stand — and nothing halts', () => {
-  let s = accept(assignGalaxy(), buy());
+  let s = withSyndicateDroid(assignGalaxy());
   s = withGuildDroid(s);
   s = accept(s, assign(D1, LICENSED));
   s = accept(s, assign(D2, UNLICENSED));
@@ -393,7 +382,7 @@ test('closure: a closed venture\'s droids return to idle, where they stand — a
 // --- 8. the invariant ---------------------------------------------------------------------------------------
 
 test('checkDroids bites on every bad assignment, naming the guild and the value', () => {
-  let base = accept(assignGalaxy(), buy());
+  let base = withSyndicateDroid(assignGalaxy());
   base = accept(base, assign(D1, LICENSED));
   const broken = (mutate) => {
     const s = structuredClone(base);
@@ -430,7 +419,7 @@ test('checkDroids bites on every bad assignment, naming the guild and the value'
 });
 
 test('checkDroids runs inside the tick loop: a droid left on a vanished venture halts, naming the tick', () => {
-  let s = accept(assignGalaxy(), buy());
+  let s = withSyndicateDroid(assignGalaxy());
   s = accept(s, assign(D1, LICENSED));
   // Splice the venture out WITHOUT the closure — the bug releaseDroidsFrom exists to prevent.
   const g = g1Of(s);
@@ -441,7 +430,7 @@ test('checkDroids runs inside the tick loop: a droid left on a vanished venture 
 // --- 9. snapshot --------------------------------------------------------------------------------------------
 
 test('snapshot: the owner sees each droid\'s venture and each venture\'s complement; idle omits both; a rival sees neither', () => {
-  let s = accept(assignGalaxy(), buy());
+  let s = withSyndicateDroid(assignGalaxy());
   s = withGuildDroid(s);
   s = withGuildDroid(s);
   const idleRow = buildSnapshot(s).guilds.find((g) => g.id === 'g1');
@@ -476,7 +465,7 @@ test('snapshot: the owner sees each droid\'s venture and each venture\'s complem
 
 function assignScript() {
   let s = assignGalaxy();
-  s = accept(s, buy());
+  s = withSyndicateDroid(s);
   s = withGuildDroid(s);
   s = withGuildDroid(s, OTHER); // a guild droid: FAR is unlicensed
   s = accept(s, assign(D1, LICENSED));
@@ -496,12 +485,13 @@ test('determinism (invariant 9): two runs are byte-identical', () => {
 });
 
 test('ids: both sources number off the one droidSerial, and an id is never reissued', () => {
+  // (The Syndicate droids here come from withSyndicateDroid — the same mintDroid a landed batch calls.)
   let s = withGuildDroid(assignGalaxy()); // 01 guild
-  s = accept(s, buy()); // 02 Syndicate
+  s = withSyndicateDroid(s); // 02 Syndicate
   assert.deepEqual(droidsOf(s).map((d) => [d.id, d.source]), [[D1, 'guild'], [D2, 'syndicate']]);
-  // Drop 02 from the collection (as end-of-life will); the next buy takes 03, never 02 again.
+  // Drop 02 from the collection (as end-of-life will); the next mint takes 03, never 02 again.
   g1Of(s).droids.pop();
-  s = accept(s, buy());
+  s = withSyndicateDroid(s);
   assert.deepEqual(droidsOf(s).map((d) => d.id), [D1, 'asset_g1_droid_03']);
   assert.equal(g1Of(s).droidSerial, 3);
 });

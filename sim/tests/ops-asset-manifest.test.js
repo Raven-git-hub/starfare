@@ -23,7 +23,9 @@ const html = fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'game.ht
 test('rowHtml branches its manifest on sh.assetKind and names the asset/craft', () => {
   // The manifest is chosen off `sh.assetKind`: an asset/craft delivery names itself; a goods
   // delivery keeps the cargo loop. Pin the conditional so the asset branch cannot be dropped.
-  assert.match(html, /var manRows = sh\.assetKind/);
+  // ⤳ 07-11-26 (the droid batch-buy, docs/droids.md §3): a Syndicate droid BATCH is checked first and names its
+  // count ("droids · 50"); every other asset/craft delivery still takes the assetKind branch below.
+  assert.match(html, /var manRows = sh\.droidCount\s*\? '<div class="ops-manrow"><span class="g">droids<\/span><span class="q">' \+ fmt\(sh\.droidCount\) \+ '<\/span><\/div>'\s*: sh\.assetKind/);
   // The asset branch emits ONE .ops-manrow whose .g is `craftManifestLabel(sh.assetKind)`.
   assert.match(
     html,

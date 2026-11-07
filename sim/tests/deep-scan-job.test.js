@@ -57,6 +57,8 @@ const { createState } = require('../state.js');
 const { hashState } = require('../serialize.js');
 const { saveState, appendJournal, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { withoutDeepScanLanes } = require('./deep-scan-lane-strip.js');
 const { withoutControlMap } = require('./control-map-strip.js');
@@ -442,9 +444,9 @@ test('OMIT-WHEN-IDLE: a galaxy whose array is idle is byte-identical to main bef
     // holding a system gained `deployRange.deepScan` and nothing else moved, so the pins still stand.
     // ⤳ 16-10-26 (the Prefecture / claims slice, engine PR 2): and through the control-map strip (tests/control-map-strip.js)
     // — every snapshot and view gained the public `controlMap` and nothing else moved, so the pins still stand.
-    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(buildSnapshot(s)))))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
+    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(withoutDroidBatchQuote(buildSnapshot(s))))))), pins.godsEye, `the god's-eye lens moved at "${name}"`);
     for (const guildId of [A, B]) {
-      const view = withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(buildSnapshot(s, guildId))));
+      const view = withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(withoutDroidBatchQuote(buildSnapshot(s, guildId)))));
       assert.equal(sha(JSON.stringify(view)), IDLE_ARRAY_SLIM[name][guildId], `${guildId}'s view moved at "${name}"`);
       // Put `geography.systems` back and it is the 09-10-26 (settlement-surface) view…
       const legacy = withSystemsBlock(view);

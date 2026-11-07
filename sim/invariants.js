@@ -91,7 +91,7 @@ const { volumeOf } = require('./fuel.js');
 const { manifestAmountError } = require('./manifest.js');
 const { isDockyard, producedGoodFor, ticksPerUnitFor } = require('./baseline.js');
 const { BUILDABLE_KINDS, BUILD_TICKS } = require('./asset-recipes.js');
-const { DROID_SOURCES, DROID_CAP, droidId } = require('./droids.js');
+const { DROID, DROID_SOURCES, DROID_CAP, SYNDICATE_DROID_BATCHES, droidId } = require('./droids.js');
 const {
   DEFAULT_WINDOW_N, TIER3_WINDOW_N, windowNForGood, tier3WindowNests, winStartFor, windowFraction, isWindowBoundary,
 } = require('./windows.js');
@@ -3161,6 +3161,33 @@ function checkGuildHome(state) {
   return out;
 }
 
+// checkDroidShipments(state) -> violations for a Syndicate droid-batch delivery in flight (docs/droids.md §3,
+// RE-RULED 07-11-26). `buyDroidBatch` writes exactly one shape — `assetKind: 'droid'` with a `droidCount` of
+// 5 / 10 / 50 and no `cargo` — and stepArrivals mints that many droids from it. So:
+//   - `droid-shipment-count`: a droid delivery's `droidCount` is one of SYNDICATE_DROID_BATCHES (a bad count
+//     would land a number of droids nobody bought or paid for);
+//   - `droid-shipment-kind`: a `droidCount` only ever rides a droid delivery (on any other shipment it would be
+//     ignored — a silent loss of what it says it carries);
+//   - `droid-shipment-no-cargo`: a droid delivery carries no goods (nothing was bought but droids).
+// A pure read: it reports, it never repairs.
+function checkDroidShipments(state) {
+  const out = [];
+  (state.shipments || []).forEach((ship, i) => {
+    const where = `shipments[${i}]`;
+    const isDroid = ship.assetKind === DROID;
+    if (isDroid && !SYNDICATE_DROID_BATCHES.includes(ship.droidCount)) {
+      out.push({ rule: 'droid-shipment-count', where: `${where}.droidCount`, detail: { droidCount: ship.droidCount, ownerGuildId: ship.ownerGuildId } });
+    }
+    if (!isDroid && ship.droidCount !== undefined) {
+      out.push({ rule: 'droid-shipment-kind', where: `${where}.droidCount`, detail: { assetKind: ship.assetKind, droidCount: ship.droidCount } });
+    }
+    if (isDroid && ship.cargo !== undefined) {
+      out.push({ rule: 'droid-shipment-no-cargo', where: `${where}.cargo`, detail: { cargo: ship.cargo } });
+    }
+  });
+  return out;
+}
+
 // Run all within-run invariants. Returns a (possibly empty) list of violations,
 // each tagged with the tick.
 function checkInvariants(state, tick) {
@@ -3187,6 +3214,7 @@ function checkInvariants(state, tick) {
     ...checkSiteOccupancy(state),
     ...checkAssetOccupancy(state),
     ...checkDroids(state),
+    ...checkDroidShipments(state),
     ...checkVehicleIntegrity(state),
     ...checkBuildQueues(state),
     ...checkSyndicateBuildsIntegrity(state),

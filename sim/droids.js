@@ -42,6 +42,11 @@ const DROID_SOURCES = Object.freeze([DROID_SOURCE_GUILD, DROID_SOURCE_SYNDICATE]
 // priceAssetForPurchase reads THIS for a droid instead). An integer, like every credit amount (§15.2).
 const SYNDICATE_DROID_TARIFF = 10_000;
 
+// SYNDICATE_DROID_BATCHES — the ONLY quantities the Syndicate sells droids in (docs/droids.md §3, RE-RULED
+// 07-11-26): 5, 10 or 50, each at the flat tariff above per droid (50,000 / 100,000 / 500,000). Smallest
+// first, the order the buy card shows them. Frozen so nothing can add a size at run time.
+const SYNDICATE_DROID_BATCHES = Object.freeze([5, 10, 50]);
+
 // DROID_CAP — the most droids ONE VENTURE may hold assigned (docs/phase-1-tuning.md §Droids, `[FIRST-CUT]`
 // 20; docs/droids.md §1). A 21st assign is refused. SOURCE-BLIND: guild and Syndicate droids count alike.
 // The boost curve below reads the same constant as its `CAP`, so it is spelled once, here.
@@ -502,6 +507,7 @@ module.exports = {
   DROID_SOURCE_SYNDICATE,
   DROID_SOURCES,
   SYNDICATE_DROID_TARIFF,
+  SYNDICATE_DROID_BATCHES,
   DROID_CAP,
   DROID_BOOST_MAX,
   DROID_BOOST_P,
