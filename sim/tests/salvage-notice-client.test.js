@@ -422,5 +422,21 @@ test('GUARD: every notice the client already had words for renders exactly as on
   assert.equal(rendered.length, EXISTING.length + 2);
   // Sanity, so the hash cannot pin an empty card: every one has a title and words.
   for (const r of rendered) assert.ok(r.title && r.paragraphs.length && r.row, `${r.type} rendered`);
-  assert.equal(sha(rendered), GUARD_PIN);
+  // ⤳ 07-11-26 (roadmap 2.6, droids and losing a system — docs/droids.md §14): the system_lost card gained ONE
+  // sentence in its aftermath line and ONE fact row, "Droids lost". With exactly those two taken back out, every card
+  // renders as it did on main — so the old pin still stands as the proof that nothing else moved; the new pin holds
+  // the card as it reads now.
+  assert.equal(sha(withoutDroidLoss(rendered)), GUARD_PIN, 'only the droid-loss sentence and fact changed');
+  assert.equal(sha(rendered), GUARD_PIN_DROIDS);
 });
+
+const DROID_LOSS_SENTENCE = ' Any droids you had there were lost with it — a droid cannot leave its system.';
+const GUARD_PIN_DROIDS = '5e7ec424879314827c735ec2343797bb8c2f0da654cca8e37c5ff88eeaa6667c'; // the card with the droid loss, 07-11-26
+// withoutDroidLoss(rendered) -> a copy with the §14 delta removed from each system_lost card (and only from those).
+function withoutDroidLoss(rendered) {
+  return rendered.map((r) => (r.type !== 'system_lost' ? r : {
+    ...r,
+    paragraphs: r.paragraphs.map((t) => t.replace(DROID_LOSS_SENTENCE, '')),
+    facts: r.facts.filter((f) => f[0] !== 'Droids lost'),
+  }));
+}

@@ -234,7 +234,7 @@ the one-asset mint and calls `mintDroidBatch`: it halts if `droidCount` is not a
 `droidCount` idle **Syndicate**-source droids at the destination through `mintDroid`, stamped with the arrival tick,
 on consecutive `droidSerial` numbers. It moves no credit or fuel (pinned: the landing tick differs from a twin with the
 shipment removed only by the droids and the serial). A vanished owner's batch is dropped, as any asset delivery; the
-destination is not re-checked at arrival (what a lost system does to droids is still the open §1 seam). **The
+destination is not re-checked at arrival (what a lost system does to droids is still the open §1 seam *(⤳ 07-11-26: ruled and built — §14: it IS re-checked now, and a batch bound for a lost system is forfeit)*). **The
 instant path is gone:** a droid `buyAssetFromSyndicate` is now refused, naming `buyDroidBatch`; the droid stays in
 `SYNDICATE_SELLABLE_KINDS` and `priceAssetForPurchase` still returns the per-droid tariff. A new invariant,
 `checkDroidShipments`, halts on a droid delivery whose count is not a ruled size, a `droidCount` on any other shipment,
@@ -738,3 +738,36 @@ the droids are gone at the moment of loss, so there is nothing to strand or swee
   handling.
 - **No new notice.** The existing `system_lost` message (`docs/event-log.md` §14) is **widened** to say the guild's
   droids in the system were lost/abandoned too; droids get no event type of their own.
+
+*(**⤳ AS-BUILT 07-11-26 — droids and losing a system (engine + the notice's words).** The ruling above, built. **No new
+number.**
+- **The hook is `evictSystem`** (`sim/eviction.js`), the one eviction both causes route through (today
+  `abandonPrefecture`; the storyteller's later). A new step **2b**, right after the venture closures — which have
+  already released every deployed droid back to idle (`releaseDroidsFrom`) — calls **`destroyDroidsIn(guild,
+  systemId)`**: every droid of the losing guild whose `systemId` is the lost system leaves `guild.droids`, the key
+  omitted when the last one goes, `droidSerial` untouched (ids never reissued). The same row-removal as a §5 death;
+  nothing minted, nothing refunded. **Not stranded:** no droid is ever flagged, so the salvage window does not count
+  one and neither `recoverStrandedAssets` nor `sweepStrandedAssets` can see one — a rival (or the old owner) claiming
+  the fallow system inherits no droid. Only the **losing guild's** droids are touched; another guild's droids cannot
+  stand in a system it does not hold.
+- **The arrival forfeit** is in `mintDroidBatch` (`sim/tick.js`, `stepArrivals`' droid branch): after the ruled-size
+  tripwire, `guildHolds(state, buyer, destinationSystemId)` is asked, and a batch whose destination is no longer held
+  **mints nothing** and resolves (it leaves `shipments` like any landed delivery). Nothing is reversed — the credits
+  are the Syndicate's and the medium flight's fuel was burned at the buy. Pinned: the arrival tick hashes identically
+  to a twin whose shipment was simply deleted. A batch whose system is lost and **re-claimed** before it lands still
+  lands — the check is "held at arrival", as the ruling words it.
+- **The notice:** `system_lost`'s payload gains `destroyedDroidIds` (sorted, **omitted when none**, so a droidless
+  eviction's payload is byte-identical to before); the client's card gains a sentence and a `Droids lost` fact
+  (`docs/event-log.md` §14, AS-BUILT — the droid loss). No new event type.
+- **Tripwires** (`checkDroids`, `sim/invariants.js`): `droid-never-stranded` (a droid row carrying `stranded`),
+  `droid-not-in-a-lost-system` (a droid standing in a system with an open salvage window — an eviction that forgot
+  its droids) and `droid-not-in-a-rival-system` (a droid standing in a system another guild holds). The stronger rule —
+  "a droid stands only where its guild holds" — is **not** asserted: many hand-built test fixtures place droids in
+  systems with no claim row, so it waits on a fixture pass (`docs/roadmap.md` checklist). The one gap that leaves — an
+  eviction that strands nothing (so opens no window) and forgets its droids — is pinned by the eviction tests instead.
+- **Conservation / neutrality** (invariants 1–2): the eviction with droids hashes identically to the same eviction with
+  those droid rows deleted beforehand, bar the notice field — no credit, fuel, GP or RP moves because of a droid. The
+  system's `droid_components` go with the pool under the existing goods forfeit, no special handling.
+- **No-op:** a batch landing in a held system, and a loss with no droid in it, hash exactly as at 1cfea14 (state and
+  every view; `sim/tests/droid-loss-noop-script.js`). **Determinism:** both the droid-destroying abandon and the
+  forfeited batch re-run and save/restore byte-identically. Tests: `sim/tests/droid-system-loss.test.js`.)*

@@ -825,6 +825,25 @@ its own two.
   `main`'s client. The Show on map line's pin moved in `sim/tests/server.test.js` and
   `sim/tests/outpost-teardown-client.test.js` (counts unchanged).
 
+**AS-BUILT — the droid loss (07-11-26; roadmap 2.6, droids and losing a system — `docs/droids.md` §14).** No new
+event type: the one `system_lost` is widened, as §14 of the droid doc rules.
+- **The payload** gains **`destroyedDroidIds`** — the ids of the guild's droids destroyed with the system, deployed and
+  idle alike, sorted. It is **omitted when no droid was there** (omit-when-empty), so a droidless eviction writes
+  exactly the payload it always has (pinned: `sim/tests/droid-system-loss.test.js` against 1cfea14, and every older
+  abandon / sweep golden unchanged). The rows are gone by the time the player reads it, so the ids are only counted.
+- **The words** (`client/game.html`, `SYSTEM_LOST_AFTERMATH`): the aftermath line gains one sentence after the
+  machines' — "Any droids you had there were lost with it — a droid cannot leave its system." — so it reads, in full,
+  "Any ventures you ran there are closed, and any goods you held there are forfeit. Any machines you left behind are
+  stranded in the system, awaiting salvage. Any droids you had there were lost with it — a droid cannot leave its
+  system. Your exploration record of it is kept." Static copy, "Any" as the other sentences, so it holds for a system
+  with no droid. Draft wording, for the human to tune at review.
+- **The facts** gain **`Droids lost`**, after `Machines stranded`: the count of `destroyedDroidIds`, or "None" when the
+  key is absent (a droidless loss, or a row written before this slice). The number rides the facts block, as the other
+  counts do; the client computes nothing else.
+- **Tripwires.** `sim/tests/losing-ground-notice-client.test.js` now expects the new sentence and row;
+  `sim/tests/salvage-notice-client.test.js`'s GUARD keeps its old pin, asserted after stripping exactly the sentence and
+  the row (so nothing else on any card moved), and pins the new render beside it.
+
 ## 15. The sweep notices — `assets_inherited` and `assets_swept` (losing ground, engine half and client half, 28-10-26)
 
 **What they record.** A guild planted a Prefecture in a fallow system where ANOTHER guild's stranded machines still
