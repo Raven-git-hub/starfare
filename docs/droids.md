@@ -198,6 +198,20 @@ system the guild **holds** (where its ventures are — assignment is same-system
 the shortfall. The commissioned-asset quote in the snapshot (`assetPurchaseQuote`) does not list the droid — it has
 no build time or delivery leg to quote; surfacing the tariff is the client slice's.)*
 
+*(**⤳ RE-RULED 07-11-26 — the Syndicate buy becomes BATCHED and SHIPPED** — supersedes the instant hand-over
+above ("at once … no delivery fuel", "no … delivery leg to quote"). Syndicate droids sell in **three batches —
+5, 10, 50 — at the flat 10,000 cr/droid tariff** (**50,000 / 100,000 / 500,000**; these three sizes are the only
+purchase quantities, the per-droid price unchanged, so `SYNDICATE_DROID_TARIFF` stays 10,000). The buy's **build
+time is 0** (the Syndicate holds them ready), but it is now a **standard Syndicate delivery** (`docs/asset-purchase.md`,
+the design.md §6 shipments rail), not an instant mint: one **medium** hauler from the destination's nearest
+waystation, at the flat Syndicate `CRAFT_SPEED`, its delivery fuel the **medium hold's** route fuel — a droid
+purchase fills a medium hold, parallel to an asset filling a heavy hold (`ASSET_CARGO_VOLUME = HEAVY_HOLD`), so it is
+**one medium flight per purchase, the same fuel whether you buy 5 or 50**, and it reuses the existing medium tier —
+**no new number**. Credits + delivery fuel are charged **up front** at buy (like a bought miner); the batch lands as
+**N idle Syndicate-source droids** at the held destination when the shipment arrives. It is **sold from the Syndicate
+buy surface** alongside the commissioned assets. Built in the Syndicate droid-batch-buy slice, which supersedes the
+instant `buyAssetFromSyndicate` droid path.)*
+
 **Why this gap (the rationale to lock):** guild droids out-perform on cost, life and upkeep because
 they will eventually be the *risky, illicit* option; the Syndicate premium (dearer, shorter, more
 upkeep) is the price of *future* safety and legality. The **size** of the gap is coupled to how
