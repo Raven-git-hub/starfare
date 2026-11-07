@@ -714,3 +714,27 @@ deployment exists; the `droids_spent` notice's player-facing wording (engine sli
 
 The client renders the snapshot and computes no game number; the counts and conditions it shows are read, not
 computed.
+
+## 14. Losing a system — droids are destroyed with it — RULED 07-11-26
+
+Droids are **system-local** (§1): a droid carries a `systemId`, is assigned only within its own system, and
+**cannot move between systems**. So when a guild **loses a system** — by **abandoning** its Prefecture or by
+**eviction** (`sim/eviction.js`) — its droids there have nowhere to go, and they are **destroyed with it**, like the
+Prefecture and the torn-down ventures. They are **not** left stranded-and-salvageable the way a system's **machines**
+are (the losing-ground salvage window), and a rival who later claims the fallow system does **not** inherit them —
+the droids are gone at the moment of loss, so there is nothing to strand or sweep.
+
+- **Deployed and idle alike.** Every droid of the losing guild standing in the system is destroyed — the deployed
+  ones on the ventures being torn down, and the idle ones in the system's pool. Same row-removal as a droid wearing
+  out (§5): droid rows leave `guild.droids`, nothing is minted; **GP/RP- and conservation-neutral** (a droid is not a
+  conserved good), **deterministic** (invariant 9).
+- **An in-flight batch is forfeit.** A Syndicate droid batch (§3) whose delivery is bound for a system the guild **no
+  longer holds when it would arrive** is **lost** — the droids never materialise, and the credits **and** delivery
+  fuel paid up front are **forfeit** (no refund), consistent with the fuel-always-forfeit rule and with the player
+  having lost the system. The delivery's fuel was already burned out of the galaxy at buy, so nothing is reversed and
+  invariant 1 is untouched.
+- **The `droid_components` stock is forfeit as goods.** A lost system's `droid_components` (the §5 maintenance pool)
+  go the way of **all** the guild's goods there — forfeit under the existing losing-ground goods rule, no special
+  handling.
+- **No new notice.** The existing `system_lost` message (`docs/event-log.md` §14) is **widened** to say the guild's
+  droids in the system were lost/abandoned too; droids get no event type of their own.
