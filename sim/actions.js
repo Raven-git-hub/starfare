@@ -23,8 +23,8 @@ const {
   priceAssetForPurchase, assetPurchaseBaseline, nextSyndicateCommissionId,
 } = require('./asset-recipes.js');
 const {
-  DROID, DROID_SOURCE_SYNDICATE, DROID_SOURCES, SYNDICATE_DROID_TARIFF, mintDroid, isDroidIdle, unassign,
-  assignDroidRefusal, assignDroidTo,
+  DROID, DROID_SOURCES, SYNDICATE_DROID_TARIFF, SYNDICATE_DROID_BATCHES, mintDroid,
+  isDroidIdle, unassign, assignDroidRefusal, assignDroidTo,
 } = require('./droids.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
@@ -71,7 +71,7 @@ const {
 } = require('./transport.js');
 const {
   GUILD_STARTING_FUEL, routeFuelCost, routeFuelCostFromHex, burnFuel, fuelValue,
-  volumeOf, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME,
+  volumeOf, haulerTierForSpace, HEAVY_HOLD, ASSET_CARGO_VOLUME, DROID_BATCH_CARGO_VOLUME,
 } = require('./fuel.js');
 const {
   STARTER_MINERS, STARTER_FACTORIES, starterAssetSpecs, assetKindForVentureType,
@@ -1664,6 +1664,19 @@ function createBuyAssetFromSyndicateAction({ guildId, assetKind, destinationSyst
   };
 }
 
+// buyDroidBatch: buy a BATCH of droids from the Syndicate (docs/droids.md §3, RE-RULED 07-11-26 — supersedes the
+// instant droid `buyAssetFromSyndicate`). `batch` is one of SYNDICATE_DROID_BATCHES (5 / 10 / 50), each droid at
+// the flat SYNDICATE_DROID_TARIFF. `destinationSystemId` must be a system the guild HOLDS (a droid is only any
+// use beside the guild's own ventures — assignment is same-system). Credits + one medium flight's fuel are paid
+// now; the batch ships at once (build time 0) and lands as `batch` idle Syndicate droids on arrival. A droid has
+// no market price, so there is no `issueTick` (no quote-lock to honour).
+function createBuyDroidBatchAction({ guildId, batch, destinationSystemId }) {
+  if (guildId === undefined) throw new Error('createBuyDroidBatchAction: guildId is required');
+  if (batch === undefined) throw new Error('createBuyDroidBatchAction: batch is required');
+  if (destinationSystemId === undefined) throw new Error('createBuyDroidBatchAction: destinationSystemId is required');
+  return { type: 'buyDroidBatch', guildId, batch, destinationSystemId };
+}
+
 // assignDroid: put one of the guild's IDLE droids to work at one of its ventures (droid engine slice 3;
 // docs/droids.md §1/§4). Instant and same-system (the establish Gate-2 shape). A Syndicate droid may go
 // only to a LICENSED venture; a guild droid to any. A venture holds at most DROID_CAP. Shape is exactly
@@ -2746,27 +2759,50 @@ function validateTier3Licence(state, action, venture, good) {
   return { valid: true };
 }
 
-// validateSyndicateDroidBuy(state, guild, action) -> the gates for buying ONE droid from the Syndicate
-// (droid engine slice 3; docs/droids.md §3). Reached from the buyAssetFromSyndicate validate once the
-// kind (a droid) and the destination's shape are proven. Much shorter than an asset buy, because a
-// Syndicate droid is a flat-tariff institutional product handed over at once, not a commission:
-//   - NO build queue, so no queue cap: nothing waits on `syndicateBuilds`;
-//   - NO delivery flight, so no fuel gate and no waystation gate;
-//   - NO market price, so no quote-lock: the tariff is the same at every tick, so `issueTick` (if sent)
-//     cannot change the price and is not checked.
-// What it DOES gate, in order:
-//   1. the destination is a real system the guild HOLDS — the droid is minted straight into it, and the
-//      only place a guild can use a droid is beside one of its own ventures (assignment is same-system);
-//   2. the guild can pay the whole tariff, the shortfall named.
-function validateSyndicateDroidBuy(state, guild, action) {
+// validateDroidBatchBuy(state, action) -> the gates for buying a BATCH of droids from the Syndicate
+// (docs/droids.md §3, RE-RULED 07-11-26). It replaces slice 3's instant one-droid buy. The batch is a
+// Syndicate delivery like a bought miner — paid up front, shipped from the destination's nearest waystation —
+// but with three differences, so it is its own action rather than a branch of buyAssetFromSyndicate:
+//   - a COUNT (5 / 10 / 50) of one flat-tariff product, not one parts-priced asset — so no quote-lock;
+//   - build time 0 (the Syndicate holds droids ready), so it never joins the single-slot commission queue and
+//     takes no place under SYNDICATE_QUEUE_MAX — it is in flight from the tick it is bought, like a goods buy;
+//   - it rides a MEDIUM hauler (DROID_BATCH_CARGO_VOLUME), not the heavy one an asset fills.
+// Gates, in order, each with its own reason (structure first, money last, so a short guild is told it is short
+// only when nothing else is wrong):
+//   1. the guild exists;
+//   2. `batch` is one of the three ruled sizes;
+//   3. the destination is a real system, that a waystation can reach, and that the guild HOLDS (a droid is
+//      only usable beside the guild's own ventures — assignment is same-system, §1);
+//   4. the guild can pay N × tariff, the shortfall named;
+//   5. the guild can burn the one medium flight's fuel, the shortfall named.
+function validateDroidBatchBuy(state, action) {
+  const guild = findGuild(state, action.guildId);
+  if (!guild) {
+    return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+  }
+  if (!SYNDICATE_DROID_BATCHES.includes(action.batch)) {
+    return { valid: false, reason: `batch must be one of ${SYNDICATE_DROID_BATCHES.join(' / ')} droids — the Syndicate sells droids only in those batches (got ${JSON.stringify(action.batch)})` };
+  }
+  if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
+    return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
+  }
   if (!getSystem(action.destinationSystemId)) {
     return { valid: false, reason: `system ${JSON.stringify(action.destinationSystemId)} is not a system on the seed` };
   }
-  if (!guildHolds(state, guild.id, action.destinationSystemId)) {
-    return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.destinationSystemId)} — a Syndicate droid is handed over in a system the guild holds` };
+  if (!nearestWaystation(action.destinationSystemId)) {
+    return { valid: false, reason: `no Syndicate waystation can reach system ${JSON.stringify(action.destinationSystemId)} — it resolves to no seed coordinates` };
   }
-  if (guild.credits < SYNDICATE_DROID_TARIFF) {
-    return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay the Syndicate droid tariff of ${SYNDICATE_DROID_TARIFF} — short by ${SYNDICATE_DROID_TARIFF - guild.credits}` };
+  if (!guildHolds(state, guild.id, action.destinationSystemId)) {
+    return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.destinationSystemId)} — Syndicate droids are delivered only to a system the guild holds` };
+  }
+  const price = action.batch * SYNDICATE_DROID_TARIFF;
+  if (guild.credits < price) {
+    return { valid: false, reason: `guild ${guild.id} holds ${guild.credits} credits, cannot pay ${price} for a batch of ${action.batch} Syndicate droids (${SYNDICATE_DROID_TARIFF} each) — short by ${price - guild.credits}` };
+  }
+  const { fuelBurn } = routeFuelCost(action.destinationSystemId, DROID_BATCH_CARGO_VOLUME);
+  const availableFuel = guild.fuelHoard + (guild.deuteriumFuel || 0);
+  if (availableFuel < fuelBurn) {
+    return { valid: false, reason: `guild ${guild.id} holds ${availableFuel} fuel (legal + contraband), cannot burn ${fuelBurn} flying a droid batch to ${JSON.stringify(action.destinationSystemId)} — short by ${fuelBurn - availableFuel}` };
   }
   return { valid: true };
 }
@@ -3928,9 +3964,12 @@ function validateAction(state, action) {
     if (typeof action.destinationSystemId !== 'string' || action.destinationSystemId.length === 0) {
       return { valid: false, reason: 'destinationSystemId must be a non-empty string' };
     }
-    // A DROID is its own, much shorter path (droid engine slice 3, docs/droids.md §3) — see
-    // validateSyndicateDroidBuy, just above validateAction. Branched here, after the shared kind/destination-shape gates.
-    if (action.assetKind === DROID) return validateSyndicateDroidBuy(state, guild, action);
+    // A DROID is still Syndicate-SELLABLE, but not through this action any more (docs/droids.md §3, RE-RULED
+    // 07-11-26): it is sold only in batches, through `buyDroidBatch` (validateDroidBatchBuy, above). Slice 3's
+    // instant one-droid hand-over is retired, so this refuses loudly and names the action to send instead.
+    if (action.assetKind === DROID) {
+      return { valid: false, reason: `the Syndicate sells droids only in batches of ${SYNDICATE_DROID_BATCHES.join(' / ')} — send buyDroidBatch, not buyAssetFromSyndicate` };
+    }
     // A REAL system to deliver to — but NO guildHolds gate (asset-purchase.md "Destination"): an
     // idle asset is guild inventory located at a system, like a dockyard's output, so it may land
     // in any system that exists. Refused (not defaulted) when the system is unknown or no
@@ -3987,6 +4026,8 @@ function validateAction(state, action) {
     if (!quote.valid) return quote;
     return { valid: true };
   }
+
+  if (action.type === 'buyDroidBatch') return validateDroidBatchBuy(state, action);
 
   if (action.type === 'assignDroid') {
     // Assign an idle droid to a venture (droid engine slice 3; docs/droids.md §1/§4). Each refusal has its
@@ -6036,20 +6077,40 @@ function applyAction(state, action) {
     return next;
   }
 
-  if (action.type === 'buyAssetFromSyndicate' && action.assetKind === DROID) {
-    // A SYNDICATE DROID (droid engine slice 3; docs/droids.md §3) — no commission, no flight, no fuel:
-    // the flat tariff moves and one droid is minted at once. Validate proved the system is held and the
-    // tariff affordable.
+  if (action.type === 'buyDroidBatch') {
+    // A SYNDICATE DROID BATCH (docs/droids.md §3, RE-RULED 07-11-26). Validate proved the size, the held
+    // destination and that the guild can pay both costs. TWO costs move NOW and ONE delivery is scheduled —
+    // nothing else. No droid exists yet: the batch lands on arrival (stepArrivals mints it).
     const guild = findGuild(next, action.guildId);
-    // CREDITS — exactly the tariff leaves the guild and the same integer lands in the Syndicate ledger, so
+    // CREDITS — N × the flat tariff leaves the guild and the same integer lands in the Syndicate ledger, so
     // invariant 2 (credit conservation) holds to the credit by construction, as for every other buy.
-    guild.credits -= SYNDICATE_DROID_TARIFF;
-    next.syndicate.ledger += SYNDICATE_DROID_TARIFF;
-    // THE DROID — one idle, Syndicate-source row through THE ONE droid mint (sim/droids.js), the same
-    // helper a finished dockyard build uses, so both sources number off the one `droidSerial`.
-    mintDroid(guild, DROID_SOURCE_SYNDICATE, action.destinationSystemId, next.tick);
-    // No fuel or goods moved, and credits only moved guild↔ledger, so the cache is expected unchanged —
-    // refreshed anyway, as the cancel apply does, so it can never lag the state it summarises.
+    const price = action.batch * SYNDICATE_DROID_TARIFF;
+    guild.credits -= price;
+    next.syndicate.ledger += price;
+    // FUEL — ONE medium flight, paid up front (asset-purchase.md "Cost timing and fuel"), the same whatever
+    // the batch size. Burned out of the galaxy, so invariant 1 balances only because `totalConsumed` rises by
+    // exactly what the hoard falls. The SAME helper and volume as the validate gate, so the two cannot differ.
+    const { fuelBurn } = routeFuelCost(action.destinationSystemId, DROID_BATCH_CARGO_VOLUME);
+    burnFuel(guild, fuelBurn);
+    next.audit.totalConsumed += fuelBurn;
+    // THE DELIVERY — build time 0, so the order is a standard Syndicate delivery from THIS tick: nearest
+    // waystation → straight-line hex distance → an ABSOLUTE arrival tick at the flat Syndicate CRAFT_SPEED
+    // (`arrivalTickFor`), exactly as a goods buy schedules and as a finished commission ships. It never sits on
+    // `syndicateBuilds` — with nothing to build there is nothing to wait for, so it neither waits behind the
+    // guild's building head nor takes a SYNDICATE_QUEUE_MAX place. The record carries `assetKind: 'droid'` (so
+    // the snapshot and the transit manifest treat it as an asset delivery) and `droidCount`, which stepArrivals
+    // reads to mint that many droids. No `cargo`: no goods and no fuel are aboard (invariant 1 reads 0 here).
+    const { distance } = nearestWaystation(action.destinationSystemId);
+    if (!Array.isArray(next.shipments)) next.shipments = [];
+    next.shipments.push({
+      ownerGuildId: action.guildId,
+      assetKind: DROID,
+      droidCount: action.batch,
+      destinationSystemId: action.destinationSystemId,
+      arrivalTick: arrivalTickFor(next.tick, distance),
+    });
+    // The fuel burn moved `fuelHoard`, which `galacticSupply.fuel.guildHeld` sums, and `POST /action` asserts
+    // every invariant with no tick between — so refresh the cache, as every buy does.
     next.galacticSupply = computeGalacticSupply(next);
     return next;
   }
@@ -6906,6 +6967,7 @@ module.exports = {
   createAssignDroidAction,
   createUnassignDroidAction,
   createSetAutoReplaceAction,
+  createBuyDroidBatchAction,
   createCancelSyndicateCommissionAction,
   createAddOrderLineAction,
   createRemoveOrderLineAction,

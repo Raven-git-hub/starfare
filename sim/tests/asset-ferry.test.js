@@ -41,6 +41,8 @@ const { createState } = require('../state.js');
 const { advance } = require('../run.js');
 const { saveState, appendJournal, loadOrInit } = require('../persist.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { computeGalacticSupply } = require('../supply.js');
 const { checkInvariants } = require('../invariants.js');
 const { guildHolds } = require('../claims.js');
@@ -461,7 +463,7 @@ test('BYTE-IDENTICAL: a galaxy that strands machines but never salvages serializ
   const bare = structuredClone(s);
   delete bare.salvageWindows;
   assert.deepEqual({
-    tick: s.tick, state: hashState(bare), god: sha(buildSnapshot(bare)), own: sha(buildSnapshot(bare, 'g1')), rival: sha(buildSnapshot(s, 'g2')),
+    tick: s.tick, state: hashState(bare), god: sha(withoutDroidBatchQuote(buildSnapshot(bare))), own: sha(withoutDroidBatchQuote(buildSnapshot(bare, 'g1'))), rival: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g2'))),
   }, GOLDEN_NO_SALVAGE);
 });
 

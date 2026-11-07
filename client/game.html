@@ -1004,6 +1004,12 @@ select.field{appearance:none; cursor:pointer;}
 #tw-cn .am-item .apr .c{font-size:11px; color:var(--amber); margin-right:1px;}
 #tw-cn .am-item .apr .abt{font-family:var(--mono); font-size:11px; color:var(--ink3); letter-spacing:.04em; font-variant-numeric:tabular-nums;}
 #tw-cn .am-add{margin-top:11px; width:100%; font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--void); background:var(--amber); border:none; border-radius:7px; padding:9px; cursor:pointer;}
+/* The Droids card (roadmap 2.6; docs/droids.md §3, RE-RULED 07-11-26): one .am-item with three batch chips. The
+   chips borrow the card's own open/amber language; the status line sits where the others show a build time. */
+#tw-cn .dq-chips{display:flex; gap:6px; margin-top:8px;}
+#tw-cn .dq-chip{flex:1; font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; color:var(--ink2); background:none; border:1px solid var(--line2); border-radius:6px; padding:5px 0; cursor:pointer;}
+#tw-cn .dq-chip.on{border-color:var(--amber); color:var(--amber2); background:var(--amber-ghost);}
+#tw-cn .dq-ready{font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3); margin-top:7px;}
 /* in-progress commissions (parallel; the dockyard queue look) */
 #tw-cn .ip-item{border:1px solid var(--line); border-radius:7px; background:var(--panel2); padding:10px 11px; display:flex; align-items:center; gap:9px; flex:0 0 auto;}
 #tw-cn .ip-item.cur{border-color:var(--amber-dim); background:var(--amber-ghost);}
@@ -10173,12 +10179,44 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // cnA(kind) -> cnLabel with its article: "a Miner", "an Outpost kit".
   function cnA(kind){ var l = cnLabel(kind); return (/^[aeiou]/i.test(l) ? 'an ' : 'a ') + l; }
 
+  // cnDroidBatch(dq) -> the batch row the Droids card has selected: T.cnDroidBatch if it is still one of the
+  // snapshot's sizes, else the first (smallest). The sizes and prices are the snapshot's droidBatchQuote — the
+  // client keeps only WHICH chip is lit, never a size list or a price of its own.
+  function cnDroidBatch(dq){
+    var rows = (dq && dq.batches) || [];
+    for(var i = 0; i < rows.length; i++){ if(rows[i].size === T.cnDroidBatch) return rows[i]; }
+    return rows[0] || null;
+  }
+  // cnDroidCard(dq, guild, open) -> the Droids card for the Commission Assets list (docs/droids.md §3, RE-RULED
+  // 07-11-26). One card, three batch chips; the lit chip's price and the per-droid figure come straight from
+  // `droidBatchQuote`. A droid batch builds in 0 (the Syndicate holds them ready), so where the other cards show
+  // a build time this one says it is ready and how long the medium hauler takes — the destination's
+  // `fuelCost[home].travelTicks`, the same delivery leg every Syndicate delivery reads. Nothing is computed here.
+  function cnDroidCard(dq, guild, open){
+    var sel = cnDroidBatch(dq);
+    var chips = ((dq && dq.batches) || []).map(function(b){
+      return '<button class="dq-chip' + (sel && b.size === sel.size ? ' on' : '') + '" data-batch="' + b.size + '">' + b.size + '</button>';
+    }).join('');
+    var deliver = cnDeliveryTicks(guild, guild && guild.homeSystemId);
+    return '<div class="am-item' + (open ? ' open' : '') + '" data-kind="droid">'
+      + '<div class="anm">Droids</div>'
+      + '<div class="dq-chips">' + chips + '</div>'
+      + '<div class="apr"><span class="amt"><span class="c">&#162;</span>' + (sel ? fmt(sel.price) : '&mdash;') + '</span>'
+        + '<span class="abt">&#162;' + fmt(dq.perDroid) + '/droid</span></div>'
+      + '<div class="dq-ready">Ready &mdash; ships by ' + dq.haulerTier + ' &middot; ~' + cnDur(deliver) + '</div>'
+      + (open ? '<button class="am-add dq-add">+ Add commission</button>' : '')
+      + '</div>';
+  }
+
   function renderConstructed(){
     var cn = el('tw-cn'); if(!cn) return;
     var s = snap(), guild = meGuild();
     var quote = (s && s.assetPurchaseQuote) || {};
     var kinds = Object.keys(quote);
-    if(!T.cnOpen || kinds.indexOf(T.cnOpen) < 0) T.cnOpen = kinds[0] || null;
+    // The Droids card is a list entry too ('droid'), but only when the snapshot publishes its quote.
+    var dq = (s && s.droidBatchQuote) || null;
+    var openable = dq ? kinds.concat(['droid']) : kinds;
+    if(!T.cnOpen || openable.indexOf(T.cnOpen) < 0) T.cnOpen = kinds[0] || null;
 
     // This guild's Syndicate queue (one slot per guild — only the head builds), each row with a
     // derived arrival (queue-aware build remaining + its own delivery leg). Kept in the snapshot's
@@ -10210,7 +10248,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
           + '<span class="abt">' + cnDur(buildT) + '</span></div>'
         + (open ? '<button class="am-add" data-kind="' + kind + '">+ Add commission</button>' : '')
         + '</div>';
-    }).join('');
+    }).join('') + (dq ? cnDroidCard(dq, guild, T.cnOpen === 'droid') : '');
     var noteHtml = T.cnNote
       ? '<div class="cn-note' + (T.cnNoteKind ? ' ' + T.cnNoteKind : '') + '">' + T.cnNote + '</div>' : '';
     var p1 = '<div class="dk-card">'
@@ -10395,6 +10433,56 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .catch(function(err){ if(T.tier === 4) renderConstructed(); });
   }
 
+  // Order the lit droid batch (docs/droids.md §3, RE-RULED 07-11-26). The same shape as cnCommission: a
+  // credits pre-check that only compares two snapshot values (the batch's quoted price vs guild.credits), then
+  // the adviser confirm restating the price, the per-droid figure and the delivery, then the action. The engine
+  // is the real gate (held system, fuel); a refusal just repaints. The batch goes to the guild's home system, as
+  // every Constructed buy does.
+  function cnDroidOrder(){
+    var s = snap(), guild = meGuild();
+    var dq = s && s.droidBatchQuote;
+    var sel = cnDroidBatch(dq);
+    if(!guild || !sel) return;
+    var dest = guild.homeSystemId;
+    if(typeof guild.credits === 'number' && guild.credits < sel.price){
+      if(!window.__adviserConfirm){ return; }
+      window.__adviserConfirm({
+        title: 'Insufficient credits',
+        body: 'We cannot afford ' + sel.size + ' droids right now. We need <b>&#162;' + fmt(sel.price) + '</b>.',
+        confirmLabel: 'Close',
+        singleButton: true,
+        onConfirm: function(){}
+      });
+      return;
+    }
+    var destName = (window.__systemName && window.__systemName(dest)) || dest;
+    var body = 'Buy ' + sel.size + ' droids from the Syndicate for <b>&#162;' + fmt(sel.price) + '</b> (&#162;'
+      + fmt(dq.perDroid) + ' each, paid up front with the delivery fuel). They are ready now and ship by '
+      + dq.haulerTier + ' hauler to ' + destName + ' &mdash; arriving in ~' + cnDur(cnDeliveryTicks(guild, dest)) + '.';
+    var fire = function(){ cnPostDroidBatch(sel.size, dest); };
+    if(!window.__adviserConfirm){ fire(); return; }
+    window.__adviserConfirm({
+      title: 'Buy ' + sel.size + ' droids?',
+      body: body,
+      confirmLabel: 'Commission ▸',
+      onConfirm: fire
+    });
+  }
+  function cnPostDroidBatch(batch, dest){
+    var player = (window.__player && window.__player()) || {};
+    if(!player.guildId || !dest || !batch) return;
+    window.__sendAction({ type:'buyDroidBatch', guildId: player.guildId, batch: batch, destinationSystemId: dest })
+      .then(function(res){
+        if(!res || !res.accepted){
+          if(T.tier === 4) renderConstructed();
+          return;
+        }
+        cnNote('Droids ordered — ' + batch + ' droids are on their way.', 'ok');
+        if(window.__refreshNow) window.__refreshNow(); else if(T.tier === 4) renderConstructed();
+      })
+      .catch(function(err){ if(T.tier === 4) renderConstructed(); });
+  }
+
   // Delegated once, on the panel — so every re-render keeps working with no rebinding.
   var panel = el('tp-trade');
   panel.addEventListener('click', function(e){
@@ -10405,6 +10493,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       return;
     }
     // The Constructed view's own controls (delegated on the same panel).
+    // The Droids card's chips and its Add come first: both sit inside its .am-item.
+    var dqChip = e.target.closest('.dq-chip');
+    if(dqChip){ T.cnDroidBatch = +dqChip.getAttribute('data-batch'); T.cnOpen = 'droid'; renderConstructed(); return; }
+    if(e.target.closest('.dq-add')){ cnDroidOrder(); return; }
     var amItem = e.target.closest('.am-item');
     if(amItem && !e.target.closest('.am-add')){ T.cnOpen = amItem.getAttribute('data-kind'); renderConstructed(); return; }
     var amAdd = e.target.closest('.am-add');
@@ -11345,7 +11437,10 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var key = shipKey(sh);
     var open = O.expanded[key] === true;
     var cargo = sh.cargo || {};
-    var manRows = sh.assetKind
+    // A Syndicate droid batch (docs/droids.md §3) names its count, as goods name a quantity: "droids · 50".
+    var manRows = sh.droidCount
+      ? '<div class="ops-manrow"><span class="g">droids</span><span class="q">' + fmt(sh.droidCount) + '</span></div>'
+      : sh.assetKind
       ? '<div class="ops-manrow"><span class="g">' + esc(craftManifestLabel(sh.assetKind)) + '</span></div>'
       : Object.keys(cargo).sort().map(function(g){
           return '<div class="ops-manrow"><span class="g">' + esc(g) + '</span><span class="q">' + fmt(cargo[g]) + ' Nu</span></div>';

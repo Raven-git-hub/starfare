@@ -132,6 +132,14 @@ const TIER_VOLUME = Object.freeze({ 1: 1, 2: 100, 3: 60000 });
 // volume of a DEPLOYABLE kit in a guild craft's hold (`volumeOf` below; roadmap 2.2 deploy pipeline).
 const ASSET_CARGO_VOLUME = HEAVY_HOLD;
 
+// DROID_BATCH_CARGO_VOLUME — the cargo space a Syndicate droid batch fills: a WHOLE MEDIUM hold
+// (docs/droids.md §3, RE-RULED 07-11-26 — "a droid purchase fills a medium hold, parallel to an asset
+// filling a heavy hold"). The medium row's own `hold`, read from the ruled table, so it is not a new
+// number and cannot drift from the tier it names. It is the same for any batch size (5, 10 or 50): ONE
+// medium flight per purchase, so `routeFuelCost(dest, DROID_BATCH_CARGO_VOLUME)` is the batch's whole
+// delivery fuel. A droid is not a stockpile good, so it never rides a cart and has no `volumeOf`.
+const DROID_BATCH_CARGO_VOLUME = HAULER_TIERS.find((t) => t.tier === 'medium').hold;
+
 // volumeOf(good) -> the cargo space ONE unit of `good` takes, from its manufacturing
 // tier (`tierOf`). T1 -> 1, T2 -> 100, T3 -> 60,000. THROWS for a good with no ruled
 // cargo volume — fuel, an unknown name, anything `tierOf` returns null for. FAIL-LOUD:
@@ -327,6 +335,7 @@ module.exports = {
   HEAVY_HOLD,
   TIER_VOLUME,
   ASSET_CARGO_VOLUME,
+  DROID_BATCH_CARGO_VOLUME,
   volumeOf,
   haulerTierForSpace,
   rateForTier,

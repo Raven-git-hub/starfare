@@ -9,7 +9,8 @@ but that file is their source of truth. Nothing here is built yet. *(⤳ 02-11-2
 dockyard build (§3's guild half), BUILT as **droid engine slice 2** (§12); and the Syndicate flat-tariff buy (§3's
 Syndicate half) + assignment with the licence gate and the cap (§1/§4), BUILT as **droid engine slice 3** (§12); and
 the boost (§2), BUILT as **droid engine slice 4** (§12); and decay, the maintenance pool and destroy-at-zero (§5), BUILT as
-**droid engine slice 5** (§12) — **the droid engine is complete**; the client is next.)*
+**droid engine slice 5** (§12) — **the droid engine is complete**; the client is next. *(⤳ 07-11-26: the Syndicate
+buy is now BATCHED and SHIPPED — §3's RE-RULED note and its AS-BUILT note; slice 3's instant buy is retired.)*)*
 
 **Scope discipline:** 2.6 builds **droids functioning, with these numbers** — the entity, the two
 sources, the boost, decay and the maintenance pool. The **failure mechanism is NOT built here**
@@ -211,6 +212,44 @@ purchase fills a medium hold, parallel to an asset filling a heavy hold (`ASSET_
 **N idle Syndicate-source droids** at the held destination when the shipment arrives. It is **sold from the Syndicate
 buy surface** alongside the commissioned assets. Built in the Syndicate droid-batch-buy slice, which supersedes the
 instant `buyAssetFromSyndicate` droid path.)*
+
+*(**⤳ AS-BUILT 07-11-26 — the Syndicate droid batch-buy (engine + snapshot + client).** The RE-RULED note above, built.
+**No new number:** the sizes and tariff are the ruling's; the delivery reuses the medium hold, `CRAFT_SPEED` and the
+waystations. **The action** is a dedicated `buyDroidBatch { guildId, batch, destinationSystemId }` (`sim/actions.js`),
+not a branch of `buyAssetFromSyndicate`, because a droid batch is a *count* of a flat-priced product, builds in 0 and
+rides a different hauler. `batch` must be one of **`SYNDICATE_DROID_BATCHES` = [5, 10, 50]** (`sim/droids.js`, frozen).
+Validate refuses, each with its own reason and in this order: an unknown guild; any other size (naming the three); an
+empty, off-seed or unroutable destination; one the guild does **not hold**; credits short of `batch × 10,000` (naming
+the shortfall); fuel (legal + contraband) short of the flight (naming the shortfall). **Apply** moves exactly
+`batch × SYNDICATE_DROID_TARIFF` guild → Syndicate ledger (invariant 2) and burns **one medium flight** up front —
+`routeFuelCost(dest, DROID_BATCH_CARGO_VOLUME)`, where `DROID_BATCH_CARGO_VOLUME` (`sim/fuel.js`) is the medium row's own
+`hold` (50,000), the same for 5 or 50 — through the legal-first `burnFuel`, with `audit.totalConsumed` rising to match
+(invariant 1). **Build 0, so it ships the tick it is bought:** apply pushes a standard delivery shipment
+`{ ownerGuildId, assetKind: 'droid', droidCount, destinationSystemId, arrivalTick }` with `arrivalTick =
+arrivalTickFor(buyTick, distance to the nearest waystation)` — the goods buy's schedule, and the clock a finished
+commission ships on. It **never enters `syndicateBuilds`**: it does not wait behind a building head, takes no place
+under `SYNDICATE_QUEUE_MAX`, and has no `commissionId` (so it cannot be cancelled — it is in flight at once, like a goods
+buy; decision checklist). **The arrival** (`stepArrivals`, `sim/tick.js`) branches on `assetKind === 'droid'` ahead of
+the one-asset mint and calls `mintDroidBatch`: it halts if `droidCount` is not a ruled size, else mints exactly
+`droidCount` idle **Syndicate**-source droids at the destination through `mintDroid`, stamped with the arrival tick,
+on consecutive `droidSerial` numbers. It moves no credit or fuel (pinned: the landing tick differs from a twin with the
+shipment removed only by the droids and the serial). A vanished owner's batch is dropped, as any asset delivery; the
+destination is not re-checked at arrival (what a lost system does to droids is still the open §1 seam). **The
+instant path is gone:** a droid `buyAssetFromSyndicate` is now refused, naming `buyDroidBatch`; the droid stays in
+`SYNDICATE_SELLABLE_KINDS` and `priceAssetForPurchase` still returns the per-droid tariff. A new invariant,
+`checkDroidShipments`, halts on a droid delivery whose count is not a ruled size, a `droidCount` on any other shipment,
+or a droid delivery carrying cargo. **Snapshot:** a public top-level **`droidBatchQuote`** = `{ perDroid: 10000,
+haulerTier: 'medium', batches: [{ size, price }] }` (`sim/fog.js` passes it to every view), and a droid delivery's
+transit row adds `droidCount`. The arrival estimate is not duplicated there: build is 0, so arrival is the delivery
+leg, read from the existing `fuelCost[dest].travelTicks` (and the fuel from `fuelCost[dest].fuelBurnByTier[haulerTier]`).
+**Client** (`client/game.html`, TRADE → 4 · Constructed): the Commission Assets list ends with a **Droids** card —
+three batch chips (5 / 10 / 50), the lit chip's price and `¢10,000/droid`, a "Ready — ships by medium · ~Xh" line
+(X = the home system's `travelTicks`) where the other cards show a build time, and **+ Add commission**, which (after
+the same credits pre-check and adviser confirm as the other cards) posts `buyDroidBatch` to the home system and lets
+the poll re-render. The Operations transit manifest names a batch "droids · N". **No-op:** a galaxy that never buys
+a batch serializes byte-identically to c613414; its snapshot and views differ only by `droidBatchQuote`, and every
+snapshot golden pinned before the slice is still asserted through `sim/tests/droid-batch-quote-strip.js`.
+Tripwires: `sim/tests/droid-batch-buy.test.js`, `sim/tests/droid-batch-card.test.js`.)*
 
 **Why this gap (the rationale to lock):** guild droids out-perform on cost, life and upkeep because
 they will eventually be the *risky, illicit* option; the Syndicate premium (dearer, shorter, more
@@ -473,7 +512,8 @@ default as `DROID_COMPONENT_RESERVE_DEFAULT` (0), all in `sim/droids.js`. The on
    snapshot rows. **Still pending:** the Syndicate flat-tariff buy (a droid buy is refused until then), assignment
    + the licence gate + the cap, the boost, decay and the maintenance pool.)*
    *(⤳ **Slice 3 — the Syndicate flat-tariff buy + assignment (the licence gate + the cap) — BUILT 02-11-26.** A
-   Syndicate droid bought for a flat 10,000 cr, minted at once at a held system (§3); `assignDroid` / `unassignDroid`
+   Syndicate droid bought for a flat 10,000 cr, minted at once at a held system (§3 — *⤳ superseded 07-11-26 by the
+   batched, shipped buy, §3's AS-BUILT note*); `assignDroid` / `unassignDroid`
    with the five ordered refusals, the assign-time-only licence gate (licensed = the windowed `licence` or a deuterium
    mine's `deuteriumLicence`) and the source-blind cap of 20 (§1, §4); a
    closed venture releasing its droids; `checkDroids`' assignment rules; the snapshot's droid `assignedToVentureId`

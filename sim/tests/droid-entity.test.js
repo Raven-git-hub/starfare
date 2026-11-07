@@ -37,9 +37,9 @@ const { checkInvariants, checkDroids } = require('../invariants.js');
 const { ASSET_CONDITION_NEW } = require('../assets.js');
 const { DROID, DROID_SOURCES, droidId, nextDroidSerial, mintDroid } = require('../droids.js');
 const { DROID_BILLS, BUILD_TICKS } = require('../asset-recipes.js');
-const { createCommissionBuildAction, createBuyAssetFromSyndicateAction } = require('../actions.js');
+const { createCommissionBuildAction, createBuyAssetFromSyndicateAction, createBuyDroidBatchAction } = require('../actions.js');
 const {
-  HOME, YARD, kitGalaxy, accept, refuse, ticks, g1Of, yardOf,
+  HOME, YARD, kitGalaxy, accept, refuse, ticks, tickUntil, g1Of, yardOf,
 } = require('./installation-kit-fixtures.js');
 const { yardScript, foundingScript } = require('./droid-noop-script.js');
 
@@ -238,15 +238,18 @@ test('checkDroids runs inside checkInvariants: a corrupted droid halts the tick 
 
 // --- 6. the gates -----------------------------------------------------------------------------------------
 
-test('gates: a dockyard accepts a droid commission; the Syndicate now SELLS one (slice 3) — a Syndicate-source droid', () => {
-  // ⤳ 02-11-26: this pinned the slice-2 refusal; droid engine slice 3 replaced it with the flat-tariff buy
-  // (its tripwires are in droid-assignment.test.js). Here only that the two acquire paths stamp their source.
+test('gates: a dockyard accepts a droid commission; the Syndicate SELLS droids in batches — Syndicate-source droids', () => {
+  // ⤳ 02-11-26: this pinned the slice-2 refusal; droid engine slice 3 replaced it with the flat-tariff buy.
+  // ⤳ 07-11-26: that instant buy is retired for the shipped batch (docs/droids.md §3, RE-RULED; its tripwires are
+  // in droid-batch-buy.test.js). Here only that the two acquire paths stamp their source.
   const s = kitGalaxy({ credits: 1_000_000_000, fuelHoard: 10_000 });
   accept(s, commission());
-  const bought = accept(s, createBuyAssetFromSyndicateAction({
+  assert.match(refuse(s, createBuyAssetFromSyndicateAction({
     guildId: 'g1', assetKind: DROID, destinationSystemId: HOME.id, issueTick: s.tick,
-  }));
-  assert.deepEqual(droidsOf(bought).map((d) => d.source), ['syndicate']);
+  })), /send buyDroidBatch/);
+  let bought = accept(s, createBuyDroidBatchAction({ guildId: 'g1', batch: 5, destinationSystemId: HOME.id }));
+  bought = tickUntil(bought, (x) => droidsOf(x).length > 0);
+  assert.deepEqual(droidsOf(bought).map((d) => d.source), ['syndicate', 'syndicate', 'syndicate', 'syndicate', 'syndicate']);
 });
 
 // --- 7. conservation --------------------------------------------------------------------------------------

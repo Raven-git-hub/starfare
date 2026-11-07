@@ -63,6 +63,8 @@ const {
 const { checkInvariants } = require('../invariants.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { withoutControlMap } = require('./control-map-strip.js');
 const { previewProduction } = require('../production.js');
@@ -458,7 +460,7 @@ function isolationRun(rows, actions) {
     // pins below are main's, and only the two new assetPurchaseQuote rows are taken out to meet them.
     // ⤳ 16-10-26 (the Prefecture / claims slice, engine PR 2): and through the control-map strip (tests/control-map-strip.js)
     // — every snapshot and view gained the public `controlMap` and nothing else moved, so the pins still stand.
-    snapshots.update(hashState(withoutInstallationQuotes(withoutControlMap(buildSnapshot(s)))));
+    snapshots.update(hashState(withoutInstallationQuotes(withoutControlMap(withoutDroidBatchQuote(buildSnapshot(s))))));
     for (const g of s.guilds) {
       const fee = g.lastLicenceFee;
       if (fee && fee.tick === s.tick) for (const row of Object.values(fee.ventures)) verdicts[row.status] += 1;

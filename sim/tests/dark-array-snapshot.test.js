@@ -26,6 +26,8 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { hashState } = require('../serialize.js');
 const { isArrayAttached } = require('../deep-scan-arrays.js');
 const { ticks } = require('./prefecture-fixtures.js');
@@ -145,7 +147,7 @@ function withoutDark(snap) {
 // `strip`).
 function digest(s, strip) {
   const l = lenses(s);
-  const h = (snap) => sha(strip ? withoutDark(snap) : snap);
+  const h = (snap) => sha(withoutDroidBatchQuote(strip ? withoutDark(snap) : snap));
   return { tick: s.tick, state: hashState(s), god: h(l.god), g1: h(l.g1), g2: h(l.g2) };
 }
 

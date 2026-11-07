@@ -38,6 +38,8 @@ const { createHash } = require('node:crypto');
 const { advance } = require('../run.js');
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { withoutInstallationQuotes } = require('./installation-quote-strip.js');
 const { withoutDeepScanLanes } = require('./deep-scan-lane-strip.js');
 const { withoutControlMap } = require('./control-map-strip.js');
@@ -290,9 +292,9 @@ test('GOLDENS DELTA: strip the scan notices and every finished scan is main\'s b
     // holding a system gained `deployRange.deepScan` and nothing else moved, so the pins still stand.
     // ⤳ 16-10-26 (the Prefecture / claims slice, engine PR 2): and through the control-map strip (tests/control-map-strip.js)
     // — every snapshot and view gained the public `controlMap` and nothing else moved, so the pins still stand.
-    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(buildSnapshot(s))))))), pins.godsEye, `${name}: the god's-eye lens moved outside the notice`);
-    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(buildSnapshot(s, A))))))), pins[A], `${name}: A's view moved outside the notice`);
-    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(buildSnapshot(s, B)))))), pins[B], `${name}: B's view moved at all`);
+    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(withoutDroidBatchQuote(buildSnapshot(s)))))))), pins.godsEye, `${name}: the god's-eye lens moved outside the notice`);
+    assert.equal(sha(JSON.stringify(lensWithoutScanNotices(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(withoutDroidBatchQuote(buildSnapshot(s, A)))))))), pins[A], `${name}: A's view moved outside the notice`);
+    assert.equal(sha(JSON.stringify(withoutDeepScanLanes(withoutInstallationQuotes(withoutControlMap(withoutDroidBatchQuote(buildSnapshot(s, B))))))), pins[B], `${name}: B's view moved at all`);
   }
 });
 

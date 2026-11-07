@@ -13,6 +13,8 @@ const crypto = require('node:crypto');
 
 const { hashState } = require('../serialize.js');
 const { buildSnapshot } = require('../snapshot.js');
+// ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
+const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { getSystemLayout } = require('../seed.js');
 const {
   createGrantAssetAction, createGrantKitAction, createEstablishVentureAction, createApplyForLicenceAction,
@@ -100,7 +102,7 @@ function emptyFallowClaim() {
 function digest(s) {
   const sha = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
   return {
-    tick: s.tick, state: hashState(s), god: sha(buildSnapshot(s)), g1: sha(buildSnapshot(s, 'g1')), g2: sha(buildSnapshot(s, 'g2')),
+    tick: s.tick, state: hashState(s), god: sha(withoutDroidBatchQuote(buildSnapshot(s))), g1: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g1'))), g2: sha(withoutDroidBatchQuote(buildSnapshot(s, 'g2'))),
   };
 }
 

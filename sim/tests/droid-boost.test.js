@@ -44,10 +44,10 @@ const {
 } = require('../droids.js');
 const {
   validateAction, applyAction, intake,
-  createApplyForLicenceAction, createAssignDroidAction, createUnassignDroidAction, createBuyAssetFromSyndicateAction,
+  createApplyForLicenceAction, createAssignDroidAction, createUnassignDroidAction, createBuyDroidBatchAction,
 } = require('../actions.js');
 const { boostlessScript } = require('./droid-boost-noop-script.js');
-const { HOME, YARD, kitGalaxy, g1Of } = require('./installation-kit-fixtures.js');
+const { HOME, YARD, kitGalaxy, g1Of, tickUntil } = require('./installation-kit-fixtures.js');
 
 const SYS = 'sysA';
 const droidIdFor = (n) => `asset_g1_droid_${String(n).padStart(2, '0')}`;
@@ -467,8 +467,10 @@ test('determinism: a boosted save restores byte-identically and runs on identica
 
 test('#3: a droid cannot be assigned to a venture that makes nothing — a dockyard, a bare shell — naming it', () => {
   // The dockyard: a real Tier-4 build yard, which no boost can ever reach.
-  let k = kitGalaxy({ credits: 100_000 });
-  k = accept(k, createBuyAssetFromSyndicateAction({ guildId: 'g1', assetKind: 'droid', destinationSystemId: HOME.id }));
+  // A Syndicate droid beside the yard, minted directly (⤳ 07-11-26: the instant one-droid buy that used to put it
+  // here is retired — docs/droids.md §3, RE-RULED; the batch that replaced it is pinned in droid-batch-buy.test.js).
+  const k = kitGalaxy({ credits: 100_000 });
+  mintDroid(g1Of(k), 'syndicate', HOME.id, k.tick);
   const d = g1Of(k).droids[0].id;
   assert.match(refuse(k, createAssignDroidAction({ guildId: 'g1', droidId: d, ventureId: YARD })),
     new RegExp(`venture ${YARD} produces no good, so a droid there could boost nothing`));
@@ -497,11 +499,15 @@ test('#4: mint, assign and unassign each stamp the droid with the tick; the mint
   assert.equal(s.guilds[0].droids[0].updatedAtTick, 5, 'a droid that merely works is not re-stamped (nothing about it changed)');
   s = accept(s, createUnassignDroidAction({ guildId: 'g1', droidId: droidIdFor(1) }));
   assert.equal(s.guilds[0].droids[0].updatedAtTick, 9, 'unassign');
-  // The Syndicate buy mints at the action's tick (the dockyard mint is pinned in droid-entity.test.js, the
-  // closure release in droid-assignment.test.js).
-  let k = run(kitGalaxy({ credits: 100_000 }), 3);
-  k = accept(k, createBuyAssetFromSyndicateAction({ guildId: 'g1', assetKind: 'droid', destinationSystemId: HOME.id }));
-  assert.equal(g1Of(k).droids[0].updatedAtTick, k.tick, 'mint');
+  // A Syndicate droid is minted when its batch LANDS, stamped with the landing tick (⤳ 07-11-26, docs/droids.md §3
+  // RE-RULED — it used to be the instant buy's tick). The dockyard mint is pinned in droid-entity.test.js, the
+  // closure release in droid-assignment.test.js.
+  let k = run(kitGalaxy({ credits: 100_000, fuelHoard: 100 }), 3);
+  k = accept(k, createBuyDroidBatchAction({ guildId: 'g1', batch: 5, destinationSystemId: HOME.id }));
+  const landsAt = k.shipments[0].arrivalTick;
+  k = tickUntil(k, (x) => (g1Of(x).droids || []).length > 0);
+  assert.equal(k.tick, landsAt, 'the batch landed on its arrival tick');
+  assert.deepEqual(g1Of(k).droids.map((x) => x.updatedAtTick), [landsAt, landsAt, landsAt, landsAt, landsAt], 'mint');
   assert.throws(() => mintDroid({ id: 'g1' }, 'guild', SYS), /without a valid tick/);
 });
 

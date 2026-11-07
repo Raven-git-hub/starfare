@@ -105,11 +105,13 @@ const SYNDICATE_PUBLIC_FIELDS = [];
 // `controlMap` (the seniority control map, docs/territory-model.md §2) is public: every row is resolved from the
 // public claim rows (ownership is public, exploration-model.md §1) and the public seed geometry, so it carries
 // nothing fogged and every guild sees the same map.
+// `droidBatchQuote` (docs/droids.md §3, RE-RULED 07-11-26) is public: the Syndicate's flat droid prices, the same
+// for every guild — like `assetPurchaseQuote`.
 const TOP_LEVEL = {
   public: [
     'schemaVersion', 'tick', 'calendar', 'prices', 'priceHistory',
     'fuelPriceHistory', 'priceBase', 'goodVolumes', 'haulerTiers', 'feeQuote', 'tier3Contract',
-    'assetPurchaseQuote', 'controlMap',
+    'assetPurchaseQuote', 'droidBatchQuote', 'controlMap',
   ],
   filtered: [
     'galacticSupply', 'syndicate', 'guilds', 'production', 'ventures', 'occupancy', 'claims', 'outposts',

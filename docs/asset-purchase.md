@@ -44,6 +44,9 @@ catalogs deliberately DIVERGE at spycraft:
   10,000 cr tariff**, not this file's parts-priced commission: `priceAssetForPurchase` returns the tariff for it, and a
   droid buy mints the droid at once at a held system — no queue, no build wait, no delivery fuel, so it is not in
   `assetPurchaseQuote` either. `docs/droids.md` §3, `docs/asset-recipes.md`'s slice-3 note.)*
+  *(⤳ 07-11-26 — the droid batch-buy: that instant hand-over is retired. Droids are still in the SELL catalog, but
+  bought through their own action in **batches of 5 / 10 / 50**, shipped on this file's delivery rail — §"As built —
+  the Syndicate droid batch" below. A droid `buyAssetFromSyndicate` is refused, naming `buyDroidBatch`.)*
 
 `SYNDICATE_SELLABLE_KINDS` is the one authoritative set for "what the Syndicate sells": the buy
 gate **refuses** any kind outside it (a spycraft buy is refused loudly, not merely hidden from
@@ -516,5 +519,33 @@ clamped 0%, and the header counts `N in queue`. The ✕ cancel is unchanged. Cli
 snapshot or server change, so goldens are byte-identical. Tripwires: `sim/tests/trade-constructed.test.js`
 (source) and `sim/tests/constructed-building-head.test.js`, which builds the miner-then-light-transport
 case in the engine and runs the page's own render against its snapshot.
+
+## As built — the Syndicate droid batch (2.6, engine + snapshot + client, 07-11-26)
+
+✅ **BUILT — `docs/droids.md` §3's RE-RULED 07-11-26 note; the detail is its AS-BUILT note.** The droid now rides
+this file's delivery model, with two differences, both ruled: **build time 0** and a **medium** hold. **No new
+number.**
+
+- **Cost timing and fuel — the same rule.** Credits (`batch × SYNDICATE_DROID_TARIFF`, 50,000 / 100,000 / 500,000)
+  and the delivery fuel are both charged up front at buy, ledgered and burned exactly as a bought miner's. The fuel
+  is one **medium**-hauler flight, `routeFuelCost(dest, DROID_BATCH_CARGO_VOLUME)` (`sim/fuel.js`, the medium row's
+  `hold`) — a droid batch fills a medium hold as an asset fills a heavy one (`ASSET_CARGO_VOLUME`) — so the burn is
+  the same for 5 or 50.
+- **The two phases collapse to one.** With nothing to build there is no construction phase: the batch is a
+  standard Syndicate delivery shipment from the tick it is bought — nearest waystation, straight-line hex distance,
+  `arrivalTickFor` at `CRAFT_SPEED`, an absolute arrival tick — exactly what a finished commission becomes. So it
+  never enters `syndicateBuilds`: it does not wait behind the guild's building head, takes no `SYNDICATE_QUEUE_MAX`
+  place, and has no `commissionId` to cancel (decision checklist). `arrivalTick = buyTick + ceil(hexDistance × CRAFT_SPEED)`.
+- **Destination — the one departure from "presence not required".** A droid batch must go to a system the guild
+  **holds** (a droid is only usable beside the guild's own ventures; assignment is same-system, `droids.md` §1).
+- **Delivery.** The shipment carries `assetKind: 'droid'` and a `droidCount`; on arrival `stepArrivals` mints
+  `droidCount` idle Syndicate-source droids at the destination (not one asset), each stamped with the arrival tick.
+  A vanished owner's batch is dropped, as for any asset delivery. In transit it is an ordinary manifest: the
+  snapshot's transit row adds `droidCount`, and the Operations panel names it "droids · N".
+- **Buy surface.** The TRADE tab's Constructed menu ends with a Droids card built from the snapshot's public
+  `droidBatchQuote`; its arrival figure is the destination's `fuelCost[dest].travelTicks`, the delivery leg this
+  file's other buys already read.
+
+Tripwires: `sim/tests/droid-batch-buy.test.js`, `sim/tests/droid-batch-card.test.js`.
 
 <!-- asset-purchase-doc-sentinel v1 -->
