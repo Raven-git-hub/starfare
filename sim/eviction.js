@@ -20,6 +20,12 @@
 // The rule it keeps (`checkStrandedAssets`, sim/invariants.js): a stranded asset is idle, and sits only in a system
 // NOBODY holds — the salvage window is open only while the system is uncontrolled (§19 #67).
 //
+// DROIDS GO WITH THE SYSTEM (roadmap 2.6; docs/droids.md §14, RULED 07-11-26). A droid is system-local and cannot
+// move (§1), so it has nothing to be salvaged by: the eviction DESTROYS the guild's droids in the lost system, deployed
+// and idle alike (destroyDroidsIn), and the one system_lost notice names them. They are never stranded, so neither
+// the salvage window nor a rival's sweep ever sees one. (A batch still in flight there is forfeit on arrival —
+// sim/tick.js mintDroidBatch.)
+//
 // THE EVICTION'S REACH (engine PR 3; §19 #67, SETTLED 19-10-26). A lost system reaches past the guild's own
 // position there: EVERY guild's lane with a stop at it ENDS (a fallow system resets all logistics there), and the
 // evicting guild's Deep Scan Arrays that hung off it go DARK (their running scans voided). Outposts are not
@@ -221,6 +227,21 @@ function endLanesStoppingAt(state, systemId, tick) {
   }
 }
 
+// destroyDroidsIn(guild, systemId) -> the ids (sorted) of the guild's droids destroyed, having MUTATED `guild`.
+// Every droid of the guild whose `systemId` is the lost system leaves `guild.droids` — the same row-removal as a
+// droid wearing out (docs/droids.md §5, sim/droids.js decayDroidsIn): nothing is minted, nothing is refunded, and the
+// `droids` key goes when the last one does (omit-when-empty). `droidSerial` is untouched, so no destroyed droid's
+// number is ever handed out again (design.md §15.4). A droid is not a conserved good, so no credit, fuel, GP or RP
+// moves. The caller has already closed the system's ventures, so no droid left here still points at one.
+function destroyDroidsIn(guild, systemId) {
+  if (!Array.isArray(guild.droids)) return [];
+  const gone = guild.droids.filter((d) => d.systemId === systemId).map((d) => d.id);
+  if (gone.length === 0) return [];
+  guild.droids = guild.droids.filter((d) => d.systemId !== systemId);
+  if (guild.droids.length === 0) delete guild.droids;
+  return gone.sort(byId);
+}
+
 // evictSystem(state, guild, prefecture, cause, tick) -> the notice payload, having MUTATED `state` and `guild`.
 // THE ONE eviction. The caller has proved the Prefecture is the guild's; `tick` is the tick the eviction happens on
 // (an action apply passes `next.tick`). In the ruled order, failing loud:
@@ -243,6 +264,11 @@ function endLanesStoppingAt(state, systemId, tick) {
 //      If anything was stranded, the system's SALVAGE WINDOW opens (the header above): its deadline is this tick plus
 //      salvageWindowTicks(how many were stranded), counted now, machines and kits alike, and never moved after. A
 //      machine aboard a heavy is not counted, since it was not stranded. Nothing stranded, no window.
+//   2b. DESTROY THE DROIDS (docs/droids.md §14, RULED 07-11-26). Every droid of the guild in the system — those just
+//      released by the closures and those already idle there — is removed from `guild.droids` (destroyDroidsIn
+//      above). Destroyed, NOT stranded: a droid cannot move between systems (§1), so it has no salvage, and it opens
+//      no salvage window and is not counted in one. (A Syndicate batch still in flight to the system is forfeit when
+//      it arrives — sim/tick.js mintDroidBatch — not here: it is not in the system yet.)
 //   3. FORFEIT THE GOODS (§19 #67, candidate (a)). The guild's pool in that system is dropped whole — the system's
 //      key leaves `guild.stockpiles` (sim/stock.js `forfeitSystemPool`). Goods carry no conservation ledger, so this
 //      is a plain delete; Galactic Supply falls by exactly those goods once the caller refreshes its cache — the
@@ -257,7 +283,9 @@ function endLanesStoppingAt(state, systemId, tick) {
 //      not change. Outposts are not touched at all: they survive the eviction, and stay reclaimable.
 //   6. KEEP THE INTEL. Nothing here touches `guild.exploration`: the record is independent of the claim.
 //   7. ONE NOTICE. A single `system_lost` event on the guild's log (docs/event-log.md §14), its payload
-//      self-contained — the Prefecture and the system are gone by the time the player reads it. It is written last,
+//      self-contained — the Prefecture and the system are gone by the time the player reads it. It names the
+//      destroyed droids (`destroyedDroidIds`, sorted; the key OMITTED when there were none, so a droidless eviction's
+//      payload is byte-identical to before docs/droids.md §14) beside the stranded machines. It is written last,
 //      after the ventures' and the arrays' own notices, so the newest-first log shows the loss above them.
 function evictSystem(state, guild, prefecture, cause, tick) {
   if (!SYSTEM_LOST_CAUSES.includes(cause)) {
@@ -299,6 +327,13 @@ function evictSystem(state, guild, prefecture, cause, tick) {
     };
   }
 
+  // 2b. Destroy the droids (docs/droids.md §14). Runs AFTER the closures above, which have already released every
+  //     droid on a closed venture back to idle — so here a deployed droid and an idle one are the same: a row of the
+  //     guild's standing in the lost system. Droids are system-local and cannot leave (§1), so unlike a machine
+  //     there is nothing to salvage: they are destroyed now, never flagged stranded, so a rival's later claim has
+  //     nothing of them to sweep.
+  const destroyedDroidIds = destroyDroidsIn(guild, systemId);
+
   // 3. Forfeit the goods.
   const goodsForfeit = forfeitSystemPool(guild, systemId);
 
@@ -321,6 +356,8 @@ function evictSystem(state, guild, prefecture, cause, tick) {
     slotId: prefecture.slotId,
     ventureIds: ventures.map((v) => v.id).sort(byId),
     strandedAssetIds: strandedAssetIds.sort(byId),
+    // OMITTED when no droid was destroyed (omit-when-empty), so a droidless eviction writes the payload it always has.
+    ...(destroyedDroidIds.length > 0 ? { destroyedDroidIds } : {}),
     goodsForfeit,
   };
   recordEvent(guild, tick, SYSTEM_LOST, payload);
@@ -401,6 +438,6 @@ function remindSalvageWindows(state, tick) {
 
 module.exports = {
   SYSTEM_LOST_CAUSES, EVICTED, SYSTEM_LOST_LANE_END, SALVAGE_WINDOW_TICKS_PER_ASSET, SALVAGE_WINDOW_CAP_TICKS,
-  isStranded, strandedAssetsIn, recoverStrandedAssets, sweepStrandedAssets, evictSystem,
+  isStranded, strandedAssetsIn, recoverStrandedAssets, sweepStrandedAssets, evictSystem, destroyDroidsIn,
   salvageWindowTicks, closeSalvageWindow, lapseSalvageWindows, remindSalvageWindows,
 };

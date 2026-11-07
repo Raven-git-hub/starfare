@@ -1545,6 +1545,26 @@ function checkDroids(state) {
       seen.add(d.id);
       if (n !== null && n > maxNumber) maxNumber = n;
       checkDroidAssignment(state, g, d, where, out);
+      // A droid is never stranded (docs/droids.md §14): it cannot leave its system, so losing the system destroys it
+      // (sim/eviction.js destroyDroidsIn) rather than leaving it to salvage. Three halts close off the "undead" droid
+      // in a lost system: the stranded flag never appears on a droid row; a droid never stands in a system ANOTHER
+      // guild holds (a rival's claim of ground the droid's guild lost); and a droid never stands in a system with an
+      // open salvage window (the fallow ground an eviction leaves). Not asserted: "a droid stands only where its guild
+      // holds" in full — many hand-built fixtures place droids in systems with no claim row at all, so that stronger
+      // rule waits on a fixture pass (docs/roadmap.md checklist). An eviction that strands nothing opens no window, so
+      // that one case is pinned by the eviction tests rather than by this check.
+      if (d.stranded !== undefined) {
+        out.push({ rule: 'droid-never-stranded (docs/droids.md §14)', where: `${where}.stranded`, detail: { stranded: d.stranded } });
+      }
+      if (typeof d.systemId === 'string') {
+        const holder = systemHolder(state, d.systemId);
+        if (holder !== null && holder !== g.id) {
+          out.push({ rule: 'droid-not-in-a-rival-system (docs/droids.md §14)', where: `${where}.systemId`, detail: { systemId: d.systemId, heldBy: holder } });
+        }
+        if (state.salvageWindows && state.salvageWindows[d.systemId]) {
+          out.push({ rule: 'droid-not-in-a-lost-system (docs/droids.md §14)', where: `${where}.systemId`, detail: { systemId: d.systemId, salvageWindow: state.salvageWindows[d.systemId] } });
+        }
+      }
       if (d.maintained !== undefined && (d.maintained !== true || d.assignedToVentureId === undefined)) {
         out.push({ rule: 'droid-maintained-valid (docs/droids.md §5)', where: `${where}.maintained`, detail: { maintained: d.maintained, assignedToVentureId: d.assignedToVentureId } });
       }

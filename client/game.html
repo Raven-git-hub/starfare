@@ -13117,7 +13117,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // they hold whatever was there. The numbers ride the facts block.
   var SYSTEM_LOST_ABANDONED = "You abandoned this Prefecture, and it has been destroyed. The system is unclaimed again.";
   var SYSTEM_LOST_DESTROYED = "Your Prefecture here has been destroyed. The system is unclaimed again.";
-  var SYSTEM_LOST_AFTERMATH = "Any ventures you ran there are closed, and any goods you held there are forfeit. Any machines you left behind are stranded in the system, awaiting salvage. Your exploration record of it is kept.";
+  var SYSTEM_LOST_AFTERMATH = "Any ventures you ran there are closed, and any goods you held there are forfeit. Any machines you left behind are stranded in the system, awaiting salvage. Any droids you had there were lost with it — a droid cannot leave its system. Your exploration record of it is kept.";
   var ASSETS_INHERITED_BODY = [
     "Your claim on this system came with machines another guild left stranded here. They are yours now: idle, and ready to put to work.",
     "The ground may come spoiled, though. Where the old ventures held licences, their nodes stay locked out until the terms clear, so you may not be able to put the machines on them yet."
@@ -13135,7 +13135,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   }
 
   // The facts block, in its order. A loss: where the Prefecture stood, the ventures closed (the count of
-  // ventureIds), what was left stranded, the goods forfeit, and the day. A gain or a taking: the system, the
+  // ventureIds), what was left stranded, the droids lost (the count of destroyedDroidIds), the goods forfeit, and the day. A gain or a taking: the system, the
   // machines (and, for a taking, who took them), and the day.
   function territoryFacts(n){
     var p = n.payload || {};
@@ -13146,6 +13146,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
         ['Prefecture', prefectureSiteLabel(p), false],
         ['Ventures closed', ventures ? fmt(ventures) : 'None', false],
         ['Machines stranded', assetKindsLabel(p.strandedAssetIds), false],
+        // The droids destroyed with the system (docs/droids.md §14): the count of the payload's ids, never a lookup —
+        // the rows are gone. A payload from before the field existed reads "None", as an empty list does.
+        ['Droids lost', (p.destroyedDroidIds || []).length ? fmt(p.destroyedDroidIds.length) : 'None', false],
         ['Goods forfeit', goodsForfeitLabel(p.goodsForfeit), false]
       ];
     } else if(n.type === 'assets_inherited'){

@@ -1242,13 +1242,21 @@ function stepScheduledEvents(state, _actions) {
 // and the step halts on anything else: the buy only ever writes 5 / 10 / 50, so any other count means the record
 // was corrupted, and minting a guessed number of droids would be the silent violation §15.5 forbids.
 // Moves no credit and no fuel — both were paid at the buy.
-function mintDroidBatch(guild, ship, thisTick) {
+//
+// THE FORFEIT (docs/droids.md §14, RULED 07-11-26). If the buyer no longer holds the destination when the batch
+// lands — it abandoned or was evicted from the system while the hauler flew — the batch is LOST: no droid mints and
+// nothing is reversed. The credits are already the Syndicate's and the medium flight's fuel was burned out of the
+// galaxy at the buy, so dropping the delivery moves nothing (invariants 1–2). The same `guildHolds` question a goods
+// delivery's vanish check asks. Returns the number of droids minted (0 for a forfeit), for a test.
+function mintDroidBatch(state, guild, ship, thisTick) {
   if (!SYNDICATE_DROID_BATCHES.includes(ship.droidCount)) {
     throw new Error(`stepArrivals: a droid delivery for guild ${guild.id} arriving at tick ${thisTick} carries droidCount ${JSON.stringify(ship.droidCount)} — not one of the Syndicate batches ${SYNDICATE_DROID_BATCHES.join(' / ')}`);
   }
+  if (!guildHolds(state, guild.id, ship.destinationSystemId)) return 0;
   for (let i = 0; i < ship.droidCount; i += 1) {
     mintDroid(guild, DROID_SOURCE_SYNDICATE, ship.destinationSystemId, thisTick);
   }
+  return ship.droidCount;
 }
 
 // landOutpostDelivery(state, guild, ship, thisTick) — land ONE Syndicate goods delivery bound for a
@@ -1375,12 +1383,11 @@ function stepArrivals(state, _actions) {
     if (ship.assetKind) {
       if (!guild) continue;
       // A DROID BATCH (docs/droids.md §3, RE-RULED 07-11-26) mints N Syndicate droids, not one asset — the one
-      // kind that lands as a COUNT. Same owner guard as any asset delivery (a torn-down guild's batch is dropped),
-      // and like an asset it lands whether or not the guild still holds the system: an idle droid is guild
-      // inventory located at a system (§1). The buy required a held system; if it is lost mid-flight the droids
-      // still land idle there (what a lost system does to droids is not ruled — docs/roadmap.md checklist).
+      // kind that lands as a COUNT. Same owner guard as any asset delivery (a torn-down guild's batch is dropped).
+      // UNLIKE an asset, it lands only in a system the guild still holds: a droid is system-local and is destroyed
+      // with a lost system (docs/droids.md §14), so a batch bound for one lost mid-flight is forfeit (mintDroidBatch).
       if (ship.assetKind === DROID) {
-        mintDroidBatch(guild, ship, thisTick);
+        mintDroidBatch(state, guild, ship, thisTick);
         continue;
       }
       // The dockyard's EXACT mint (mintFinishedKind, shared with buildDockyards): the finished kind

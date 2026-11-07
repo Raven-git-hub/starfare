@@ -38,7 +38,7 @@ const html = fs.readFileSync(path.join(ROOT, 'client', 'game.html'), 'utf8');
 // The Syndicate's words, verbatim from game.html (docs/event-log.md §14 / §15 quote them). Draft copy, to be tuned.
 const SYSTEM_LOST_ABANDONED = 'You abandoned this Prefecture, and it has been destroyed. The system is unclaimed again.';
 const SYSTEM_LOST_DESTROYED = 'Your Prefecture here has been destroyed. The system is unclaimed again.';
-const SYSTEM_LOST_AFTERMATH = 'Any ventures you ran there are closed, and any goods you held there are forfeit. Any machines you left behind are stranded in the system, awaiting salvage. Your exploration record of it is kept.';
+const SYSTEM_LOST_AFTERMATH = 'Any ventures you ran there are closed, and any goods you held there are forfeit. Any machines you left behind are stranded in the system, awaiting salvage. Any droids you had there were lost with it — a droid cannot leave its system. Your exploration record of it is kept.';
 const INHERITED_LINES = [
   'Your claim on this system came with machines another guild left stranded here. They are yours now: idle, and ready to put to work.',
   'The ground may come spoiled, though. Where the old ventures held licences, their nodes stay locked out until the terms clear, so you may not be able to put the machines on them yet.',
@@ -198,6 +198,8 @@ test('popup, system_lost (abandoned): the Syndicate adviser, the abandon words, 
       ['Ventures closed', '2'],
       // g1's miner, refinery factory, idle factory and idle Outpost kit, read off the stranded ids.
       ['Machines stranded', '1 Miner, 2 Factories, 1 Outpost kit'],
+      // No droid stood in TARGET, so the payload carries no destroyedDroidIds and the row reads "None" (docs/droids.md §14).
+      ['Droids lost', 'None'],
       ['Goods forfeit', `${goods[0][1].toLocaleString('en-US')} ${titleCase(goods[0][0])}`],
       ['Lost', `Day ${n.whenDay}`],
     ],
@@ -221,14 +223,14 @@ test('popup, system_lost: another cause blames no one; an empty system reads "No
   assert.deepEqual([e.payload.ventureIds, e.payload.strandedAssetIds, e.payload.goodsForfeit], [[], [], {}], 'premise: nothing there');
   p = noticePage(empty, 'g1');
   p.page.openNotice(e.id);
-  assert.deepEqual(p.view().facts.slice(1, 4), [['Ventures closed', 'None'], ['Machines stranded', 'None'], ['Goods forfeit', 'None']]);
+  assert.deepEqual(p.view().facts.slice(1, 5), [['Ventures closed', 'None'], ['Machines stranded', 'None'], ['Droids lost', 'None'], ['Goods forfeit', 'None']]);
 
   // A payload with its names missing degrades to the ids, then to plain words — never "null", "undefined" or a bare dash.
   e.payload = { cause: 'abandoned', systemId: TARGET };
   p.page.openNotice(e.id);
   let v = p.view();
   assert.equal(v.title, `System lost — ${TARGET}`);
-  assert.deepEqual(v.facts.slice(0, 4), [['Prefecture', '—'], ['Ventures closed', 'None'], ['Machines stranded', 'None'], ['Goods forfeit', 'None']]);
+  assert.deepEqual(v.facts.slice(0, 5), [['Prefecture', '—'], ['Ventures closed', 'None'], ['Machines stranded', 'None'], ['Droids lost', 'None'], ['Goods forfeit', 'None']]);
   e.payload = {};
   p.page.openNotice(e.id);
   v = p.view();
