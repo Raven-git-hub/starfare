@@ -9,7 +9,7 @@
 > Outposts. **Miners and factories never wear**, and their condition field is **removed**. Nothing
 > here moves GP, RP, the mean line or fuel.
 
-Status: **RULED, not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
+Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26, the rest not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
 §"Maintenance". This doc is the authority on the *mechanism*; phase-1-tuning is the authority on the
 *numbers*; `docs/droids.md` §5 stays the authority on the droid engine except where §1 below retunes it.
 
@@ -83,6 +83,23 @@ guard). It is **not** the production console's per-good `reserveLevel` — that 
 production stockpile, and this one splits that stock between building and maintenance. **This
 supersedes droids.md §13.3's lean** to reuse `reserveLevel`. A new player action sets it, per
 system, whole units ≥ 0 (0 removes the key), from the Maintenance tab (§7).
+
+*(**⤳ AS-BUILT 09-11-26 — maintenance slice 1.** (a)–(c) are in code, no new number. **(a)** `DROID_UPKEEP_PER_WEEK`
+(`sim/droids.js`) is one constant, **1**, for both sources — not a table of two equal values; `weeklyUpkeepFor` is the
+deployed count × 1; the triage is unchanged (with one rate, skip-and-continue covers exactly what a stop would).
+**(b)** `DROID_LIFE_TICKS` guild **40,320 / 161,280**, Syndicate **20,160 / 40,320**; `DROID_WEAR_SCALE` re-derives to
+**161,280** (still computed, never typed); wear guild 4 / 1, Syndicate 8 / 4 units a tick; the load-time whole-rate
+tripwire passes. No save migration — a droid worn under the old 80,640 scale restores with its fraction, its units
+exactly doubled, and reaches 0 on exactly the tick the new rates predict (`sim/tests/droid-decay.test.js`, "retune").
+**(c)** The action is **`setDroidComponentReserve { guildId, systemId, reserve }`** (`sim/actions.js`), through the one
+validate / journal / apply path (`POST /action`, like every player action — no new route). Refused: an unknown guild;
+a system not on the seed, or one the guild does not hold; a reserve that is not a whole number ≥ 0. 0 removes the
+system's key and an empty map is omitted, so set-then-clear is byte-identical to never-set. It does not touch
+`reserveLevel` or guard the dockyard build. **The tick:** the reserve map has no row to stamp, so — as its sibling
+`setProductionProfile` does — the journal line `{ tick, action }` is the record (roadmap decision checklist,
+"Maintenance slice 1 calls"). Snapshot: no new field — `droidUpkeep[systemId]` already reports `reserve`, and its
+`weeklyUpkeep` / `runwayWeeks` now read the one rate. Tests: `sim/tests/droid-reserve-setter.test.js` (new) and the
+retuned `sim/tests/droid-decay.test.js`.)*
 
 ---
 
@@ -389,6 +406,7 @@ droid reserve default 0 (unchanged). Derived, not tuned: `DROID_WEAR_SCALE` 161,
 ## 11. Build order (vertical slices — one at a time, each its own PR)
 
 1. **Droid retune** (engine + snapshot): the new lives, one upkeep rate, the reserve setter action.
+   *(⤳ **BUILT 09-11-26** — §1's AS-BUILT note.)*
 2. **Remove asset condition** (engine + snapshot + client): `Asset.maintenanceCondition` gone from
    `createAsset`, the eviction sweep's re-mint, the operator levers, the invariants, the snapshot and
    the client; old saves restore with the field dropped.

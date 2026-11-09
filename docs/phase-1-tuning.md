@@ -287,7 +287,7 @@ Specialist bases are **derived, not decreed**: `specialist base = (½ × asset b
 level or bend (concave would make the first units of a hoard matter most); and `docs/licence-and-price-system.md`
 Part 5's *normaliser confirm* — live production capacity (what was built) vs. a fixed per-good reference.
 
-*(**⤳ RULED 09-11-26 — the maintenance design pass retunes two droid numbers** (`docs/maintenance.md` §1, the numbers in §"Maintenance" below). The guild droid's maintained life **8 wk → 16 wk** (161,280 ticks; maintenance ×4 for guild droids, ×2 for Syndicate droids, whose 2 wk / 4 wk are unchanged), and the Syndicate upkeep **2 → 1** `droid_components` per droid-week (one rate for both sources). The derived wear scale becomes 161,280. Not in code yet — maintenance build slice 1.)*
+*(**⤳ RULED 09-11-26 — the maintenance design pass retunes two droid numbers** (`docs/maintenance.md` §1, the numbers in §"Maintenance" below). The guild droid's maintained life **8 wk → 16 wk** (161,280 ticks; maintenance ×4 for guild droids, ×2 for Syndicate droids, whose 2 wk / 4 wk are unchanged), and the Syndicate upkeep **2 → 1** `droid_components` per droid-week (one rate for both sources). The derived wear scale becomes 161,280. Not in code yet — maintenance build slice 1.)* *(⤳ **AS-BUILT 09-11-26**, maintenance slice 1: both retuned numbers are in code — see §"Maintenance" below. The guild "4 wk / 8 wk" and Syndicate upkeep "2" in this section are superseded.)*
 
 ### Maintenance (roadmap 2.6 maintenance) — `[FIRST-CUT]` *(RULED 09-11-26 — `docs/maintenance.md`)*
 
@@ -302,6 +302,8 @@ Every number below was given by the human in the maintenance design pass (09-11-
 - **Maintenance budget default:** **0** credits per cycle (maintenance is opt-in).
 - **Starter heavy condition:** **0.5** — confirmed (it was already built; now it is live).
 - **Derived, not tuned:** `DROID_WEAR_SCALE` **161,280** and `CRAFT_WEAR_SCALE` **483,840** (each the least common multiple of its lives, computed at load).
+
+*(⤳ **AS-BUILT 09-11-26 — maintenance slice 1: the Droids bullet is in code** (`sim/droids.js`). `DROID_LIFE_TICKS` guild **40,320 / 161,280**, Syndicate **20,160 / 40,320**; `DROID_UPKEEP_PER_WEEK` **1** — a single constant for both sources; `DROID_COMPONENT_RESERVE_DEFAULT` **0**, now player-set by `setDroidComponentReserve`; `DROID_WEAR_SCALE` derives to **161,280** at load. No other number in this section is in code yet — craft wear, the pool, deep maintenance, the threshold and the slots are slices 3–4.)*
 
 ### Resource yield tiers *(24-09-26 — design.md §2 "Resource Yield Tiers & the Homeworld Production Floor")*
 

@@ -24,7 +24,7 @@ const {
 } = require('./asset-recipes.js');
 const {
   DROID, DROID_SOURCES, SYNDICATE_DROID_TARIFF, SYNDICATE_DROID_BATCHES, mintDroid,
-  isDroidIdle, unassign, assignDroidRefusal, assignDroidTo,
+  isDroidIdle, unassign, assignDroidRefusal, assignDroidTo, setDroidComponentReserve,
 } = require('./droids.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
@@ -1706,6 +1706,18 @@ function createSetAutoReplaceAction({ guildId, ventureId, on }) {
   if (ventureId === undefined) throw new Error('createSetAutoReplaceAction: ventureId is required');
   if (on === undefined) throw new Error('createSetAutoReplaceAction: on is required');
   return { type: 'setAutoReplace', guildId, ventureId, on };
+}
+
+// setDroidComponentReserve: set ONE system's droid_components reserve — "keep this many for building"
+// (maintenance slice 1; docs/maintenance.md §1c). Weekly droid upkeep never draws that system's stock below it
+// (sim/droids.js fundDroidUpkeep, already built). It is its OWN setting: it is not the production console's
+// per-good `reserveLevel`, and it does not stop a dockyard droid build from using components below it. Shape is
+// exactly `{ guildId, systemId, reserve }`, `reserve` a whole number ≥ 0; 0 clears the system back to the default.
+function createSetDroidComponentReserveAction({ guildId, systemId, reserve }) {
+  if (guildId === undefined) throw new Error('createSetDroidComponentReserveAction: guildId is required');
+  if (systemId === undefined) throw new Error('createSetDroidComponentReserveAction: systemId is required');
+  if (reserve === undefined) throw new Error('createSetDroidComponentReserveAction: reserve is required');
+  return { type: 'setDroidComponentReserve', guildId, systemId, reserve };
 }
 
 // cancelSyndicateCommission: withdraw a Syndicate commission that HAS NOT STARTED building
@@ -4090,6 +4102,27 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'setDroidComponentReserve') {
+    // Set one system's droid_components reserve (maintenance slice 1; docs/maintenance.md §1c). REFUSE, never
+    // clamp: no guild; a system that is not on the seed; a system the guild does not hold (the reserve guards a
+    // stock in a system the guild operates — and droids only ever stand in such a system); a reserve that is not
+    // a whole number ≥ 0 (goods are integers, design.md §15.2 — so 2.5, -1, "3" and NaN are all refused).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (typeof action.systemId !== 'string' || !getSystem(action.systemId)) {
+      return { valid: false, reason: `system ${JSON.stringify(action.systemId)} is not a system on the seed` };
+    }
+    if (!guildHolds(state, guild.id, action.systemId)) {
+      return { valid: false, reason: `guild ${guild.id} does not hold system ${JSON.stringify(action.systemId)} — a droid_components reserve is set only in a system the guild holds` };
+    }
+    if (!Number.isSafeInteger(action.reserve) || action.reserve < 0) {
+      return { valid: false, reason: `reserve must be a whole number of droid_components ≥ 0, got ${JSON.stringify(action.reserve)}` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'cancelSyndicateCommission') {
     // Cancel an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
     // commission"). REFUSE, never clamp — the dockyard cancelCommission's gate order.
@@ -6216,6 +6249,22 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'setDroidComponentReserve') {
+    // Write the validated reserve through sim/droids.js, the one writer of the map's shape (0 removes the
+    // system's key; an empty map is omitted). Nothing else moves: no droid, credit, good, fuel or production
+    // setting. The reserve is read at the next week boundary's upkeep, never before.
+    //
+    // THE TICK (§15.2 "every mutation records its tick"): matched to the sibling guild-level setting,
+    // setProductionProfile (which also holds the console's reserveLevel). The reserve map is
+    // `{ [systemId]: whole units }` — no row with an `updatedAtTick` to stamp — so, like that sibling, nothing
+    // is invented: the write-ahead journal line `{ tick, action }` (sim/persist.js appendJournal) is this
+    // mutation's record of its tick. Whether the reserve should carry an in-state stamp is on the roadmap's
+    // decision checklist.
+    const guild = findGuild(next, action.guildId);
+    setDroidComponentReserve(guild, action.systemId, action.reserve);
+    return next;
+  }
+
   if (action.type === 'cancelSyndicateCommission') {
     // Withdraw an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
     // commission"). Validate proved the entry exists, is this guild's, and has not started.
@@ -6967,6 +7016,7 @@ module.exports = {
   createAssignDroidAction,
   createUnassignDroidAction,
   createSetAutoReplaceAction,
+  createSetDroidComponentReserveAction,
   createBuyDroidBatchAction,
   createCancelSyndicateCommissionAction,
   createAddOrderLineAction,

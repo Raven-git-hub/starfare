@@ -216,16 +216,24 @@ const DROID_WEEK_TICKS = TIER3_WINDOW_N;
 const DROID_COMPONENTS = 'droid_components';
 
 // DROID_LIFE_TICKS — how many ticks a NEW droid lasts, by source, uncovered (no maintenance) and covered
-// (maintained every tick). `[FIRST-CUT]`, docs/phase-1-tuning.md §Droids: guild 4 weeks / 8 weeks, Syndicate
-// 2 weeks / 4 weeks. Maintenance doubles the life, which is the same as halving the wear per tick.
+// (maintained every tick). `[FIRST-CUT]`, docs/phase-1-tuning.md §"Maintenance" (RULED 09-11-26,
+// docs/maintenance.md §1b): guild 4 weeks / 16 weeks, Syndicate 2 weeks / 4 weeks. Maintenance MULTIPLIES the
+// life by source — ×4 for a guild droid, ×2 for a Syndicate droid — which is the same as dividing the wear per
+// tick by 4 or by 2. That bigger multiplier is the guild droid's payoff for running a components supply chain.
 const DROID_LIFE_TICKS = Object.freeze({
-  [DROID_SOURCE_GUILD]: Object.freeze({ uncovered: 4 * DROID_WEEK_TICKS, covered: 8 * DROID_WEEK_TICKS }),
+  [DROID_SOURCE_GUILD]: Object.freeze({ uncovered: 4 * DROID_WEEK_TICKS, covered: 16 * DROID_WEEK_TICKS }),
   [DROID_SOURCE_SYNDICATE]: Object.freeze({ uncovered: 2 * DROID_WEEK_TICKS, covered: 4 * DROID_WEEK_TICKS }),
 });
 
-// DROID_UPKEEP_PER_WEEK — how many droid_components keep ONE droid maintained for ONE week, by source.
-// `[FIRST-CUT]`, docs/phase-1-tuning.md §Droids: 1 for a guild droid, 2 for a Syndicate droid (the red tape).
-const DROID_UPKEEP_PER_WEEK = Object.freeze({ [DROID_SOURCE_GUILD]: 1, [DROID_SOURCE_SYNDICATE]: 2 });
+// DROID_UPKEEP_PER_WEEK — how many droid_components keep ONE droid maintained for ONE week. `[FIRST-CUT]`,
+// docs/phase-1-tuning.md §"Maintenance": 1, the SAME for both sources (RULED 09-11-26, docs/maintenance.md §1a —
+// the old Syndicate premium of 2 taxed exactly the guild with no components chain, the wrong target). One rate,
+// so one number: the source no longer matters to what a droid costs to maintain, only to how long it lasts.
+const DROID_UPKEEP_PER_WEEK = 1;
+// Load-time tripwire: goods are whole numbers (design.md §15.2), so the upkeep must be a whole number ≥ 1.
+if (!Number.isSafeInteger(DROID_UPKEEP_PER_WEEK) || DROID_UPKEEP_PER_WEEK < 1) {
+  throw new Error(`droids: DROID_UPKEEP_PER_WEEK ${DROID_UPKEEP_PER_WEEK} must be a whole number of droid_components ≥ 1`);
+}
 
 // The default per-system floor maintenance never draws below (docs/phase-1-tuning.md §Droids: default 0).
 const DROID_COMPONENT_RESERVE_DEFAULT = 0;
@@ -238,7 +246,12 @@ const DROID_COMPONENT_RESERVE_DEFAULT = 0;
 // droid hits exactly 0 on exactly the ruled tick, every run (invariant 9).
 //
 // The scale is not a tuning number: it is the smallest number every life divides into (their least common
-// multiple — 80,640 at today's lives), worked out from DROID_LIFE_TICKS, so retuning a life retunes it.
+// multiple — 161,280 at today's lives), worked out from DROID_LIFE_TICKS, so retuning a life retunes it.
+//
+// Retuning a life changes the scale, but NOT a stored droid: the save holds the condition FRACTION, never the
+// units. When the scale went 80,640 → 161,280 (09-11-26), a stored fraction's units simply doubled — exactly,
+// since 161,280 is a whole multiple of 80,640 — so a droid deployed before the retune keeps its condition and
+// wears on at the new rates with no save migration (tests/droid-decay.test.js pins it).
 function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
 const ALL_LIVES = Object.values(DROID_LIFE_TICKS).flatMap((l) => [l.uncovered, l.covered]);
 const DROID_WEAR_SCALE = ALL_LIVES.reduce((acc, life) => (acc / gcd(acc, life)) * life, 1);
@@ -288,9 +301,26 @@ function droidComponentReserveFor(guild, systemId) {
   return Object.prototype.hasOwnProperty.call(map, systemId) ? map[systemId] : DROID_COMPONENT_RESERVE_DEFAULT;
 }
 
-// weeklyUpkeepFor(droids) -> how many droid_components would cover all of `droids` for one week.
+// setDroidComponentReserve(guild, systemId, reserve) — MUTATES `guild`: the one writer of the reserve map's shape
+// (the `setDroidComponentReserve` player action calls it; maintenance slice 1, docs/maintenance.md §1c). The
+// caller has already checked `reserve` is a whole number ≥ 0. Two rules keep a guild that never sets a reserve
+// byte-identical to one that set it and then cleared it:
+//   - 0 REMOVES the system's key — 0 is the default, and a key holding its own default would be noise;
+//   - the map itself is OMITTED once it is empty (the createGuild shape, sim/state.js).
+// A fresh object is built rather than editing the stored one, so nothing outside can be holding a reference
+// to the map this writes.
+function setDroidComponentReserve(guild, systemId, reserve) {
+  const map = { ...(guild.droidComponentReserve || {}) };
+  if (reserve === 0) delete map[systemId];
+  else map[systemId] = reserve;
+  if (Object.keys(map).length > 0) guild.droidComponentReserve = map;
+  else delete guild.droidComponentReserve;
+}
+
+// weeklyUpkeepFor(droids) -> how many droid_components would cover all of `droids` for one week. Every droid
+// costs the same (DROID_UPKEEP_PER_WEEK, whatever its source), so this is just a count times the rate.
 function weeklyUpkeepFor(droids) {
-  return droids.reduce((sum, d) => sum + DROID_UPKEEP_PER_WEEK[d.source], 0);
+  return droids.length * DROID_UPKEEP_PER_WEEK;
 }
 
 // decayDroidsIn(guild, systemId) -> the droids DESTROYED this tick (removed rows), having MUTATED `guild`.
@@ -330,11 +360,12 @@ function decayDroidsIn(guild, systemId) {
 //
 // The droids are maintained from THEIR OWN system's droid_components stock only — goods are system-local, so
 // one system's stock never maintains another system's droids. Only stock ABOVE the system's reserve floor is
-// spent. Each deployed droid costs DROID_UPKEEP_PER_WEEK[source] (1 guild, 2 Syndicate). When the stock cannot
-// cover them all, the LOWEST-condition droids are covered first (the ones closest to wearing out), ties broken
-// by id so two runs always pick the same droids (invariant 9). A droid the remaining stock cannot pay for is
-// skipped, and a cheaper droid after it may still be covered — so no component sits unused while a droid it
-// could have paid for wears fast. (That skip rule is on the roadmap decision checklist.)
+// spent. Each deployed droid costs DROID_UPKEEP_PER_WEEK (1, either source). When the stock cannot cover them
+// all, the LOWEST-condition droids are covered first (the ones closest to wearing out), ties broken by id so two
+// runs always pick the same droids (invariant 9). A droid the remaining stock cannot pay for is skipped and the
+// loop goes on (skip-and-continue, docs/droids.md §5). With one rate for every droid, once one droid is skipped
+// every droid after it is skipped too — the "a cheaper one after it may still be covered" case cannot happen
+// today — but the loop is kept as it is: it is still correct, and it stays correct if the rates ever differ again.
 //
 // Every deployed droid's coverage is SET here — `maintained: true`, or the key removed — and each is stamped
 // `updatedAtTick` (a discrete, weekly mutation, §15.2). A droid deployed after this boundary has no
@@ -351,7 +382,7 @@ function fundDroidUpkeep(guild, systemId, tick) {
   let drawn = 0;
   let covered = 0;
   for (const d of order) {
-    const cost = DROID_UPKEEP_PER_WEEK[d.source];
+    const cost = DROID_UPKEEP_PER_WEEK;
     if (spendable >= cost) {
       d.maintained = true;
       spendable -= cost;
@@ -539,6 +570,7 @@ module.exports = {
   isDroidMaintained,
   deployedDroidsIn,
   droidComponentReserveFor,
+  setDroidComponentReserve,
   weeklyUpkeepFor,
   decayDroidsIn,
   fundDroidUpkeep,

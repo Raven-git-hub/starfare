@@ -385,6 +385,17 @@ droid is deployed, fogged from rivals.)*
 
 *(**⤳ RULED 09-11-26 — the maintenance design pass retunes this section** (`docs/maintenance.md` §1; numbers in `phase-1-tuning.md` §"Maintenance"). Three changes, everything else above stands. **(a) One upkeep rate:** both sources draw **1** `droid_components` per droid-week — the Syndicate premium of 2 is dropped (it taxed the guild without a components chain, the wrong target). **(b) Maintenance multiplies life by source:** guild **×4** (4 wk → **16 wk**, 161,280 ticks), Syndicate **×2** (2 wk → 4 wk, unchanged); `DROID_WEAR_SCALE` re-derives to **161,280** (guild 4 / 1 units a tick, Syndicate 8 / 4); a deployed droid keeps its condition fraction, its units rescale exactly. **(c) The reserve gets a setter and stays its own setting:** `droidComponentReserve` means "keep this many for building" — upkeep never draws below it; it does not guard the dockyard build; it is **not** the console's `reserveLevel` (superseding §13.3's lean); a new player action sets it per system, from the Maintenance tab. Not built yet — maintenance build slice 1.)*
 
+*(**⤳ AS-BUILT 09-11-26 — maintenance slice 1 builds the retune above** (`docs/maintenance.md` §1's AS-BUILT note has
+the detail). In `sim/droids.js`: `DROID_LIFE_TICKS` guild **40,320 / 161,280**, Syndicate 20,160 / 40,320;
+`DROID_UPKEEP_PER_WEEK` is now **one constant, 1** (no longer a by-source table — the AS-BUILT note above, which reads
+"guild 1, Syndicate 2", is superseded); `DROID_WEAR_SCALE` derives to **161,280**, wear guild 4 / 1, Syndicate 8 / 4
+units a tick. Everything else in this section stands as built: decay, destroy at zero, the per-system weekly upkeep
+and its triage (with one rate, a skipped droid is never followed by a covered one — the loop is kept, still
+correct), neutrality. The reserve now has its setter, **`setDroidComponentReserve { guildId, systemId, reserve }`**
+— "nothing sets it yet" above is superseded. A droid deployed before the retune keeps its condition fraction; no
+save migration. The droid-decay no-op golden (8ffbd21) is still byte-identical; the auto-replace no-op golden
+(ef14e01) is re-pinned on purpose, its diff written at the golden.)*
+
 ## 6. GP / RP — neutral (reaffirmed)
 
 GP/RP-neutral (RULED 10-09-26, `points-and-reputation.md` §1): droids touch output at the
@@ -494,6 +505,11 @@ default as `DROID_COMPONENT_RESERVE_DEFAULT` (0), all in `sim/droids.js`. The on
 80,640 (the lives' least common multiple), an exact-arithmetic device, not a tuning number.)*
 
 *(⤳ RULED 09-11-26, `docs/maintenance.md` §1: guild droid life **4 wk / 16 wk**; upkeep **1** `droid_components` = 1 droid-week for **both** sources; wear scale **161,280**. The rest of this section is unchanged.)*
+
+*(⤳ AS-BUILT 09-11-26, maintenance slice 1: the ruling above is in code — `DROID_LIFE_TICKS` guild 40,320 / **161,280**,
+Syndicate 20,160 / 40,320; `DROID_UPKEEP_PER_WEEK` **1** (one constant, both sources); wear scale **161,280** (derived).
+The 8 wk / Syndicate-2 / 80,640 figures above are superseded in code. `droidComponentReserve` default 0, now set by
+the `setDroidComponentReserve` action.)*
 
 ## 12. Build order (vertical slices)
 
