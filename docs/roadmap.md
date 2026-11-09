@@ -5714,6 +5714,7 @@ boundary so the later hex-map swap doesn't touch it.
     (Production and Consumption) share the fix. AS-BUILT in `production-console-model.md` (the sparkline note).
     **No engine change; no game number** — the constant governs pixels only, so no checklist entry. Sim
     2,768 → **2,774** (6 in `console-sparkline-span.test.js`), tools **100** (unchanged).
+- **2.6 (maintenance) — Droids retuned + spacecraft wear and deep maintenance (`docs/maintenance.md`).** RULED 09-11-26 (the maintenance design pass); 🔲 **not started.** Two streams and only two: **droids** (`droid_components`, weekly, per system, destroyed at 0 — built, retuned: one upkeep rate, guild life ×4) and **spacecraft** (wear only in flight; a guild-wide credit pool funded per cycle and drained per tick; at 0% free, time-only deep maintenance at a held system or own Outpost). **Miners and factories never wear** — their condition field is removed. A solo facet: no rival needed. Not the storyteller's stricken state or droid catastrophic failure (2.7). Slices, one PR each (`maintenance.md` §11): **(1)** droid retune + reserve setter · **(2)** remove asset condition · **(3)** craft wear + the pool · **(4)** deep maintenance · **(5)** the Maintenance tab · **(6)** the Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit. **Exit:** a craft flown to 0% stops at its first listed maintenance point and comes back at 100% after its time; an unfunded fleet wears twice as fast as a funded one; every number from `phase-1-tuning.md` §"Maintenance"; GP-neutral, credit-conserving, no-op byte-identical where nothing flies.
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
@@ -5986,7 +5987,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   has no `updatedAtTick` / `createdAtTick` (its comment defers a stamp to the maintenance slice, the first thing that
   mutates an asset), so `grantKit` — like `grantAsset`, the Dockyard and the Syndicate delivery — records its tick only
   in the journal; `loadKit` / `unloadKit` stamp the craft. Confirm, or rule a `createdAtTick` on kit assets (or on all
-  assets).
+  assets). *(⤳ 09-11-26: the maintenance slice will never mutate an asset — miners and factories do not wear, `docs/maintenance.md` §0 — so it is not the stamp's trigger after all. The question stands on its own; still open.)*
 - **Asset-initiated client slice 2a — two calls (02-10-26, 2.2 deploy pipeline, `territory-model.md` §5 AS-BUILT)**, built
   one way and flagged rather than ruled. **(1) The Ready row.** ~~The Deploy Outpost popup's summary is Kind / Stored at /
   Ready. An idle kit carries no tick or status of its own (call (2) of slice 1, above), and the popup opens only for a
@@ -6185,7 +6186,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   its condition. `territory-model.md` §7 had already ruled "starting `maintenanceCondition` 0.5" for the founding heavy,
   so it is built at **0.5** (`STARTER_HEAVY_CONDITION`, `sim/starter-package.js`); the lights start new (1). Condition is
   inert until the maintenance slice, but the client shows it as a percentage, so the heavy reads 50%. Confirm 0.5, or
-  rule new (one line). **(2) The Vehicle Gate and the Starter Quest's vehicle reward (§13).** A human now starts with
+  rule new (one line). *(⤳ 09-11-26 — **RULED: 0.5 confirmed** in the maintenance design pass; it goes live with craft wear, `docs/maintenance.md` §2. Part (1) CLOSED.)* **(2) The Vehicle Gate and the Starter Quest's vehicle reward (§13).** A human now starts with
   four craft, so as written the gate (other planets gated behind the guild's first vehicle) and the quest's reward (its
   first Vehicle) no longer apply to a human. Neither is built. Retire both for humans, reshape them, or leave them for a
   later onboarding pass? **(3) `credits` is still required on a human founding, and not used.** No new field was added,
@@ -6224,7 +6225,7 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   produces from its own `productionRate`, and "occupying an asset changes no game number" (design.md
   §4). So `removeAsset 'detach'`, which the ruling calls "dormant/unpowered," leaves a venture that
   keeps producing at its rate. Should a venture with no asset (`assetId == null`) produce **nothing**
-  (detach = unpowered), and if so does the maintenance slice's condition→output curve subsume it? This
+  (detach = unpowered), and if so does the maintenance slice's condition→output curve subsume it? *(⤳ 09-11-26: no — there is no condition→output curve; assets never wear (`docs/maintenance.md` §0). The asset-less production question stays open on its own.)* This
   is a real coupling that would move the whole body of asset-less-producing-venture tests; flagged, not
   guessed. Invariant-safety is unaffected either way (a detached venture is invariant-legal and the
   tick is null-safe).

@@ -185,7 +185,7 @@ Two sources, deliberately asymmetric. The asymmetry is set **now, aware of a fut
   market-independent tariff** (`[FIRST-CUT]` ~12–15k cr, *⤳ pinned at **10,000 cr** for slice 3* — a special institutional product, not a
   market good, so NOT an `INSTALLATION_KIT_BUY_BASELINE` floor). Durability **2 weeks** raw →
   **4 weeks** maintained. **Higher maintenance demand** (the "red tape": `[FIRST-CUT]` twice the
-  `droid_components`/week of a guild droid). May be assigned **only to a licensed venture** (§4).
+  `droid_components`/week of a guild droid). May be assigned **only to a licensed venture** (§4). *(⤳ 09-11-26: the red-tape upkeep premium is **dropped** — both sources draw 1 `droid_components` per droid-week — and the guild droid's maintained life becomes **16 weeks** (maintenance ×4; the Syndicate's stays ×2). The guild payoff is now carried by life, not upkeep; `docs/maintenance.md` §1.)*
 
 Both sources mint one idle droid row, `source`-stamped, through one helper. *(⤳ AS-BUILT 02-11-26, droid engine
 slice 2: the helper is `mintDroid` (`sim/droids.js`), and the **guild** path is built — a dockyard build of kind
@@ -383,6 +383,8 @@ row carries `droidUpkeep: { [systemId]: { stock, reserve, weeklyUpkeep, maintain
 nextUpkeepTick } }` for each system with a deployed droid — all derived on read, all whole numbers, omitted when no
 droid is deployed, fogged from rivals.)*
 
+*(**⤳ RULED 09-11-26 — the maintenance design pass retunes this section** (`docs/maintenance.md` §1; numbers in `phase-1-tuning.md` §"Maintenance"). Three changes, everything else above stands. **(a) One upkeep rate:** both sources draw **1** `droid_components` per droid-week — the Syndicate premium of 2 is dropped (it taxed the guild without a components chain, the wrong target). **(b) Maintenance multiplies life by source:** guild **×4** (4 wk → **16 wk**, 161,280 ticks), Syndicate **×2** (2 wk → 4 wk, unchanged); `DROID_WEAR_SCALE` re-derives to **161,280** (guild 4 / 1 units a tick, Syndicate 8 / 4); a deployed droid keeps its condition fraction, its units rescale exactly. **(c) The reserve gets a setter and stays its own setting:** `droidComponentReserve` means "keep this many for building" — upkeep never draws below it; it does not guard the dockyard build; it is **not** the console's `reserveLevel` (superseding §13.3's lean); a new player action sets it per system, from the Maintenance tab. Not built yet — maintenance build slice 1.)*
+
 ## 6. GP / RP — neutral (reaffirmed)
 
 GP/RP-neutral (RULED 10-09-26, `points-and-reputation.md` §1): droids touch output at the
@@ -490,6 +492,8 @@ its production timer — 30 ticks/unit, y = 336/week).
 (guild 40,320 / 80,640 ticks, Syndicate 20,160 / 40,320), the upkeep as `DROID_UPKEEP_PER_WEEK` (1 / 2), the reserve
 default as `DROID_COMPONENT_RESERVE_DEFAULT` (0), all in `sim/droids.js`. The only derived figure is the wear scale
 80,640 (the lives' least common multiple), an exact-arithmetic device, not a tuning number.)*
+
+*(⤳ RULED 09-11-26, `docs/maintenance.md` §1: guild droid life **4 wk / 16 wk**; upkeep **1** `droid_components` = 1 droid-week for **both** sources; wear scale **161,280**. The rest of this section is unchanged.)*
 
 ## 12. Build order (vertical slices)
 
@@ -698,6 +702,8 @@ ruled here. The engine is already built (§5): per-system weekly coverage, lowes
 reserve floor. The tab will surface, per system, the stock, the weekly upkeep need and coverage, the runway, and a
 control for the **reserve floor** — which **reuses the existing per-good `reserveLevel`**
 (`production-console-model.md`), not a bespoke setter. Layout and wiring are the maintenance-tab pass.
+
+*(⤳ RULED 09-11-26 — the maintenance design pass, `docs/maintenance.md` §7: the tab is ruled, and spans droids **and spacecraft** (a Fleet half for the guild credit pool and every craft, a Droids half per system). The reserve control does **not** reuse `reserveLevel` — it is its own per-system `droidComponentReserve` setter ("keep this many for building"), §1c there.)*
 
 ### 13.4 Carry-overs folded in
 

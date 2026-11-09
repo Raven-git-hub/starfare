@@ -287,6 +287,22 @@ Specialist bases are **derived, not decreed**: `specialist base = (½ × asset b
 level or bend (concave would make the first units of a hoard matter most); and `docs/licence-and-price-system.md`
 Part 5's *normaliser confirm* — live production capacity (what was built) vs. a fixed per-good reference.
 
+*(**⤳ RULED 09-11-26 — the maintenance design pass retunes two droid numbers** (`docs/maintenance.md` §1, the numbers in §"Maintenance" below). The guild droid's maintained life **8 wk → 16 wk** (161,280 ticks; maintenance ×4 for guild droids, ×2 for Syndicate droids, whose 2 wk / 4 wk are unchanged), and the Syndicate upkeep **2 → 1** `droid_components` per droid-week (one rate for both sources). The derived wear scale becomes 161,280. Not in code yet — maintenance build slice 1.)*
+
+### Maintenance (roadmap 2.6 maintenance) — `[FIRST-CUT]` *(RULED 09-11-26 — `docs/maintenance.md`)*
+
+Every number below was given by the human in the maintenance design pass (09-11-26). `docs/maintenance.md` is the authority on the mechanism; this section on the numbers. A day = 1,440 ticks; a week = 10,080. Retune in play — none of this has been felt.
+
+- **Droids.** Guild droid life **4 wk (40,320) unmaintained / 16 wk (161,280) maintained** (×4); Syndicate **2 wk (20,160) / 4 wk (40,320)** (×2). Upkeep **1 `droid_components` per droid-week, both sources**. `droidComponentReserve` default **0** (unchanged), now player-set.
+- **Craft lives — flight time only** (a craft wears only while flying). Unmaintained / maintained (×2 for every class): **light 8 wk (80,640) / 16 wk (161,280)** · **medium 6 wk (60,480) / 12 wk (120,960)** · **heavy 4 wk (40,320) / 8 wk (80,640)** · **spycraft 1 wk (10,080) / 2 wk (20,160)**.
+- **Craft maintenance rate — credits per tick of flight, from the guild pool:** **light 1 · medium 2 · heavy 5 · spycraft 10.** (All four flying round the clock: 25,920 credits a day.)
+- **Deep maintenance — full time, from 0% to 100%:** **light 720** (12 h) · **medium 720** (12 h) · **heavy 1,440** (24 h) · **spycraft 2,880** (48 h); a partial repair takes that × the fraction missing, rounded up.
+- **Early deep maintenance threshold:** below **20%** (strictly).
+- **Outpost maintenance slots:** **5** per Outpost, separate from its 10 dock slots. A held system: unlimited.
+- **Maintenance budget default:** **0** credits per cycle (maintenance is opt-in).
+- **Starter heavy condition:** **0.5** — confirmed (it was already built; now it is live).
+- **Derived, not tuned:** `DROID_WEAR_SCALE` **161,280** and `CRAFT_WEAR_SCALE` **483,840** (each the least common multiple of its lives, computed at load).
+
 ### Resource yield tiers *(24-09-26 — design.md §2 "Resource Yield Tiers & the Homeworld Production Floor")*
 
 **RULED 24-09-26, `[FIRST-CUT]`.** The per-resource mine yield (`MINE_BASELINE`, units/tick at the droidless baseline). It is also the rate the engine stamps on a newly established mine (design.md §2). Node share is each raw's share of all resource nodes in the reference seed (seed 7331, 51,273 nodes).
