@@ -6,11 +6,12 @@
 // The tripwires, in order:
 //   1. THE NUMBERS: the lives, the upkeep, the default reserve and the week, typed from the doc.
 //   2. NO-OP BYTE-IDENTICAL: a galaxy with no DEPLOYED droid hashes exactly as it did at 8ffbd21.
-//   3. DECAY: a deployed droid wears to exactly 0 in exactly its ruled life — guild 4 wk / 8 wk, Syndicate
-//      2 wk / 4 wk (uncovered / covered); idle droids never wear; decay only goes down.
+//   3. DECAY: a deployed droid wears to exactly 0 in exactly its ruled life — guild 4 wk / 16 wk, Syndicate
+//      2 wk / 4 wk (uncovered / covered; the guild's 16 is the 09-11-26 retune, docs/maintenance.md §1b); idle
+//      droids never wear; decay only goes down; a droid worn under the OLD scale rescales exactly on restore.
 //   4. DESTROY AT ZERO: the droid is removed the tick it reaches 0, the loss is recorded, its id is never
 //      reissued (even the TOP-numbered one), the boost drops, and its cap slot frees.
-//   5. UPKEEP: each week boundary draws 1 (guild) / 2 (Syndicate) droid_components per deployed droid from
+//   5. UPKEEP: each week boundary draws 1 droid_components per deployed droid, EITHER source (09-11-26), from
 //      the droid's OWN system, lowest-condition-first when short, never below the reserve floor; a droid
 //      deployed mid-week is unmaintained until the next boundary; unassign clears coverage.
 //   6. NEUTRALITY: wear and upkeep move nothing but the droids, droid_components and the notice — no GP, no
@@ -97,29 +98,34 @@ function accept(s, action) {
 
 // --- 1. the numbers -----------------------------------------------------------------------------------------
 
-test('numbers: the ruled lives, upkeep, reserve default and week — typed from docs/phase-1-tuning.md §Droids', () => {
-  // Retune there and here together.
+test('numbers: the ruled lives, upkeep, reserve default and week — typed from docs/phase-1-tuning.md §"Maintenance"', () => {
+  // Retune there and here together. RETUNED 09-11-26 (docs/maintenance.md §1, maintenance slice 1) — on purpose:
+  // the guild droid's covered life 8 → 16 weeks, and the upkeep one rate (the Syndicate's 2 dropped to 1).
   assert.equal(DROID_WEEK_TICKS, WEEK, 'the maintenance week is the Tier-3 week, 10,080 ticks');
   assert.deepEqual(DROID_LIFE_TICKS, {
-    guild: { uncovered: 4 * WEEK, covered: 8 * WEEK },
+    guild: { uncovered: 4 * WEEK, covered: 16 * WEEK },
     syndicate: { uncovered: 2 * WEEK, covered: 4 * WEEK },
   });
-  assert.deepEqual(DROID_UPKEEP_PER_WEEK, { guild: 1, syndicate: 2 });
+  assert.equal(DROID_LIFE_TICKS.guild.covered, 161_280, 'a maintained guild droid: 16 weeks');
+  assert.equal(DROID_LIFE_TICKS.guild.uncovered, 40_320);
+  assert.equal(DROID_LIFE_TICKS.syndicate.covered, 40_320);
+  assert.equal(DROID_LIFE_TICKS.syndicate.uncovered, 20_160);
+  assert.equal(DROID_UPKEEP_PER_WEEK, 1, 'one rate, both sources');
   assert.equal(DROID_COMPONENT_RESERVE_DEFAULT, 0);
   assert.equal(DROID_COMPONENTS, 'droid_components');
   // The wear scale is DERIVED (the least common multiple of the lives), and every rate is a whole number of it.
-  assert.equal(DROID_WEAR_SCALE, 80_640);
-  assert.equal(wearPerTick('guild', false), 2);
-  assert.equal(wearPerTick('guild', true), 1, 'maintenance halves the wear');
-  assert.equal(wearPerTick('syndicate', false), 4);
-  assert.equal(wearPerTick('syndicate', true), 2);
+  assert.equal(DROID_WEAR_SCALE, 161_280);
+  assert.equal(wearPerTick('guild', false), 4);
+  assert.equal(wearPerTick('guild', true), 1, 'maintenance quarters a guild droid\'s wear (×4 life)');
+  assert.equal(wearPerTick('syndicate', false), 8);
+  assert.equal(wearPerTick('syndicate', true), 4, 'maintenance halves a Syndicate droid\'s wear (×2 life)');
   assert.throws(() => wearPerTick('pirate', false), /unknown droid source/);
 });
 
 test('decayedCondition: whole-unit steps, never below 0, ALWAYS strictly down — even off the grid', () => {
-  assert.equal(decayedCondition(1, 2), (80_640 - 2) / 80_640);
-  assert.equal(decayedCondition(2 / 80_640, 2), 0, 'lands on exactly 0');
-  assert.equal(decayedCondition(1 / 80_640, 2), 0, 'clamped at 0, never negative');
+  assert.equal(decayedCondition(1, 4), (161_280 - 4) / 161_280);
+  assert.equal(decayedCondition(4 / 161_280, 4), 0, 'lands on exactly 0');
+  assert.equal(decayedCondition(1 / 161_280, 4), 0, 'clamped at 0, never negative');
   assert.equal(decayedCondition(0, 1), 0);
   // A hand-built condition that is not a whole number of units still only goes down.
   for (const c of [0.3, 0.123456789, 1e-7, 0.99999999]) {
@@ -147,7 +153,7 @@ test('no-op: a galaxy with no DEPLOYED droid is byte-identical to 8ffbd21 — id
 // --- 3. decay: the ruled lives ------------------------------------------------------------------------------
 
 // lifeOf(source, covered) -> the producing tick a NEW deployed droid is destroyed on, driving the real per-system
-// step (stepDroidUpkeep) tick by tick over a bare state — the whole life without 80,000 full ticks. With `covered`
+// step (stepDroidUpkeep) tick by tick over a bare state — the whole life without 160,000 full ticks. With `covered`
 // the droid starts maintained on a week boundary and the system holds enough components for every boundary after.
 function lifeOf(source, covered) {
   const start = covered ? WEEK : 0; // a covered droid starts the tick after a boundary, already paid for
@@ -167,25 +173,26 @@ function lifeOf(source, covered) {
     assert.ok(d.condition < last, 'decay is monotonic: down every deployed tick');
     if (covered) assert.equal(d.maintained, true, `still maintained at tick ${state.tick}`);
     last = d.condition;
-    if (state.tick > start + 9 * WEEK) throw new Error('never wore out');
+    if (state.tick > start + 17 * WEEK) throw new Error('never wore out');
   }
   return { ticks: destroyedOn - start, guild };
 }
 
-test('decay: a deployed GUILD droid wears out in exactly 4 weeks unmaintained, 8 weeks maintained', () => {
-  assert.equal(lifeOf('guild', false).ticks, 4 * WEEK);
+test('decay: a deployed GUILD droid wears out in exactly 4 weeks unmaintained, 16 weeks maintained', () => {
+  assert.equal(lifeOf('guild', false).ticks, 40_320);
   const covered = lifeOf('guild', true);
-  assert.equal(covered.ticks, 8 * WEEK);
-  // Paid on each of the 7 boundaries it lived through after its first (pre-paid) week, 1 a week: 100 - 7.
-  assert.equal(covered.guild.stockpiles[SYS][DROID_COMPONENTS], 93);
+  assert.equal(covered.ticks, 161_280, '16 weeks — the 09-11-26 retune (was 8)');
+  // Paid on each of the 15 boundaries it lived through after its first (pre-paid) week, 1 a week: 100 - 15.
+  // So a fully maintained guild droid uses 16 components over its life (docs/maintenance.md §1b).
+  assert.equal(covered.guild.stockpiles[SYS][DROID_COMPONENTS], 85);
 });
 
 test('decay: a deployed SYNDICATE droid wears out in exactly 2 weeks unmaintained, 4 weeks maintained', () => {
-  assert.equal(lifeOf('syndicate', false).ticks, 2 * WEEK);
+  assert.equal(lifeOf('syndicate', false).ticks, 20_160);
   const covered = lifeOf('syndicate', true);
-  assert.equal(covered.ticks, 4 * WEEK);
-  // 3 boundaries after the pre-paid week, 2 a week: 100 - 6.
-  assert.equal(covered.guild.stockpiles[SYS][DROID_COMPONENTS], 94);
+  assert.equal(covered.ticks, 40_320);
+  // 3 boundaries after the pre-paid week, now 1 a week (was 2 — the premium dropped 09-11-26): 100 - 3.
+  assert.equal(covered.guild.stockpiles[SYS][DROID_COMPONENTS], 97);
 });
 
 test('decay through the real tick: one tick of wear per deployed droid, idle droids untouched, no restamp', () => {
@@ -193,19 +200,80 @@ test('decay through the real tick: one tick of wear per deployed droid, idle dro
     droids: [droid(1, 'guild'), droid(2, 'syndicate'), droid(3, 'guild', { idle: true, condition: 0.5 })],
   });
   s = run(s, 25);
-  assert.equal(units(droidOf(s, droidIdFor(1)).condition), 80_640 - 25 * 2, 'guild: 2 units a tick');
-  assert.equal(units(droidOf(s, droidIdFor(2)).condition), 80_640 - 25 * 4, 'Syndicate: 4 units a tick');
+  assert.equal(units(droidOf(s, droidIdFor(1)).condition), 161_280 - 25 * 4, 'guild: 4 units a tick');
+  assert.equal(units(droidOf(s, droidIdFor(2)).condition), 161_280 - 25 * 8, 'Syndicate: 8 units a tick');
   assert.equal(droidOf(s, droidIdFor(3)).condition, 0.5, 'idle: no wear');
   for (const n of [1, 2, 3]) {
     assert.equal(droidOf(s, droidIdFor(n)).updatedAtTick, 0, 'wear is ambient — it does not restamp the row');
   }
 });
 
+test('retune: a droid worn under the OLD 80,640 scale restores with its fraction and wears to 0 on the predicted tick', () => {
+  // The 09-11-26 retune (docs/maintenance.md §1b) moved DROID_WEAR_SCALE 80,640 → 161,280. A save stores the
+  // condition FRACTION, never the units, so no migration is needed: on restore the fraction's units simply double,
+  // exactly. These three droids sit at conditions only the OLD rates could produce (whole OLD units, mid-life):
+  const OLD_SCALE = 80_640;
+  const oldGuild = OLD_SCALE - 12_345 * 2; // a guild droid after 12,345 unmaintained ticks at the old 2 units a tick
+  const oldSynd = OLD_SCALE - 5_001 * 4; // a Syndicate droid after 5,001 unmaintained ticks at the old 4 a tick
+  const oldCovered = 30_001; // a maintained guild droid, an ODD unit count (the old covered rate was 1 a tick)
+  // Droids 1 and 2 stand in sysB, which has no droid_components, so every boundary leaves them unmaintained.
+  // Droid 3 stands in sysA beside 100 components, so every boundary keeps it maintained.
+  const s = galaxy({
+    droids: [
+      droid(1, 'guild', { condition: oldGuild / OLD_SCALE, systemId: SYS_B, ventureId: 'm_b' }),
+      droid(2, 'syndicate', { condition: oldSynd / OLD_SCALE, systemId: SYS_B, ventureId: 'm_b' }),
+      droid(3, 'guild', { condition: oldCovered / OLD_SCALE, maintained: true }),
+    ],
+    ventures: [mine('m'), mine('m_b', 'copper', 4, SYS_B)],
+    stock: { [DROID_COMPONENTS]: 100 },
+    tick: WEEK, // on a boundary, so droid 3's `maintained` is this week's, paid
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'droid-retune-'));
+  let restored;
+  try {
+    saveState(s, dir);
+    restored = loadOrInit(dir, () => { throw new Error('should restore, not init'); });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(hashState(restored), hashState(s), 'the save restores byte-identically — nothing migrated');
+  const g = g1Of(restored);
+  // The fraction is unchanged, and its units at the new scale are EXACTLY double the old (whole numbers).
+  assert.equal(units(droidOf(restored, droidIdFor(1)).condition), oldGuild * 2);
+  assert.equal(units(droidOf(restored, droidIdFor(2)).condition), oldSynd * 2);
+  assert.equal(units(droidOf(restored, droidIdFor(3)).condition), oldCovered * 2);
+  // Predicted at the NEW rates: guild unmaintained 4 a tick, Syndicate unmaintained 8, guild maintained 1.
+  const predicted = {
+    [droidIdFor(1)]: (oldGuild * 2) / 4, // 27,975 ticks
+    [droidIdFor(2)]: (oldSynd * 2) / 8, // 15,159 ticks
+    [droidIdFor(3)]: oldCovered * 2, // 60,002 ticks, maintained every week from the stock
+  };
+  for (const ticks of Object.values(predicted)) assert.ok(Number.isInteger(ticks), 'every prediction is a whole tick');
+  // Drive the real per-system step tick by tick, both systems (as lifeOf does — the whole life without 60,000
+  // full ticks).
+  const state = { tick: restored.tick, dayAnchorTick: 0, guilds: [g] };
+  const start = state.tick;
+  const diedAfter = {};
+  while (Object.keys(diedAfter).length < 3) {
+    stepDroidUpkeep(state, g, SYS);
+    stepDroidUpkeep(state, g, SYS_B);
+    state.tick += 1;
+    for (const d of g.droids || []) {
+      assert.equal(d.maintained, d.id === droidIdFor(3) ? true : undefined, `${d.id}'s coverage (tick ${state.tick})`);
+    }
+    for (const id of Object.keys(predicted)) {
+      if (diedAfter[id] === undefined && !(g.droids || []).some((d) => d.id === id)) diedAfter[id] = state.tick - start;
+    }
+    if (state.tick > start + 7 * WEEK) throw new Error('a droid never wore out');
+  }
+  assert.deepEqual(diedAfter, predicted, 'each lands on exactly 0 on exactly the tick the new rates predict');
+});
+
 // --- 4. destroy at zero -------------------------------------------------------------------------------------
 
 test('destroy: a droid is removed the tick it reaches 0, the loss is recorded, and the boost drops at once', () => {
   // 20 guild droids, all 3 ticks from the end: a full complement doubles the mine (10 a tick) until they go.
-  const droids = Array.from({ length: 20 }, (_, i) => droid(i + 1, 'guild', { condition: 6 / 80_640 }));
+  const droids = Array.from({ length: 20 }, (_, i) => droid(i + 1, 'guild', { condition: 12 / 161_280 }));
   let s = galaxy({ droids });
   s = run(s, 2);
   assert.equal(g1Of(s).droids.length, 20, 'two ticks in: worn but alive');
@@ -227,7 +295,7 @@ test('destroy: a droid is removed the tick it reaches 0, the loss is recorded, a
 
 test('destroy: the TOP-numbered droid\'s id is never reissued — the serial does not read live rows', () => {
   let s = galaxy({
-    droids: [droid(1, 'guild', { idle: true }), droid(2, 'guild'), droid(3, 'syndicate', { condition: 4 / 80_640 })],
+    droids: [droid(1, 'guild', { idle: true }), droid(2, 'guild'), droid(3, 'syndicate', { condition: 8 / 161_280 })],
   });
   s = run(s, 1);
   assert.equal(droidOf(s, droidIdFor(3)), undefined, 'droid 03, the highest number, wore out');
@@ -238,7 +306,7 @@ test('destroy: the TOP-numbered droid\'s id is never reissued — the serial doe
 });
 
 test('destroy: a spent droid frees its cap slot — "assigned" and "alive" coincide (docs/droids.md §10)', () => {
-  const droids = Array.from({ length: 20 }, (_, i) => droid(i + 1, 'guild', { condition: i === 0 ? 2 / 80_640 : 1 }));
+  const droids = Array.from({ length: 20 }, (_, i) => droid(i + 1, 'guild', { condition: i === 0 ? 4 / 161_280 : 1 }));
   droids.push(droid(21, 'guild', { idle: true }));
   let s = galaxy({ droids });
   assert.equal(validateAction(s, createAssignDroidAction({ guildId: 'g1', droidId: droidIdFor(21), ventureId: 'm' })).valid, false, 'full');
@@ -250,7 +318,7 @@ test('destroy: a spent droid frees its cap slot — "assigned" and "alive" coinc
 
 // --- 5. upkeep ----------------------------------------------------------------------------------------------
 
-test('upkeep: the week boundary draws 1 per guild droid and 2 per Syndicate droid, and the slow rate follows', () => {
+test('upkeep: the week boundary draws 1 per droid of EITHER source, and the slow rate follows', () => {
   let s = galaxy({
     droids: [droid(1, 'guild'), droid(2, 'syndicate'), droid(3, 'guild', { idle: true })],
     stock: { [DROID_COMPONENTS]: 10 },
@@ -261,19 +329,19 @@ test('upkeep: the week boundary draws 1 per guild droid and 2 per Syndicate droi
   const atBoundary = { g: units(droidOf(s, droidIdFor(1)).condition), y: units(droidOf(s, droidIdFor(2)).condition) };
   s = run(s, 1);
   assert.equal(s.tick, WEEK);
-  assert.equal(held(s, DROID_COMPONENTS), 10 - 1 - 2, 'one guild + one Syndicate droid: 3 drawn');
+  assert.equal(held(s, DROID_COMPONENTS), 10 - 1 - 1, 'one guild + one Syndicate droid: 1 each, 2 drawn (was 1 + 2)');
   assert.equal(droidOf(s, droidIdFor(1)).maintained, true);
   assert.equal(droidOf(s, droidIdFor(2)).maintained, true);
   assert.equal(droidOf(s, droidIdFor(3)).maintained, undefined, 'the idle droid is not paid for');
   assert.equal(droidOf(s, droidIdFor(1)).updatedAtTick, WEEK - 1, 'the coverage set is a discrete mutation: stamped');
   assert.equal(droidOf(s, droidIdFor(3)).updatedAtTick, 0, 'the idle droid is not touched');
   // The boundary tick itself still wore at LAST week's (fast) rate; the slow rate starts the tick after.
-  assert.equal(units(droidOf(s, droidIdFor(1)).condition), atBoundary.g - 2);
-  assert.equal(units(droidOf(s, droidIdFor(2)).condition), atBoundary.y - 4);
+  assert.equal(units(droidOf(s, droidIdFor(1)).condition), atBoundary.g - 4);
+  assert.equal(units(droidOf(s, droidIdFor(2)).condition), atBoundary.y - 8);
   s = run(s, 10);
-  assert.equal(units(droidOf(s, droidIdFor(1)).condition), atBoundary.g - 2 - 10, 'maintained guild: 1 a tick');
-  assert.equal(units(droidOf(s, droidIdFor(2)).condition), atBoundary.y - 4 - 20, 'maintained Syndicate: 2 a tick');
-  assert.equal(held(s, DROID_COMPONENTS), 7, 'nothing more drawn mid-week');
+  assert.equal(units(droidOf(s, droidIdFor(1)).condition), atBoundary.g - 4 - 10, 'maintained guild: 1 a tick');
+  assert.equal(units(droidOf(s, droidIdFor(2)).condition), atBoundary.y - 8 - 40, 'maintained Syndicate: 4 a tick');
+  assert.equal(held(s, DROID_COMPONENTS), 8, 'nothing more drawn mid-week');
 });
 
 test('upkeep: when short, the LOWEST-condition droids are covered first, ties broken by id', () => {
@@ -294,15 +362,25 @@ test('upkeep: when short, the LOWEST-condition droids are covered first, ties br
   for (const d of g.droids) assert.equal(d.updatedAtTick, 7, 'every deployed droid\'s coverage was set, so stamped');
 });
 
-test('upkeep: a droid the remaining stock cannot pay for is skipped, and a cheaper one after it is still covered', () => {
+test('upkeep: one rate — the triage ranks by condition alone, whatever the source; the rest are skipped', () => {
+  // REWRITTEN 09-11-26 (maintenance slice 1): this test used to show a Syndicate droid (cost 2) skipped and a
+  // cheaper guild droid (cost 1) after it still covered. With one rate that case cannot arise, so it now pins
+  // what replaced it: the source buys no priority — the worn Syndicate droid is covered first, the healthier
+  // guild droids after it are skipped once the stock is gone.
   const s = galaxy({
-    droids: [droid(1, 'syndicate', { condition: 0.1 }), droid(2, 'guild', { condition: 0.9 })],
+    droids: [droid(1, 'guild', { condition: 0.9 }), droid(2, 'syndicate', { condition: 0.1 }), droid(3, 'guild', { condition: 0.5 })],
     stock: { [DROID_COMPONENTS]: 1 },
   });
   const g = structuredClone(g1Of(s));
-  assert.deepEqual(fundDroidUpkeep(g, SYS, 0), { drawn: 1, covered: 1, uncovered: 1 });
-  assert.equal(g.droids[0].maintained, undefined, 'the Syndicate droid needs 2 — there is 1');
-  assert.equal(g.droids[1].maintained, true, 'the 1 left covers the guild droid');
+  assert.deepEqual(fundDroidUpkeep(g, SYS, 0), { drawn: 1, covered: 1, uncovered: 2 });
+  assert.equal(g.droids[1].maintained, true, 'the Syndicate droid at 0.1 — the lowest — costs 1 and takes the 1');
+  assert.equal(g.droids[0].maintained, undefined, 'skipped');
+  assert.equal(g.droids[2].maintained, undefined, 'skipped');
+  // With 2, the next-lowest (the guild droid at 0.5) is covered too; the healthiest is still skipped.
+  const g2 = structuredClone(g1Of(s));
+  g2.stockpiles[SYS][DROID_COMPONENTS] = 2;
+  assert.deepEqual(fundDroidUpkeep(g2, SYS, 0), { drawn: 2, covered: 2, uncovered: 1 });
+  assert.deepEqual(g2.droids.filter((d) => d.maintained).map((d) => d.id), [droidIdFor(2), droidIdFor(3)]);
 });
 
 test('upkeep: a boundary that cannot pay UNCOVERS last week\'s maintained droids', () => {
@@ -311,7 +389,7 @@ test('upkeep: a boundary that cannot pay UNCOVERS last week\'s maintained droids
   assert.equal(droidOf(s, droidIdFor(1)).maintained, undefined, 'no stock: the new week is unmaintained');
   const before = units(droidOf(s, droidIdFor(1)).condition);
   s = run(s, 1);
-  assert.equal(units(droidOf(s, droidIdFor(1)).condition), before - 2, 'back to the fast rate');
+  assert.equal(units(droidOf(s, droidIdFor(1)).condition), before - 4, 'back to the fast rate');
 });
 
 test('upkeep: never draws below the system\'s reserve floor', () => {
@@ -347,7 +425,7 @@ test('upkeep: a droid deployed mid-week is unmaintained until the next boundary 
   s = accept(s, createAssignDroidAction({ guildId: 'g1', droidId: droidIdFor(1), ventureId: 'm' }));
   s = run(s, 10);
   assert.equal(droidOf(s, droidIdFor(1)).maintained, undefined);
-  assert.equal(units(droidOf(s, droidIdFor(1)).condition), 80_640 - 20, 'the fast rate');
+  assert.equal(units(droidOf(s, droidIdFor(1)).condition), 161_280 - 40, 'the fast rate: 4 units a tick');
   assert.equal(held(s, DROID_COMPONENTS), 5);
   s.tick = 2 * WEEK - 1; // jump to just before the next boundary (deployedAtTick stays in the past)
   s = run(s, 1);
@@ -366,14 +444,15 @@ test('upkeep: the draw is conserved — stock falls by exactly what the covered 
   const droids = [
     droid(1, 'guild'), droid(2, 'guild', { condition: 0.4 }), droid(3, 'syndicate'), droid(4, 'syndicate', { condition: 0.3 }),
   ];
-  let s = galaxy({ droids, stock: { [DROID_COMPONENTS]: 5 }, tick: WEEK - 1 });
+  let s = galaxy({ droids, stock: { [DROID_COMPONENTS]: 3 }, tick: WEEK - 1 });
   s = run(s, 1);
-  // 5 to spend, lowest first: Syndicate 04 (0.3, costs 2), guild 02 (0.4, 1), then Syndicate 03 — it wore 4 units
-  // a tick against guild 01's 2, so it sits LOWER than 01 — costs 2, and that is the last of the stock.
+  // 3 to spend, 1 each, lowest first: Syndicate 04 (0.3), guild 02 (0.4), then Syndicate 03 — it wore 8 units a
+  // tick against guild 01's 4, so it sits LOWER than 01 — and that is the last of the stock. (Stock was 5 when a
+  // Syndicate droid cost 2; 3 keeps the same three covered at one rate — changed on purpose 09-11-26.)
   const covered = g1Of(s).droids.filter((d) => d.maintained);
   assert.deepEqual(covered.map((d) => d.id), [droidIdFor(2), droidIdFor(3), droidIdFor(4)]);
-  const cost = covered.reduce((sum, d) => sum + DROID_UPKEEP_PER_WEEK[d.source], 0);
-  assert.equal(5 - held(s, DROID_COMPONENTS), cost, 'drawn = Σ the covered droids\' upkeep');
+  const cost = covered.length * DROID_UPKEEP_PER_WEEK;
+  assert.equal(3 - held(s, DROID_COMPONENTS), cost, 'drawn = Σ the covered droids\' upkeep');
   assert.equal(held(s, DROID_COMPONENTS), 0, 'nothing left for guild 01, the healthiest');
   assert.equal(droidOf(s, droidIdFor(1)).maintained, undefined);
   // The galactic supply cache moved with the stock (advance() checked it; here it is spelled out).
@@ -395,7 +474,7 @@ function strip(st) {
 test('neutrality: wear, destruction and upkeep move no GP, no mean line, no fee, no credit and no fuel', () => {
   // A licensed venture staffed with droids, on a week boundary, with one droid wearing out on that very tick.
   let s = galaxy({
-    droids: [droid(1, 'syndicate', { condition: 4 / 80_640 }), droid(2, 'guild'), droid(3, 'syndicate')],
+    droids: [droid(1, 'syndicate', { condition: 8 / 161_280 }), droid(2, 'guild'), droid(3, 'syndicate')],
     stock: { [DROID_COMPONENTS]: 9 },
     tick: WEEK - 1,
   });
@@ -461,15 +540,15 @@ test('snapshot: each droid row shows maintained; the per-system upkeep row shows
     reserve: { [SYS]: 2 },
     tick: WEEK - 1,
   });
-  s = run(s, 1); // the boundary draws 1 + 2 = 3, leaving 9
+  s = run(s, 1); // the boundary draws 1 + 1 = 2 (one rate, 09-11-26 — was 1 + 2), leaving 10
   const row = buildSnapshot(s).guilds[0];
   assert.equal(row.droids.find((d) => d.id === droidIdFor(1)).maintained, true);
   assert.equal(row.droids.find((d) => d.id === droidIdFor(3)).maintained, undefined, 'omitted when not maintained');
   assert.equal(typeof row.droids[0].condition, 'number');
   assert.deepEqual(row.droidUpkeep, {
     [SYS]: {
-      stock: 9, reserve: 2, weeklyUpkeep: 3, maintained: 2, unmaintained: 0,
-      runwayWeeks: 2, // floor((9 - 2) / 3)
+      stock: 10, reserve: 2, weeklyUpkeep: 2, maintained: 2, unmaintained: 0,
+      runwayWeeks: 4, // floor((10 - 2) / 2)
       nextUpkeepTick: 2 * WEEK,
     },
   });

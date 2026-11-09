@@ -2435,7 +2435,7 @@ function droidComplementField(guild) {
 // none of them):
 //   - stock            — the system's droid_components on hand;
 //   - reserve          — the floor upkeep never draws below (default 0);
-//   - weeklyUpkeep     — components a week to maintain every deployed droid here (1 guild, 2 Syndicate each);
+//   - weeklyUpkeep     — components a week to maintain every deployed droid here (1 per droid, either source);
 //   - maintained / unmaintained — how many deployed droids this week's upkeep covers, and how many it does not;
 //   - runwayWeeks      — how many whole weeks the stock above the floor keeps the current complement covered
 //                        (floor((stock − reserve) / weeklyUpkeep), never below 0);

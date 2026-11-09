@@ -193,8 +193,9 @@ test('assign / unassign flip idle ↔ deployed and record their tick', () => {
 
   const unassignTick = s.tick;
   s = accept(s, unassignA(D1));
-  // Ten deployed ticks of unmaintained Syndicate wear (droid engine slice 5): 4 of 80,640 wear units a tick.
-  const worn = (80640 - 10 * 4) / 80640;
+  // Ten deployed ticks of unmaintained Syndicate wear (droid engine slice 5): 8 of 161,280 wear units a tick
+  // since the 09-11-26 retune (was 4 of 80,640 — the same fraction, as the unmaintained life did not change).
+  const worn = (161280 - 10 * 8) / 161280;
   assert.deepEqual(droidOf(s, D1), { id: D1, systemId: HOME.id, source: 'syndicate', condition: worn, updatedAtTick: unassignTick }, 'back to the idle row, in place, stamped');
   assert.equal(assignedDroidCount(g1Of(s), LICENSED), 0);
 

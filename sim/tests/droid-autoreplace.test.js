@@ -4,7 +4,8 @@
 //
 // The tripwires, in order:
 //   1. NO-OP BYTE-IDENTICAL: with `autoReplace` off everywhere — droids deployed, droids dying, a week boundary
-//      crossed — the galaxy hashes exactly as it did at ef14e01, before this slice.
+//      crossed — the galaxy hashes exactly as it did at ef14e01, before this slice (RE-PINNED 09-11-26 for the
+//      maintenance slice 1 droid retune, which deliberately changes droid wear — see the note at the golden).
 //   2. THE ACTION: setAutoReplace's refusals; on writes `autoReplace: true`, off REMOVES the key; tick-stamped.
 //   3. THE SOURCE RULE: a Syndicate death refills Syndicate-only (empty if none, never guild); a guild death
 //      prefers guild and falls back to Syndicate; lowest id within a source.
@@ -108,15 +109,30 @@ function accept(s, action) {
 // both sources deployed and three of them wearing out mid-run, idle spares of both sources beside them, a licensed
 // venture, a week boundary crossed — and `autoReplace` on nowhere. If this moves, the slice changed behaviour for
 // a galaxy that never switched it on.
-const AUTOREPLACE_OFF_GOLDEN_EF14E01 = 'd9ff1eef97f0f8365c508aff365d29a93c56c0218ce621c7a3e34aa123e2d43c';
+//
+// RE-PINNED 09-11-26 — maintenance slice 1 (docs/maintenance.md §1), a DELIBERATE change. The ef14e01 hash was
+// d9ff1eef97f0f8365c508aff365d29a93c56c0218ce621c7a3e34aa123e2d43c. The script is unchanged; the droid numbers it
+// runs on are not. At the week boundary the 3 droid_components now cover THREE droids at 1 each (they covered
+// two when a Syndicate droid cost 2), and a maintained guild droid now wears 1 unit a tick on a 161,280 scale
+// (×4 life) instead of 1 on 80,640 (×2). So guild droid 02 on m_lic, which died at tick 10,101 under the old
+// numbers, is still alive at the end of the run (11 units left): 2 droids_spent notices, not 3. Diffing the two
+// end states field by field (main at dfb1e67 vs this slice), EVERY changed path follows from that one droid
+// living on: g1's droids / events / eventSeq; its still-boosted production (productionHistory, the two ventures'
+// extractionCarry); the extra titanium the licensed venture delivered (syndicateWindows delivered / sendCarry) and
+// the 1 credit it moved from the Syndicate ledger to the guild (credits 99,823 → 99,824, ledger 177 → 176 —
+// conserved); and copper's price (prices, priceRing, priceHistory) answering the boosted supply. Nothing else
+// moved — no fuel, no GP, no other guild. The auto-replace code is untouched, so the no-op guard it was written for
+// holds from this pin on.
+const AUTOREPLACE_OFF_GOLDEN_RETUNE = 'b92c92f35cdb276bdc7688306dbd483099d2ca1d475c0dfe22a3c58bad4d4d64';
 
-test('no-op: with autoReplace off everywhere, deaths across a week boundary are byte-identical to ef14e01', () => {
+test('no-op: with autoReplace off everywhere, deaths across a week boundary are byte-identical to the pin', () => {
   const s = autoReplaceOffScript();
   const g = g1Of(s);
-  assert.equal(g.events.filter((e) => e.type === 'droids_spent').length, 3, 'the run really did destroy droids');
+  // 2 since the 09-11-26 retune (was 3 — see the note above): a maintained guild droid now lasts twice as long.
+  assert.equal(g.events.filter((e) => e.type === 'droids_spent').length, 2, 'the run really did destroy droids');
   assert.ok(g.droids.filter((d) => d.assignedToVentureId === undefined).length >= 3, 'and the spares were left idle');
   assert.ok(g.ventures.every((v) => !('autoReplace' in v)), 'no venture carries the key');
-  assert.equal(hashState(s), AUTOREPLACE_OFF_GOLDEN_EF14E01);
+  assert.equal(hashState(s), AUTOREPLACE_OFF_GOLDEN_RETUNE);
 });
 
 // --- 2. the action ------------------------------------------------------------------------------------------
