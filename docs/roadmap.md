@@ -5705,6 +5705,15 @@ boundary so the later hex-map swap doesn't touch it.
     GUARD's old pin still holds with the droid sentence and row stripped. Sim 2,752 → **2,768** (16 in
     `droid-system-loss.test.js`; two client notice tests updated for the new words), tools **100** (unchanged).
     Checklist item below ("Droids: losing-a-system calls …").
+  - **client polish — the console sparkline stops zooming into integer-rounding noise (CLIENT ONLY,
+    `client/console.html`). BUILT 09-11-26.** The droid boost made it obvious, but it hit any near-steady good:
+    a fractional rate is emitted as the integer-goods carry (216, 217, 216…), and `trendSpark` scaled that ±1 to
+    fill the box as a sawtooth. The span is now floored at `SPARK_MIN_SPAN_FRAC` (0.1) of the series' top, and
+    the line is placed around its midpoint so a near-steady series sits mid-box, not on the baseline (the flat
+    case's old "looks like zero" failure). An unfloored series draws exactly the old y-values. Both sparklines
+    (Production and Consumption) share the fix. AS-BUILT in `production-console-model.md` (the sparkline note).
+    **No engine change; no game number** — the constant governs pixels only, so no checklist entry. Sim
+    2,768 → **2,774** (6 in `console-sparkline-span.test.js`), tools **100** (unchanged).
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer

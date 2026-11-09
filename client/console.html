@@ -1756,6 +1756,14 @@ var SPARK_SEQ = 0;
 // swing in production read as a flat line. The CSS rule `.tc-spark{height:132px}` above
 // carries the same number and points back here.
 var SPARK_W = 150, SPARK_H = 132;
+// The smallest vertical span the sparkline will scale to, as a fraction of the series'
+// own highest value. Goods are integers, so a fractional per-tick rate (a droid-boosted
+// mine, say) is emitted as a carried ±1 flicker — 216, 217, 216… Scaled to its own
+// min/max, that one-unit noise filled the whole box as a sawtooth. Flooring the span at
+// 10% of the level keeps that flicker to a few percent of the height, while a good that
+// really swings by more than 10% still fills the box exactly as before. A pixel-tuning
+// constant only — it feeds no game number, so it is not a decision-checklist item.
+var SPARK_MIN_SPAN_FRAC = 0.1;
 function trendSpark(values, cls){
   var W = SPARK_W, H = SPARK_H, pad = 4;
   // Fewer than two recorded ticks is not a trend — say so rather than draw a line
@@ -1775,14 +1783,23 @@ function trendSpark(values, cls){
   var vs = values;
   var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
   var flat = hi === lo;                  // a steady series — every point the same value
-  var span = (hi - lo) || 1;
+  // Never scale to less than SPARK_MIN_SPAN_FRAC of the level (see its comment).
+  var span = Math.max(hi - lo, hi * SPARK_MIN_SPAN_FRAC) || 1;
+  var mid = (hi + lo) / 2;
   var n = vs.length, iw = W - pad * 2, ih = H - pad * 2;
   var X = function(i){ return pad + (i / (n - 1)) * iw; };
   // A flat series has no range to scale against, so it is drawn down the MIDDLE of the
   // box. Normalising it the usual way put every point on `H - pad` — the same line as
   // the recessive baseline — so a steady economy rendered as an empty box with a rule
   // along the floor, indistinguishable from zero.
-  var Y = function(v){ return flat ? pad + ih / 2 : pad + ih - ((v - lo) / span) * ih; };
+  //
+  // Every other series is placed around its MIDPOINT, not its minimum: `mid` sits at the
+  // vertical centre of the inner box and `span` covers the inner height. Mapping from `lo`
+  // (lo on the floor) would, once the span is floored, push a near-steady series down onto
+  // that same baseline — the flat-case failure above, coming back by another route.
+  // When the span is NOT floored (span === hi - lo) this is the old mapping exactly:
+  // lo lands on the floor and hi on the ceiling. Only floored series move.
+  var Y = function(v){ return flat ? pad + ih / 2 : pad + ih / 2 - ((v - mid) / span) * ih; };
   var pts = vs.map(function(v, i){ return X(i) + ',' + Y(v).toFixed(1); });
   var line = 'M' + pts.join(' L');
   var area = 'M' + X(0) + ',' + (H - pad) + ' L' + pts.join(' L') + ' L' + X(n - 1) + ',' + (H - pad) + ' Z';
