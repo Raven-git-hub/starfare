@@ -149,6 +149,27 @@ Two rules worth stating, because a trend line is a claim about time:
 looks. It is not an economy number (it feeds no rate, price or commitment), so
 it is not a `[FIRST-CUT]` and carries no decision-checklist entry.
 
+**How the series is scaled to pixels** *(client polish, 09-11-26 — `trendSpark`,
+`client/console.html`; both the Production and Consumption sparklines)*. Goods
+are integers, so a fractional per-tick rate (a droid-boosted mine is the obvious
+case) is emitted as a carried ±1 flicker — 216, 217, 216, 217… — that conserves
+the right total. Scaled to its own min/max, that one-unit noise was stretched
+over the whole box as a sawtooth. Two rules now govern the scaling; the engine
+and what is plotted are unchanged:
+
+- **The span is floored.** The line scales to `max(hi − lo, hi ×
+  SPARK_MIN_SPAN_FRAC)`, with `SPARK_MIN_SPAN_FRAC = 0.1`. A ±1 flicker on ~216
+  fills about 5% of the height; a good that swings by more than 10% of its own
+  level (a 3↔4 swing included) still fills the box. Like `HISTORY_N` it is a
+  display constant — it governs only pixels — so it carries no checklist entry.
+- **The line is centred on its midpoint.** `(hi + lo) / 2` sits at the vertical
+  centre of the box. Mapping from `lo` instead would, once the span is floored,
+  lay a near-steady series on the baseline rule — the "steady economy looks
+  like zero" failure the flat case (drawn down the middle) was added to fix.
+  When the floor does not engage this is exactly the old mapping (lo on the
+  floor, hi on the ceiling), so a real trend draws as before. Pinned in
+  `sim/tests/console-sparkline-span.test.js`.
+
 ### Engine-wide — `state.windowN`
 
 | Field | Type | Default | Meaning |
