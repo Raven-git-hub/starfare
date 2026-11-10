@@ -383,7 +383,7 @@ row carries `droidUpkeep: { [systemId]: { stock, reserve, weeklyUpkeep, maintain
 nextUpkeepTick } }` for each system with a deployed droid — all derived on read, all whole numbers, omitted when no
 droid is deployed, fogged from rivals.)*
 
-*(**⤳ RULED 09-11-26 — the maintenance design pass retunes this section** (`docs/maintenance.md` §1; numbers in `phase-1-tuning.md` §"Maintenance"). Three changes, everything else above stands. **(a) One upkeep rate:** both sources draw **1** `droid_components` per droid-week — the Syndicate premium of 2 is dropped (it taxed the guild without a components chain, the wrong target). **(b) Maintenance multiplies life by source:** guild **×4** (4 wk → **16 wk**, 161,280 ticks), Syndicate **×2** (2 wk → 4 wk, unchanged); `DROID_WEAR_SCALE` re-derives to **161,280** (guild 4 / 1 units a tick, Syndicate 8 / 4); a deployed droid keeps its condition fraction, its units rescale exactly. **(c) The reserve gets a setter and stays its own setting:** `droidComponentReserve` means "keep this many for building" — upkeep never draws below it; it does not guard the dockyard build; it is **not** the console's `reserveLevel` (superseding §13.3's lean); a new player action sets it per system, from the Maintenance tab. Not built yet — maintenance build slice 1.)*
+*(**⤳ RULED 09-11-26 — the maintenance design pass retunes this section** (`docs/maintenance.md` §1; numbers in `phase-1-tuning.md` §"Maintenance"). Three changes, everything else above stands. **(a) One upkeep rate:** both sources draw **1** `droid_components` per droid-week — the Syndicate premium of 2 is dropped (it taxed the guild without a components chain, the wrong target). **(b) Maintenance multiplies life by source:** guild **×4** (4 wk → **16 wk**, 161,280 ticks), Syndicate **×2** (2 wk → 4 wk, unchanged); `DROID_WEAR_SCALE` re-derives to **161,280** (guild 4 / 1 units a tick, Syndicate 8 / 4); a deployed droid keeps its condition fraction, its units rescale exactly. **(c) The reserve gets a setter and stays its own setting:** `droidComponentReserve` means "keep this many for building" — upkeep never draws below it; it does not guard the dockyard build; it is **not** the console's `reserveLevel` (superseding §13.3's lean); a new player action sets it per system, from the Maintenance tab. Not built yet — maintenance build slice 1.)* *(⤳ BUILT — maintenance slice 1, 09-11-26; the Maintenance tab that sets it, maintenance slice 5, 10-11-26.)*
 
 *(**⤳ AS-BUILT 09-11-26 — maintenance slice 1 builds the retune above** (`docs/maintenance.md` §1's AS-BUILT note has
 the detail). In `sim/droids.js`: `DROID_LIFE_TICKS` guild **40,320 / 161,280**, Syndicate 20,160 / 40,320;
@@ -721,10 +721,15 @@ control for the **reserve floor** — which **reuses the existing per-good `rese
 
 *(⤳ RULED 09-11-26 — the maintenance design pass, `docs/maintenance.md` §7: the tab is ruled, and spans droids **and spacecraft** (a Fleet half for the guild credit pool and every craft, a Droids half per system). The reserve control does **not** reuse `reserveLevel` — it is its own per-system `droidComponentReserve` setter ("keep this many for building"), §1c there.)*
 
+*(⤳ **BUILT 10-11-26 — maintenance slice 5** (`docs/maintenance.md` §7.1 AS-BUILT). The tab's Droids half draws one block
+per system in the snapshot's `droidUpkeep` — stock, reserve, the weekly need, how many droids this week's upkeep covers and
+how many wear fast, the runway in weeks and the next weekly upkeep as a countdown — each with a "Keep this many for
+building" field that sends `setDroidComponentReserve`. Client only; every figure is the snapshot's.)*
+
 ### 13.4 Carry-overs folded in
 
 The commission list's incidental "droid" entry (engine slice 2) gets a coherent affordance or is hidden until
-deployment exists; the `droids_spent` notice's player-facing wording (engine slice 5) is settled at the client slice.
+deployment exists; the `droids_spent` notice's player-facing wording (engine slice 5) is settled at the client slice. *(⤳ 10-11-26: the `droids_spent` wording is BUILT with maintenance slice 5 — `docs/event-log.md` §17, "the client half"; draft copy.)*
 
 ### 13.5 Client slices (build order)
 
@@ -732,7 +737,7 @@ deployment exists; the `droids_spent` notice's player-facing wording (engine sli
    assign / unassign).
 2. **Auto-replace** — the `autoReplace` venture flag + the fill-on-death-from-idle engine mechanic + the popup
    toggle. *(⤳ BUILT 06-11-26 — §13.2's AS-BUILT note.)*
-3. **The maintenance tab** — after its own design pass.
+3. **The maintenance tab** — after its own design pass. *(⤳ BUILT 10-11-26 as maintenance slice 5 — §13.3.)*
 
 The client renders the snapshot and computes no game number; the counts and conditions it shows are read, not
 computed.

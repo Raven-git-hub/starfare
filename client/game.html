@@ -1444,6 +1444,54 @@ select.field{appearance:none; cursor:pointer;}
   text-shadow:0 2px 22px rgba(13,15,20,.95), 0 1px 4px rgba(13,15,20,.95);}
 #tp-ops .ops-thero .role{position:absolute; z-index:2; bottom:13px; left:0; right:0; text-align:center; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ops-ink3);}
 
+/* ===== the MAINTENANCE tab (docs/maintenance.md §7.1; roadmap 2.6 maintenance, slice 5) — a TOP-LEVEL tab beside
+   Operations, in the same full-viewport overlay pattern. Two halves: FLEET (the guild's credit pool, its three figures
+   and one row per craft) over DROIDS (one block per system with deployed droids). It reuses the Operations tab's
+   palette and chrome — the tokens are copied onto #tp-maint so nothing here reaches into #tp-ops — and adds no
+   colour of its own. Every figure is a snapshot field; the panel computes no game number (§18). ===== */
+#tabPanel.maint{overflow:hidden;}
+#tp-maint{--mt-panel:#14171e; --mt-panel2:#181c24; --mt-ink:#E8DFC8; --mt-ink2:#b7b09a; --mt-ink3:#6f7687; --mt-ink4:#454b58;
+  --mt-amber:#C9A227; --mt-amber2:#e3c04a; --mt-amber-dim:rgba(201,162,39,.30); --mt-teal:#43d9c8;
+  --mt-line:rgba(232,223,200,.10); --mt-line2:rgba(232,223,200,.18); --mt-up:#5fb98a; --mt-down:#e0796b;
+  --mt-mono:'IBM Plex Mono',ui-monospace,monospace; --mt-serif:'Cinzel',Georgia,serif;
+  display:none; font-family:var(--mt-mono); font-size:13px; line-height:1.45; color:var(--mt-ink);
+  padding:22px; background:radial-gradient(120% 80% at 80% -10%, rgba(201,162,39,.06), transparent 60%);
+  height:100%; overflow-y:auto;}
+#tp-maint.show{display:block;}
+#tp-maint *{box-sizing:border-box;}
+#tp-maint .mt-card{background:var(--mt-panel2); border:1px solid var(--mt-line); border-radius:10px; margin-bottom:16px;}
+#tp-maint .mt-card-h{display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid var(--mt-line);}
+#tp-maint .mt-card-h .t{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--mt-ink2); font-weight:600;}
+#tp-maint .mt-card-h .s{font-size:10.5px; color:var(--mt-ink3);}
+/* the shell's Close button (#tabExit) sits over the panel's top-right corner, so the first header keeps clear of it */
+#tp-maint .mt-card:first-child .mt-card-h{padding-right:120px;}
+#tp-maint .mt-body{padding:14px 16px;}
+#tp-maint .mt-figs{display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:14px;}
+#tp-maint .mt-fig{background:var(--mt-panel); border:1px solid var(--mt-line); border-radius:8px; padding:10px 12px;}
+#tp-maint .mt-fig .k{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mt-ink3);}
+#tp-maint .mt-fig .v{font-size:20px; font-weight:600; margin-top:4px; font-variant-numeric:tabular-nums;}
+#tp-maint .mt-fig .u{font-size:10px; color:var(--mt-ink4); margin-top:2px;}
+#tp-maint .mt-ctls{display:flex; flex-wrap:wrap; gap:18px;}
+#tp-maint .mt-ctl{display:flex; flex-direction:column; gap:6px;}
+#tp-maint .mt-ctl label{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mt-ink3);}
+#tp-maint .mt-ctl .row{display:flex; gap:8px;}
+#tp-maint .mt-ctl input{width:130px; font-family:var(--mt-mono); font-size:12px; color:var(--mt-ink); background:var(--mt-panel); border:1px solid var(--mt-line2); border-radius:6px; padding:7px 9px;}
+#tp-maint .mt-btn{font-family:var(--mt-mono); font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--mt-amber2); background:var(--mt-panel); border:1px solid var(--mt-amber-dim); border-radius:6px; padding:7px 12px; cursor:pointer;}
+#tp-maint .mt-btn:disabled{opacity:.5; cursor:default;}
+#tp-maint .mt-msg{font-size:11px; color:var(--mt-down); max-width:320px;}
+#tp-maint .mt-table{width:100%; border-collapse:collapse;}
+#tp-maint .mt-table th{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mt-ink3); font-weight:500; text-align:left; padding:6px 8px; border-bottom:1px solid var(--mt-line);}
+#tp-maint .mt-table td{padding:8px; border-bottom:1px solid var(--mt-line); vertical-align:top; font-variant-numeric:tabular-nums;}
+#tp-maint .mt-state.ok{color:var(--mt-up);} #tp-maint .mt-state.warn{color:var(--mt-down);} #tp-maint .mt-state.deep{color:var(--mt-amber2);}
+#tp-maint .mt-note{display:block; font-size:10.5px; color:var(--mt-ink3); margin-top:2px;}
+#tp-maint .mt-droids{display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px;}
+#tp-maint .mt-sys{background:var(--mt-panel); border:1px solid var(--mt-line); border-radius:8px; padding:12px 14px;}
+#tp-maint .mt-sys .nm{font-family:var(--mt-serif); font-size:15px; color:var(--mt-ink); margin-bottom:8px;}
+#tp-maint .mt-kv{display:flex; justify-content:space-between; gap:12px; padding:4px 0; border-bottom:1px solid var(--mt-line); font-size:12px;}
+#tp-maint .mt-kv .k{color:var(--mt-ink3);}
+#tp-maint .mt-sys .mt-ctl{margin-top:10px;}
+#tp-maint .mt-empty{color:var(--mt-ink4); font-size:12px; line-height:1.6; padding:18px 4px; text-align:center;}
+
 /* ===== the DEUTERIUM tab — the guild-wide monitoring DASHBOARD (§1.4 slice 2b), now a TOP-LEVEL
    tab (a peer of TRADE / the Guild Hall), NOT a sub-tab inside TRADE: deuterium is untradeable, so it
    never belonged among the trade tiers. The design contract is docs/mockups/deuterium-tab.html; this
@@ -2729,6 +2777,7 @@ select.field{appearance:none; cursor:pointer;}
     <button class="rtab" onclick="openTab('market', this)">TRADE</button>
     <button class="rtab" onclick="openTab('deuterium', this)">Deuterium</button>
     <button class="rtab" onclick="openTab('operations', this)">Operations</button>
+    <button class="rtab" onclick="openTab('maintenance', this)">Maintenance</button>
     <button class="rtab" id="rtab-guild" onclick="openTab('guild', this)">Guild Hall<span class="rtab-attn" id="rtabGuildAttn" hidden></span></button>
   </div>
 </div>
@@ -3170,6 +3219,20 @@ select.field{appearance:none; cursor:pointer;}
         <div class="tcenter"><div class="word">OPERATIONS</div></div>
         <div class="role">Chief Pilot</div>
       </aside>
+    </div>
+  </div>
+
+  <!-- The MAINTENANCE tab (docs/maintenance.md §7.1) — beside Operations. FLEET (the guild-wide credit pool and every
+       craft) over DROIDS (one block per system with deployed droids). The maintenance-tab-wire block fills
+       #mt-fleet and #mt-droids on open and on every poll while open; every figure is the snapshot's. -->
+  <div id="tp-maint">
+    <div class="mt-card">
+      <div class="mt-card-h"><span class="t">Fleet</span><span class="s">Craft wear only while flying &middot; paid per tick of flight from the pool</span></div>
+      <div class="mt-body" id="mt-fleet"></div>
+    </div>
+    <div class="mt-card">
+      <div class="mt-card-h"><span class="t">Droids</span><span class="s">Deployed droids wear &middot; maintained weekly from their system&rsquo;s droid components</span></div>
+      <div class="mt-body" id="mt-droids"></div>
     </div>
   </div>
 
@@ -9085,6 +9148,8 @@ function applySnapshot(snap){
   // progress bar advances and each ETA decrements as ticks pass (docs/operations-hub.md §4); its
   // own panel lifecycle, exactly like the Deuterium dashboard's.
   if (window.__opsRefresh) window.__opsRefresh();
+  // An open MAINTENANCE tab re-reads too, so its countdowns run and the pool's figures follow the engine.
+  if (window.__maintRefresh) window.__maintRefresh();
   // An open VENTURE MANAGEMENT popup re-reads too, so its RP gauge, production donut and contract
   // window move as ticks pass (docs/venture-management.md) — the same open/refresh lifecycle.
   if (window.__vmRefresh) window.__vmRefresh();
@@ -9407,18 +9472,22 @@ function hideOverlayPanels(tp){
   var guild = document.getElementById('tp-guild');
   var deut = document.getElementById('tp-deut');
   var ops = document.getElementById('tp-ops');
+  var maint = document.getElementById('tp-maint');
   if (trade) trade.classList.remove('show');
   if (guild) guild.classList.remove('show');
   if (deut) deut.classList.remove('show');
   if (ops) ops.classList.remove('show');
+  if (maint) maint.classList.remove('show');
   tp.classList.remove('trade');
   tp.classList.remove('guild');
   tp.classList.remove('deut');
   tp.classList.remove('ops');
+  tp.classList.remove('maint');
   if (window.__tradeClosed) window.__tradeClosed();
   if (window.__guildClosed) window.__guildClosed();
   if (window.__deutClosed) window.__deutClosed();
   if (window.__opsClosed) window.__opsClosed();
+  if (window.__maintClosed) window.__maintClosed();
 }
 function openTab(which, btn){
   document.querySelectorAll('.rtab').forEach(function(t){t.classList.remove('active');});
@@ -9477,6 +9546,17 @@ function openTab(which, btn){
     tp.classList.add('ops');
     tp.classList.add('show');
     if (window.__opsOpen) window.__opsOpen();
+    return;
+  }
+  // MAINTENANCE (docs/maintenance.md §7.1) — a TOP-LEVEL tab beside Operations, in the same overlay pattern: it
+  // fills the viewport and re-reads the snapshot on open and on every poll while open.
+  if (which === 'maintenance'){
+    hideOverlayPanels(tp);
+    stub.style.display = 'none';
+    document.getElementById('tp-maint').classList.add('show');
+    tp.classList.add('maint');
+    tp.classList.add('show');
+    if (window.__maintOpen) window.__maintOpen();
     return;
   }
   hideOverlayPanels(tp);
@@ -11658,9 +11738,12 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // (sim/routes.js); an unknown one shows as the engine wrote it rather than being hidden. 'system-lost' (losing
   // ground): a system one of the lane's stops was at went fallow. It names no system — the flag carries none, and
   // the craft lands at the end of whatever leg it was flying, which need not be the lost system.
+  // 'maintenance' (2.6 maintenance): the craft was at 0% at one of its listed maintenance points, so it went into deep
+  // maintenance there and the rest of its lane was dropped (docs/maintenance.md §4.3).
   var LANE_END_WHY = {
     'target-gone': 'a stop\'s store is gone',
-    'system-lost': 'a stop\'s system was lost'
+    'system-lost': 'a stop\'s system was lost',
+    'maintenance': 'the craft went into deep maintenance'
   };
 
   // endedKey(v) — one notice per ENDING: the craft id + the tick its lane ended. A craft whose next lane
@@ -11671,6 +11754,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // (transport-model.md §11.6): it finishes the leg it is on and lands at that leg's end, so name that place,
   // the destination its IN TRANSIT row shows. A craft that has landed has a `location`, read as before.
   function endedWhere(v){ return v.trip ? craftDestName(v.trip) : tpCraftWhere(v); }
+  // The Maintenance tab names a craft's place in exactly these words, so it reads this one helper, not a copy.
+  window.__craftWhere = endedWhere;
 
   function renderLaneNotices(guild){
     var host = el('ops-lane-notices'); if(!host) return;
@@ -12446,6 +12531,264 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
 })();
 </script>
 
+<!-- ===== the MAINTENANCE tab (docs/maintenance.md §7.1; roadmap 2.6 maintenance, slice 5) ========================
+   Beside Operations. It reads the player's OWN guild row from the snapshot the shell polls and draws:
+     FLEET  — the guild's craft maintenance pool (guild.craftMaintenance: pool, budget, ceiling, spentLastCycle,
+              nextRefillTick), the budget and top-up controls, and one row per craft (vehicle.craftMaintenance:
+              covered, flightTicksLeftMaintained / Unmaintained, earlyMaintenanceAllowed, deepMaintenance);
+     DROIDS — one block per system in guild.droidUpkeep (stock, reserve, weeklyUpkeep, maintained, unmaintained,
+              runwayWeeks, nextUpkeepTick), each with its reserve control.
+   The client computes NO game number (design.md §18). The only subtraction is a countdown — a published due tick less
+   the snapshot's tick — formatted as every other ETA is (window.__fmtETA). A control posts its action through the one
+   action path (window.__sendAction); on a refusal it shows the engine's reason; on success it changes nothing itself —
+   the new figure arrives with the next snapshot. Its open / close / poll lifecycle is the Operations hub's. ==== -->
+<script id="maintenance-tab-wire">
+(function(){
+  "use strict";
+
+  var M = {
+    open: false,
+    html: null,   // the panel as last drawn (fleet + droids); rewritten only when what it shows changes
+    drafts: {},   // what the player has typed into each field, by field key — so a redraw never wipes it
+    ui: {}        // per field key: { busy } while its action is in flight, or { msg, tick } — a refusal, until the tick moves
+  };
+
+  // Own helpers — the same small copies every panel's IIFE carries.
+  function el(id){ return document.getElementById(id); }
+  function snap(){ return (window.__snapshot && window.__snapshot()) || null; }
+  function myGuildId(){ return (window.__player && window.__player().guildId) || null; }
+  // The player's OWN guild row, and only that one: a rival's pool and craft must never be drawn (fog).
+  function meGuild(){
+    var s = snap(), id = myGuildId();
+    if(!s || !id) return null;
+    return (s.guilds || []).filter(function(g){ return g.id === id; })[0] || null;
+  }
+  function fmt(n){ return Number(n).toLocaleString('en-US'); }
+  function esc(s){ return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  // A published whole number, or "—" when the snapshot did not publish it. Never a made-up figure.
+  function figure(n){ return typeof n === 'number' ? fmt(n) : '—'; }
+  // A tick count as time ("3d 04h"), through the map's one formatter.
+  function ticksAsTime(t){ return typeof t === 'number' && window.__fmtETA ? window.__fmtETA(t) : '—'; }
+  // A countdown: the published due tick less the snapshot's tick — the existing countdown pattern (§7).
+  function countdown(dueTick, tick){
+    return (typeof dueTick === 'number' && typeof tick === 'number') ? ticksAsTime(dueTick - tick) : '—';
+  }
+  function systemName(id){ return (window.__systemName && window.__systemName(id)) || id; }
+  function outpostName(id){ return (window.__outpostName && window.__outpostName(id)) || id; }
+  // "Heavy Transport #01" — the class split into words, and the number the craft's id ends on (Operations' naming).
+  function craftName(v){
+    var cls = String(v['class'] == null ? '' : v['class'])
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+    return cls + ' #' + String(v.id).split('_').slice(-1)[0];
+  }
+
+  // ---- FLEET -----------------------------------------------------------------------------------------------
+
+  // The pool and its three figures, then the two controls. A guild with no craft and no pool record publishes no
+  // readout at all, so every figure reads "—" — the controls still work (a guild may fund the pool before it flies).
+  function poolHtml(pool, tick){
+    var p = pool || {};
+    var figs = [
+      ['Pool', figure(p.pool), 'credits set aside now'],
+      ['Budget', figure(p.budget), 'moved in at each refill'],
+      ['Ceiling', figure(p.ceiling), 'every craft flying the whole cycle'],
+      ['Spent last cycle', figure(p.spentLastCycle), 'what the pool actually paid'],
+      ['Next refill', countdown(p.nextRefillTick, tick), 'the budget moves in then']
+    ];
+    return '<div class="mt-figs">' + figs.map(function(f){
+      return '<div class="mt-fig"><div class="k">' + esc(f[0]) + '</div><div class="v">' + esc(f[1]) + '</div>'
+        + '<div class="u">' + esc(f[2]) + '</div></div>';
+    }).join('') + '</div>'
+      + '<div class="mt-ctls">'
+      +   fieldHtml('budget', 'Budget per cycle', 'Set')
+      +   fieldHtml('topup', 'Top up the pool now', 'Top up')
+      + '</div>';
+  }
+
+  // Where the craft is, in Operations' own words (window.__craftWhere — its endedWhere: the landmark it stands at, its
+  // outpost dock, its hex, or — flying — the place its trip ends). A craft in deep maintenance is named by the point
+  // the snapshot publishes for it instead: at an Outpost it stands on the Outpost's bare hex, which Operations' words
+  // would read as "(q, r)".
+  function craftWhere(v){
+    var pt = ((v.craftMaintenance || {}).deepMaintenance || {}).point;
+    if(pt && pt.kind === 'outpost') return outpostName(pt.outpostId);
+    if(pt && pt.kind === 'system') return systemName(pt.systemId);
+    var where = window.__craftWhere ? window.__craftWhere(v) : '—';
+    return v.trip ? 'En route to ' + where : where;
+  }
+
+  // The craft's maintenance state right now — one line, and its colour class. Read in this order: in a bay, in the
+  // queue, flying covered, flying uncovered; anything else is not flying, so it is not wearing.
+  function craftState(v, tick){
+    var cm = v.craftMaintenance || {};
+    var dm = cm.deepMaintenance;
+    if(dm && typeof dm.readyTick === 'number') return { cls:'deep', text:'In deep maintenance — ready in ' + countdown(dm.readyTick, tick) };
+    if(dm) return { cls:'deep', text:'Queued for a maintenance bay (position ' + figure(dm.queuePosition) + ')' };
+    if(cm.covered === true) return { cls:'ok', text:'Maintained' };
+    if(cm.covered === false) return { cls:'warn', text:'Wearing fast — not covered' };
+    return { cls:'', text:'Not flying — no wear' };
+  }
+
+  // Flight time left to 0%: at the rate it is flying at, or — not flying — at both rates. In maintenance it is coming
+  // back to 100%, so its current figure would mislead: "—".
+  function flightLeft(v){
+    var cm = v.craftMaintenance || {};
+    if(cm.deepMaintenance) return '—';
+    var fast = ticksAsTime(cm.flightTicksLeftUnmaintained), slow = ticksAsTime(cm.flightTicksLeftMaintained);
+    if(cm.covered === true) return slow + ' (maintained)';
+    if(cm.covered === false) return fast + ' (unmaintained)';
+    return slow + ' maintained · ' + fast + ' unmaintained';
+  }
+
+  function craftRowHtml(v, tick){
+    var st = craftState(v, tick);
+    // Condition as a percent of the published fraction — the same display Operations' craft cards use.
+    var pct = typeof v.maintenanceCondition === 'number' ? Math.round(v.maintenanceCondition * 100) + '%' : '—';
+    // Shown as plain text only: the button that acts on it is the Dispatch popup's (slice 6).
+    var early = (v.craftMaintenance || {}).earlyMaintenanceAllowed === true
+      ? '<span class="mt-note">Early deep maintenance available</span>' : '';
+    return '<tr data-craft="' + esc(v.id) + '">'
+      + '<td>' + esc(craftName(v)) + '</td>'
+      + '<td>' + esc(craftWhere(v)) + '</td>'
+      + '<td>' + esc(pct) + '</td>'
+      + '<td><span class="mt-state ' + st.cls + '">' + esc(st.text) + '</span>' + early + '</td>'
+      + '<td>' + esc(flightLeft(v)) + '</td>'
+      + '</tr>';
+  }
+
+  function fleetHtml(me, tick){
+    var craft = ((me && me.vehicles) || []).slice()
+      .sort(function(a, b){ return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0); });
+    var rows = craft.length
+      ? '<table class="mt-table"><thead><tr><th>Craft</th><th>Where</th><th>Condition</th><th>Maintenance</th>'
+        + '<th>Flight time left to 0%</th></tr></thead><tbody>'
+        + craft.map(function(v){ return craftRowHtml(v, tick); }).join('') + '</tbody></table>'
+      : '<div class="mt-empty">Your guild has no craft.</div>';
+    return poolHtml(me && me.craftMaintenance, tick) + '<div style="margin-top:16px">' + rows + '</div>';
+  }
+
+  // ---- DROIDS ----------------------------------------------------------------------------------------------
+
+  function droidBlockHtml(systemId, u, tick){
+    var kv = [
+      ['Droid components in stock', figure(u.stock)],
+      ['Reserve (kept for building)', figure(u.reserve)],
+      ['Weekly need', figure(u.weeklyUpkeep) + ' a week'],
+      ['Maintained', figure(u.maintained)],
+      ['Wearing fast', figure(u.unmaintained)],
+      ['Runway', figure(u.runwayWeeks) + (u.runwayWeeks === 1 ? ' week' : ' weeks')],
+      ['Next weekly upkeep', countdown(u.nextUpkeepTick, tick)]
+    ];
+    return '<div class="mt-sys" data-system="' + esc(systemId) + '">'
+      + '<div class="nm">' + esc(systemName(systemId)) + '</div>'
+      + kv.map(function(r){ return '<div class="mt-kv"><span class="k">' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span></div>'; }).join('')
+      + fieldHtml('reserve:' + systemId, 'Keep this many for building', 'Set reserve')
+      + '</div>';
+  }
+
+  function droidsHtml(me, tick){
+    var upkeep = (me && me.droidUpkeep) || {};
+    var ids = Object.keys(upkeep).sort();
+    if(!ids.length) return '<div class="mt-empty">No system has a deployed droid.</div>';
+    return '<div class="mt-droids">' + ids.map(function(id){ return droidBlockHtml(id, upkeep[id], tick); }).join('') + '</div>';
+  }
+
+  // ---- the controls ----------------------------------------------------------------------------------------
+
+  // One field + button. The field shows what the player typed (M.drafts), never a figure; the current value is in
+  // the figures above it. A refusal (or an input that is not a whole number) shows under it.
+  function fieldHtml(key, label, button){
+    var ui = M.ui[key] || {};
+    var draft = M.drafts[key] == null ? '' : M.drafts[key];
+    return '<div class="mt-ctl">'
+      + '<label>' + esc(label) + '</label>'
+      + '<div class="row"><input type="text" inputmode="numeric" data-mt-field="' + esc(key) + '" value="' + esc(draft) + '">'
+      + '<button class="mt-btn" type="button" data-mt-send="' + esc(key) + '"' + (ui.busy ? ' disabled' : '') + '>' + esc(button) + '</button></div>'
+      + (ui.msg ? '<div class="mt-msg">' + esc(ui.msg) + '</div>' : '')
+      + '</div>';
+  }
+
+  // The action a field sends, in exactly the engine's shape. The value is the player's whole number, untouched.
+  function actionFor(key, value){
+    var guildId = myGuildId();
+    if(key === 'budget') return { type:'setCraftMaintenanceBudget', guildId:guildId, budget:value };
+    if(key === 'topup') return { type:'topUpCraftMaintenancePool', guildId:guildId, amount:value };
+    return { type:'setDroidComponentReserve', guildId:guildId, systemId:key.slice('reserve:'.length), reserve:value };
+  }
+
+  // onSend(key) — one button press. Input hygiene only: the field must hold a whole number (digits). Every rule beyond
+  // that — a top-up above the credits, a system not held — is the engine's, and comes back as its refusal.
+  async function onSend(key){
+    var s = snap();
+    var raw = String(M.drafts[key] == null ? '' : M.drafts[key]).trim();
+    if(!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))){
+      M.ui[key] = { msg:'Enter a whole number.', tick: s ? s.tick : null };
+      draw(true);
+      return;
+    }
+    M.ui[key] = { busy:true };
+    draw(true);
+    var out;
+    try {
+      out = await window.__sendAction(actionFor(key, Number(raw)));
+    } catch(err){
+      out = { accepted:false, reason:'the Syndicate could not be reached: ' + ((err && err.message) || err) };
+    }
+    if(out && out.accepted){
+      // Accepted: clear the field and fetch the next snapshot — the new figure comes from it, never from here.
+      delete M.ui[key];
+      delete M.drafts[key];
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+    } else {
+      var now = snap();
+      M.ui[key] = { msg:'Refused: ' + ((out && out.reason) || 'the Syndicate declined'), tick: now ? now.tick : null };
+    }
+    draw(true);
+  }
+
+  // ---- drawing ---------------------------------------------------------------------------------------------
+
+  // draw(force) — build both halves and write them only when they changed, so a poll that moves nothing does not
+  // replace the fields under the player's cursor. When a write does happen, the focused field gets its focus back.
+  function draw(force){
+    if(!M.open) return;
+    var s = snap(), me = meGuild(), tick = s ? s.tick : null;
+    // A refusal stays until the tick moves on (Operations' rule for its controls' messages).
+    Object.keys(M.ui).forEach(function(k){ if(M.ui[k].msg && M.ui[k].tick !== tick) delete M.ui[k]; });
+    var fleet = fleetHtml(me, tick), droids = droidsHtml(me, tick);
+    if(!force && M.html === fleet + droids) return;
+    M.html = fleet + droids;
+    var active = document.activeElement;
+    var focusKey = active && active.getAttribute ? active.getAttribute('data-mt-field') : null;
+    el('mt-fleet').innerHTML = fleet;
+    el('mt-droids').innerHTML = droids;
+    if(focusKey){
+      var again = document.querySelector('#tp-maint [data-mt-field="' + focusKey.replace(/"/g, '') + '"]');
+      if(again){ again.focus(); if(again.setSelectionRange){ var n = again.value.length; again.setSelectionRange(n, n); } }
+    }
+  }
+
+  // One listener each for typing and clicking, on the panel (its contents are rewritten, the panel is not).
+  var panel = el('tp-maint');
+  if(panel){
+    panel.addEventListener('input', function(e){
+      var key = e.target && e.target.getAttribute && e.target.getAttribute('data-mt-field');
+      if(key) M.drafts[key] = e.target.value;
+    });
+    panel.addEventListener('click', function(e){
+      var btn = e.target && e.target.closest && e.target.closest('[data-mt-send]');
+      if(btn && !btn.disabled) onSend(btn.getAttribute('data-mt-send'));
+    });
+  }
+
+  // The shell drives these three — open, close, every poll — as it drives the Operations hub.
+  window.__maintOpen = function(){ M.open = true; M.html = null; draw(true); };
+  window.__maintClosed = function(){ M.open = false; };
+  window.__maintRefresh = function(){ if(M.open) draw(false); };
+})();
+</script>
+
 <!-- ===== the GUILD HALL tab — the Standing panel (docs/guild-hall.md §2) ============
    The player's home dashboard, rendered in the SHELL'S OWN overlay exactly like the
    TRADE tab: it reads the snapshot the shell already polls (window.__snapshot) and
@@ -12776,6 +13119,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(n.type === 'delivery_turned_back') return 'Delivery turned back';
     if(isTerritoryNotice(n)) return TERRITORY_TITLE[n.type] + ' — ' + territorySystemName(p);
     if(isSalvageNotice(n)) return SALVAGE_TITLE[n.type] + ' — ' + territorySystemName(p);
+    if(isMaintenanceNotice(n)) return maintTitleWord(n) + ' — ' + maintSubject(n);
     return (n.type === 'venture_closed' ? 'Venture closed — ' : 'Licence lapsed — ') + noticeLabel(p);
   }
   // The subject-line row title: the same prefix, with the label in the muted `.who` span.
@@ -12785,6 +13129,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(n.type === 'outpost_packed') return 'Outpost packed up &mdash; <span class="who">' + esc(packedOutpostName(p)) + '</span>';
     if(isTerritoryNotice(n)) return esc(TERRITORY_TITLE[n.type]) + ' &mdash; <span class="who">' + esc(territorySystemName(p)) + '</span>';
     if(isSalvageNotice(n)) return esc(SALVAGE_TITLE[n.type]) + ' &mdash; <span class="who">' + esc(territorySystemName(p)) + '</span>';
+    if(isMaintenanceNotice(n)) return esc(maintTitleWord(n)) + ' &mdash; <span class="who">' + esc(maintSubject(n)) + '</span>';
     if(n.type === 'scan_complete') return 'Survey complete &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'scan_voided') return 'Survey voided &mdash; <span class="who">' + esc(scanTargetLabel(p)) + '</span>';
     if(n.type === 'delivery_space_warning') return 'No room at the outpost &mdash; <span class="who">' + esc(deliveryOutpostName(p)) + '</span>';
@@ -13224,6 +13569,124 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return n.whenDay != null ? [[SYSTEM_DAY_WORD[n.type], 'Day ' + n.whenDay, false]] : [];
   }
 
+  // --- The maintenance notices (docs/event-log.md §17–§19; maintenance.md §4.9; roadmap 2.6 maintenance, slice 5) ---
+  // Four about craft — the pool ran dry, a craft reached 0%, one went into deep maintenance (a bay, or the queue), one
+  // came out — and one about droids, `droids_spent`. The craft four are the fleet lane, so the Chief Pilot's card
+  // carries them (openNotice's `pilot`), in plain words; `droids_spent` is the Syndicate adviser's. All five are
+  // PASSIVE: Dismiss alone. Every value is a payload field, a count of a payload list, or — for a time — a payload tick
+  // less the notice's own tick (the salvage reminder's rule: a logged moment keeps its own time). Nothing else.
+
+  var MAINT_TITLE = { maintenance_pool_dry:'Maintenance pool dry', craft_reached_zero:'Craft at 0%',
+    deep_maintenance_entered:'In deep maintenance', deep_maintenance_finished:'Maintenance finished',
+    droids_spent:'Droids spent' };
+  function isMaintenanceNotice(n){ return Object.prototype.hasOwnProperty.call(MAINT_TITLE, n.type); }
+  // The craft four are the pilot's; droids_spent is not (a droid is not a craft).
+  function isCraftMaintenanceNotice(n){ return isMaintenanceNotice(n) && n.type !== 'droids_spent'; }
+
+  // A craft named from its id alone (vehicle_<guild>_<class>_NN — a class has no underscore, so it is the second-last
+  // part), as craftLabel names one from craftId + craftClass: "Heavy Transport · #01". The pool-dry notice carries ids.
+  function craftIdLabel(id){
+    var parts = String(id).split('_');
+    return parts.length >= 4 ? prettyClass(parts[parts.length - 2]) + ' · #' + parts[parts.length - 1] : String(id);
+  }
+  // A maintenance point ({ kind:'system', systemId } or { kind:'outpost', outpostId }), named off the board.
+  function maintPointName(point){
+    var pt = point || {};
+    if(pt.kind === 'system') return (window.__systemName && window.__systemName(pt.systemId)) || pt.systemId || '—';
+    if(pt.kind === 'outpost') return (window.__outpostName && window.__outpostName(pt.outpostId)) || pt.outpostId || '—';
+    return '—';
+  }
+  // Where a cut-short trip had been heading: a landmark reference, or a bare hex named by what stands on it.
+  function maintPlaceName(loc){
+    var at = loc || {};
+    if(at.landmarkKind === 'system') return (window.__systemName && window.__systemName(at.landmarkId)) || at.landmarkId;
+    if(at.landmarkKind === 'outpost') return (window.__outpostName && window.__outpostName(at.landmarkId)) || at.landmarkId;
+    if(typeof at.q === 'number' && typeof at.r === 'number'){
+      return (window.__landmarkNameAt && window.__landmarkNameAt(at.q, at.r)) || ('Deep Space (' + at.q + ', ' + at.r + ')');
+    }
+    return '—';
+  }
+  // A payload tick as time from the notice's own tick ("12h 00m"); "—" if either is missing, never a made-up time.
+  function maintTimeFrom(n, dueTick){
+    return (typeof dueTick === 'number' && typeof n.tick === 'number') ? window.__fmtETA(dueTick - n.tick) : '—';
+  }
+  // A queued entry has its own title word; every other is MAINT_TITLE's.
+  function maintTitleWord(n){
+    var p = n.payload || {};
+    return (n.type === 'deep_maintenance_entered' && p.bay === false) ? 'Queued for maintenance' : MAINT_TITLE[n.type];
+  }
+  // The name after the dash, in the title and the row: the craft, the system, or how many craft went uncovered.
+  function maintSubject(n){
+    var p = n.payload || {};
+    if(n.type === 'maintenance_pool_dry') return window.__countWords((p.vehicleIds || []).length, 'craft uncovered', 'craft uncovered');
+    if(n.type === 'droids_spent') return territorySystemName(p);
+    return craftLabel(p);
+  }
+
+  function maintBody(n){
+    var p = n.payload || {};
+    var craft = craftLabel(p), at = maintPointName(p.point);
+    if(n.type === 'maintenance_pool_dry'){
+      var ids = p.vehicleIds || [];
+      return ["The maintenance pool could not pay for every craft in flight, so " + ids.map(craftIdLabel).join(', ')
+          + (ids.length === 1 ? ' is' : ' are') + " wearing at the fast, unmaintained rate.",
+        "The pool refills from your budget in " + maintTimeFrom(n, p.nextRefillTick) + ". To cover them sooner, top it up from the Maintenance tab."];
+    }
+    if(n.type === 'craft_reached_zero'){
+      return [craft + " has worn down to 0%. It flies on, and goes into deep maintenance at the first maintenance point it stops at — a system you hold, or one of your Outposts."];
+    }
+    if(n.type === 'deep_maintenance_finished'){
+      return [craft + " is out of deep maintenance at " + at + ", back at 100% and ready to fly."];
+    }
+    if(n.type === 'droids_spent'){
+      var spent = (p.spent || []).length;
+      return [window.__countWords(spent, 'droid', 'droids') + " wore out at " + territorySystemName(p) + " and " + (spent === 1 ? 'was' : 'were') + " destroyed.",
+        "A droid kept maintained from its system's droid components lasts longer. The Maintenance tab shows each system's stock and runway."];
+    }
+    // deep_maintenance_entered: a bay (early, from the queue, or at 0%), or the queue — and, for a plain trip at 0%,
+    // where it had been heading (tripCutShort / tripDestination).
+    var lines;
+    var back = " It will be back at 100% in " + maintTimeFrom(n, p.readyTick) + ".";
+    if(p.bay === false){
+      lines = [craft + " reached " + at + " at 0%, but every maintenance bay there is taken. It is waiting in the queue, position "
+        + fmt(p.queuePosition) + ", and cannot fly or unload until it has been through maintenance."];
+    } else if(p.early){
+      lines = [craft + " has gone into deep maintenance early at " + at + ", as you asked." + back];
+    } else if(p.fromQueue){
+      lines = [craft + " has taken a free maintenance bay at " + at + "." + back];
+    } else {
+      lines = [craft + " reached " + at + " at 0% and has gone into deep maintenance." + back];
+    }
+    if(p.tripCutShort) lines.push("It was on its way to " + maintPlaceName(p.tripDestination) + ". The rest of that trip was dropped.");
+    return lines;
+  }
+
+  // The facts block, in its order, ending on the day the notice records.
+  var MAINT_DAY_WORD = { maintenance_pool_dry:'Ran dry', craft_reached_zero:'Reached 0%', deep_maintenance_entered:'Entered',
+    deep_maintenance_finished:'Finished', droids_spent:'Spent' };
+  function maintFacts(n){
+    var p = n.payload || {};
+    var facts;
+    if(n.type === 'maintenance_pool_dry'){
+      facts = [
+        ['Pool left', typeof p.pool === 'number' ? fmt(p.pool) + ' credits' : '—', false],
+        ['Uncovered', (p.vehicleIds || []).map(craftIdLabel).join(', ') || '—', false],
+        ['Next refill', 'in ' + maintTimeFrom(n, p.nextRefillTick), false]
+      ];
+    } else if(n.type === 'droids_spent'){
+      facts = [['System', territorySystemName(p), false], ['Droids spent', fmt((p.spent || []).length), false]];
+    } else {
+      facts = [['Craft', craftLabel(p), false]];
+      if(n.type !== 'craft_reached_zero') facts.push(['At', maintPointName(p.point), false]);
+      if(n.type === 'deep_maintenance_entered'){
+        facts.push(p.bay === false ? ['Queue position', fmt(p.queuePosition), false] : ['Ready in', maintTimeFrom(n, p.readyTick), false]);
+        if(p.tripCutShort) facts.push(['Was heading to', maintPlaceName(p.tripDestination), false]);
+      }
+    }
+    if(n.whenDay != null) facts.push([MAINT_DAY_WORD[n.type], 'Day ' + n.whenDay, false]);
+    return facts;
+  }
+
   // The player guild's UNREAD live notices, off the top-level attention derive (§5) — the count
   // the tab pip and the Messages badge add to the open offers. Filtered to the player's OWN guild,
   // exactly as myRenegotiations filters the offers.
@@ -13335,6 +13798,9 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     var packed = n.type === 'outpost_packed';
     var salvage = isSalvageNotice(n);
     var pilot = fleet || packed || salvage;
+    // (2.6 maintenance) the four craft maintenance notices wear the pilot too; droids_spent stays the adviser's.
+    var maint = isMaintenanceNotice(n);
+    if(isCraftMaintenanceNotice(n)) pilot = true;
     var trade = isDeliveryNotice(n);
     var scan = isScanNotice(n);
     var territory = isTerritoryNotice(n);
@@ -13360,6 +13826,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     if(fleet) paras = DEPLOY_FAILED_BODY;
     else if(packed) paras = OUTPOST_PACKED_BODY;
     else if(salvage) paras = salvageBody(n);
+    else if(maint) paras = maintBody(n);
     else if(trade) paras = deliveryBody(n);
     else if(scan) paras = scanBody(n);
     else if(territory) paras = territoryBody(n);
@@ -13372,6 +13839,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       facts = outpostPackedFacts(n);
     } else if(salvage){
       facts = salvageFacts(n);
+    } else if(maint){
+      facts = maintFacts(n);
     } else if(trade){
       facts = deliveryFacts(n);
     } else if(scan){
