@@ -6,8 +6,8 @@
 // (its number recorded, never reissued) and re-minted as g2's own idle asset, with both guilds told.
 //
 // The tripwires:
-//   1. THE TRANSFER, field by field: g2's new ids continue g2's own numbering; same kind, same system, the SAME
-//      maintenanceCondition, stamped, unflagged, idle; g1 no longer lists them and cannot reissue their numbers;
+//   1. THE TRANSFER, field by field: g2's new ids continue g2's own numbering; same kind, same system, NO
+//      condition (assets never wear — maintenance slice 2 removed the field), stamped, unflagged, idle; g1 no longer lists them and cannot reissue their numbers;
 //      one notice each side; nothing priced moved.
 //   2. KITS TOO (a reading beyond the brief, flagged): a stranded kit is re-minted through the kit serial, and works.
 //   3. THE REFUSAL IS GONE: the very plant engine PR 1 refused is legal.
@@ -62,15 +62,12 @@ const assetsOf = (s, guildId) => guildOf(s, guildId).assets || [];
 const inTarget = (s, guildId) => assetsOf(s, guildId).filter((a) => a.systemId === TARGET);
 const newestEvent = (s, guildId) => (guildOf(s, guildId).events || []).slice(-1)[0];
 
-// swept({ condition }) -> fallow(); optionally g1's stranded miner's (inert) condition set by hand, since no engine path
-// changes it; then g2 plants in TARGET. `before` is the galaxy the plant was applied to.
-function swept({ condition } = {}) {
+// swept() -> fallow(), then g2 plants in TARGET. `before` is the galaxy the plant was applied to.
+// (Until maintenance slice 2 this could also set the stranded miner's condition by hand, to prove the value rode
+// along; assets carry no condition now, so there is nothing to carry.)
+function swept() {
   const f = fallow();
   let s = f.s;
-  if (condition !== undefined) {
-    s = structuredClone(s);
-    guildOf(s, 'g1').assets.find((a) => a.id === f.miner).maintenanceCondition = condition;
-  }
   let rivalKit;
   ({ s, rivalKit } = rivalReady(s));
   return { ...f, before: s, s: accept(s, rivalPlant(rivalKit)) };
@@ -78,8 +75,8 @@ function swept({ condition } = {}) {
 
 // --- 1. the transfer -------------------------------------------------------------------------------------------------
 
-test('THE TRANSFER — each of g1\'s stranded machines is now g2\'s: a new id in g2\'s own sequence, same kind and system, the SAME condition, stamped, unflagged, idle', () => {
-  const { before, s, miner, factory, idleFactory } = swept({ condition: 0.75 });
+test('THE TRANSFER — each of g1\'s stranded machines is now g2\'s: a new id in g2\'s own sequence, same kind and system, no condition, stamped, unflagged, idle', () => {
+  const { before, s, miner, factory, idleFactory } = swept();
   assert.equal(systemHolder(s, TARGET), 'g2');
   assert.deepEqual(strandedAssetsIn(before, TARGET).map((x) => x.guildId), ['g1', 'g1', 'g1', 'g1'], 'four were lying there');
   assert.deepEqual(strandedAssetsIn(s, TARGET), [], 'none is left stranded');
@@ -87,11 +84,11 @@ test('THE TRANSFER — each of g1\'s stranded machines is now g2\'s: a new id in
   // g2's first, 01 and 02. In g1's stored order (guild then asset, invariant 9), pushed one by one.
   const machines = inTarget(s, 'g2').filter((a) => a.kind !== 'outpost');
   assert.deepEqual(machines, [
-    { id: 'asset_g2_miner_02', kind: 'miner', systemId: TARGET, maintenanceCondition: 0.75, updatedAtTick: s.tick },
-    { id: 'asset_g2_factory_01', kind: 'factory', systemId: TARGET, maintenanceCondition: 1, updatedAtTick: s.tick },
-    { id: 'asset_g2_factory_02', kind: 'factory', systemId: TARGET, maintenanceCondition: 1, updatedAtTick: s.tick },
-  ], 'the condition rides along untouched (it is inert); no `stranded` key on any of them');
-  assert.deepEqual(assetsOf(s, 'g2')[0], { id: 'asset_g2_miner_01', kind: 'miner', systemId: P.RIVAL, maintenanceCondition: 1 }, 'g2\'s own miner at home, untouched');
+    { id: 'asset_g2_miner_02', kind: 'miner', systemId: TARGET, updatedAtTick: s.tick },
+    { id: 'asset_g2_factory_01', kind: 'factory', systemId: TARGET, updatedAtTick: s.tick },
+    { id: 'asset_g2_factory_02', kind: 'factory', systemId: TARGET, updatedAtTick: s.tick },
+  ], 'exactly these fields: no `maintenanceCondition` (assets never wear) and no `stranded` key on any of them');
+  assert.deepEqual(assetsOf(s, 'g2')[0], { id: 'asset_g2_miner_01', kind: 'miner', systemId: P.RIVAL }, 'g2\'s own miner at home, untouched');
   const idle = idleAssets(guildOf(s, 'g2')).map((a) => a.id);
   for (const m of machines) assert.ok(idle.includes(m.id), `${m.id} is an ordinary idle asset of g2's`);
   // g1 lists none of them — its whole inventory was there, so its `assets` key goes (omit-when-empty).
@@ -146,7 +143,7 @@ test('KITS TOO (a reading beyond the brief — §19 #67\'s window covers every s
   assert.equal(guildOf(before, 'g2').kitAssetSerial, 1, 'g2\'s Prefecture kit took serial 1');
   assert.equal(guildOf(s, 'g2').kitAssetSerial, 2, 'the inherited kit took the next — never nextAssetNumber');
   assert.deepEqual(inTarget(s, 'g2').find((a) => a.kind === 'outpost'), {
-    id: 'asset_g2_outpost_02', kind: 'outpost', systemId: TARGET, maintenanceCondition: 1, updatedAtTick: s.tick,
+    id: 'asset_g2_outpost_02', kind: 'outpost', systemId: TARGET, updatedAtTick: s.tick,
   });
   assert.equal(guildOf(s, 'g1').kitAssetSerial, 3, 'g1\'s kit serial never goes back, so its old kit id is never reissued');
   assert.equal(assetsOf(s, 'g1').some((a) => a.id === outpostKit), false);
@@ -201,8 +198,8 @@ function threeOwners() {
     guilds: [{
       id: 'g3', name: 'Third Guild', credits: 0, fuelHoard: 0,
       assets: [
-        { id: 'asset_g3_factory_01', kind: 'factory', systemId: TARGET, maintenanceCondition: 0.5, stranded: { tick: s.tick } },
-        { id: 'asset_g3_miner_01', kind: 'miner', systemId: TARGET, maintenanceCondition: 0.25, stranded: { tick: s.tick } },
+        { id: 'asset_g3_factory_01', kind: 'factory', systemId: TARGET, stranded: { tick: s.tick } },
+        { id: 'asset_g3_miner_01', kind: 'miner', systemId: TARGET, stranded: { tick: s.tick } },
       ],
     }],
     reserve: { reserveLevel: 0 },
@@ -219,10 +216,11 @@ test('ORDER: g1 re-plants over three owners\' machines — it RECOVERS its own a
   ({ s, kitId } = P.grantPrefectureKit(s, 'g1', TARGET));
   s = accept(s, P.plant('g1', kitId, SLOT_A1));
   // g1's own four keep their ids; then g2's miner, g3's factory, g3's miner — in that order — become g1's next numbers.
-  assert.deepEqual(inTarget(s, 'g1').map((a) => [a.id, a.maintenanceCondition]), [
-    ['asset_g1_miner_01', 1], ['asset_g1_factory_01', 1], ['asset_g1_factory_02', 1], ['asset_g1_outpost_03', 1],
-    ['asset_g1_miner_02', 1], ['asset_g1_factory_03', 0.5], ['asset_g1_miner_03', 0.25],
+  assert.deepEqual(inTarget(s, 'g1').map((a) => a.id), [
+    'asset_g1_miner_01', 'asset_g1_factory_01', 'asset_g1_factory_02', 'asset_g1_outpost_03',
+    'asset_g1_miner_02', 'asset_g1_factory_03', 'asset_g1_miner_03',
   ]);
+  assert.ok(inTarget(s, 'g1').every((a) => !('maintenanceCondition' in a)), 'no re-minted (or recovered) asset carries a condition');
   assert.equal('assets' in guildOf(s, 'g2'), false);
   assert.equal('assets' in guildOf(s, 'g3'), false);
   assert.deepEqual(guildOf(s, 'g2').removedAssetHighWater, { miner: 1 });
@@ -311,7 +309,7 @@ test('THE TRIPWIRES BITE — a claim that left one stranded machine behind is re
   const rules = (x) => checkInvariants(x, x.tick).map((v) => v.rule);
   // A sweep that missed one: g1's miner still lying there, flagged, in what is now g2's system.
   const missed = structuredClone(s);
-  guildOf(missed, 'g1').assets = [{ id: 'asset_g1_miner_09', kind: 'miner', systemId: TARGET, maintenanceCondition: 1, stranded: { tick: s.tick } }];
+  guildOf(missed, 'g1').assets = [{ id: 'asset_g1_miner_09', kind: 'miner', systemId: TARGET, stranded: { tick: s.tick } }];
   // (Since the salvage window, 31-10-26, it is also a stranded machine with no window over it — the claim closed it.)
   assert.deepEqual(rules(missed), [
     'stranded-asset-only-in-an-unclaimed-system (design.md §19 #67)', 'stranded-asset-has-a-salvage-window (design.md §19 #67)',
@@ -363,20 +361,21 @@ test('THE SNAPSHOT + FOG: g2 sees the inherited machines as ordinary idle rows; 
 // re-claim of its own fallow system (its own machines recovered), and a rival's claim of an EMPTY fallow system. The
 // state and every view must not move by a byte — the sweep adds no field to any existing record, and on these paths
 // it finds nothing to do.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const GOLDEN_NEVER_SWEEPS = {
   ownReclaim: {
     tick: 500,
-    state: 'b84080dbf2b26cd77734cfd41717a0a677ec742e453571fda3407f5231111768',
-    god: '947cc8275ede86d8ec5972eeecb09f907061386dc5f78f2b1d36e8a287a46790',
-    g1: '8793dbc7d6ebcc2ffcd9600e2c351a534928fa302fb28e49fd58f03ec3a6b104',
-    g2: '8a96e06642e81194f5ffe2203bdb9486e4b73c6fb4febf1ceb1849f4df556332',
+    state: 'bbd1e0d4ab8490ae2bbc471774efb83b4fc9b9f7ac30be741fac6c05cce4e2e1',
+    god: '2f449cf974cc8a4941af7392b23eac455fb5542f234233367ca83458e3c9045a',
+    g1: '4c7018b0b95cdc6197b275e8fb233ac02610eef5b22503799d5fb8255c6c5384',
+    g2: 'caba472b6d43f307756ec6a37330058de1719b4bfc2e154efc3008b741b8c776',
   },
   emptyFallowClaim: {
     tick: 470,
-    state: '7c30312f9d74d55f3e87d7cb348f21846d98f2c28ae07babd4b7b801e67f882b',
-    god: 'e61a0515c2cc54756fcc16ee50af6e7bb855d397dd3cd9a11170793af294279e',
+    state: 'd6c49fdf31ca979369408ad6a8c473ad5cc4d35a1f18966a7ac55b93f0b64c3e',
+    god: 'a18f7f5371609e9e21c0e79b700b7121f6874a99960d38ad9c7e8203aeea4c46',
     g1: 'b00bd072af0b66b5c2dd7669459a7aaa7060334bf69590e0158fb30191c26f4c',
-    g2: 'b6d0a2872d5b0796274708509db4b15848406820cf3c6036155054cce97bc523',
+    g2: '8ad2b3019763491620ab19fa49f73c7f48d201f4cd36f24075285f1ed68ce455',
   },
 };
 

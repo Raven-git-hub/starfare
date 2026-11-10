@@ -79,8 +79,9 @@ go below zero, if `good` is not a known good, or if `systemId` is not a real sys
 
 ### 3.4 `grantAsset { guildId, kind, systemId }` ✅ BUILT
 
-Mint one **idle** machine into `guild.assets`: `{ id, kind, systemId, maintenanceCondition:
-ASSET_CONDITION_NEW }`, via `createAsset` (`sim/state.js`). The `id` follows the `sim/assets.js`
+Mint one **idle** machine into `guild.assets`: `{ id, kind, systemId }`, via `createAsset` (`sim/state.js`).
+*(⤳ 10-11-26, maintenance slice 2: the `maintenanceCondition: ASSET_CONDITION_NEW` it used to carry is gone — assets
+never wear, `docs/maintenance.md` §0.)* The `id` follows the `sim/assets.js`
 scheme `asset_<guildId>_<kind>_NN`, choosing the **next free NN** for that guild+kind (max existing
 + 1) so it is unique and stable. *(⤳ 02-10-26: "existing" now includes every number `removeAsset` /
 `removeVenture { asset: 'remove' }` has deleted — both record it in `guild.removedAssetHighWater`, so a deleted

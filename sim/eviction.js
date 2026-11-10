@@ -58,6 +58,7 @@ const {
 } = require('./assets.js');
 const { endLane } = require('./routes.js');
 const { voidDetachedScans } = require('./deep-scan-arrays.js');
+const { setDroidComponentReserve } = require('./droids.js');
 
 // The causes that DESTROY a Prefecture (§19 #69). Only the owner's abandonment is built; the storyteller's cause
 // joins this list when §9 is built. An unknown cause is a caller bug, so evictSystem HALTS on one rather than write
@@ -145,14 +146,14 @@ function sweptNumber(guild, kind) {
 // ANOTHER guild still lying in that system changes hands to the planter (§19 #67). It cannot simply be moved from one
 // guild's list to the other's: its id names its owner (`asset_<guild>_<kind>_NN`), so a moved row would carry a
 // rival's name and break the per-guild numbering. So each one is RE-MINTED, in guild-then-asset order (invariant 9):
-//   1. read the old row's `kind` and `maintenanceCondition` — before the row goes;
+//   1. read the old row's `kind` — before the row goes;
 //   2. retire it from its former owner through THE ONE deletion, `deleteAsset` (sim/assets.js), which also records the
 //      former owner's removed high-water, so the old number is never reissued to it (design.md §15.4 — the sweep is
 //      the game's first owner change, so this is the first time play needs that record). Its `assets` list goes too
 //      if that was its last asset (omit-when-empty, as a load or a plant leaves it);
 //   3. mint a fresh asset under the planter: a new id from the planter's own sequence (sweptNumber), the same kind,
-//      in the same system (now the planter's), the SAME maintenanceCondition — the field is inert (design.md §4), so
-//      "at their current condition" means the stored value rides along, nothing more — stamped `updatedAtTick` with
+//      in the same system (now the planter's) — no condition to carry, since miners and factories never wear
+//      (docs/maintenance.md §0; the field was removed in maintenance slice 2) — stamped `updatedAtTick` with
 //      this tick (§15.2), and with NO `stranded` flag: an owned machine in a held system is an ordinary idle asset.
 //      It is pushed before the next is minted, so nextAssetNumber sees it and two never collide.
 // Then BOTH SIDES ARE TOLD (ruled 28-10-26): one `assets_swept` notice per former owner, in guild order, listing the
@@ -170,12 +171,12 @@ function sweepStrandedAssets(state, guild, prefecture, tick) {
   for (const { guildId, assetId: oldId } of strandedAssetsIn(state, systemId)) {
     if (guildId === guild.id) continue; // the planter's own — recoverStrandedAssets has already handed them back
     const formerOwner = state.guilds.find((g) => g.id === guildId);
-    const { kind, maintenanceCondition } = formerOwner.assets.find((a) => a.id === oldId);
+    const { kind } = formerOwner.assets.find((a) => a.id === oldId);
     deleteAsset(formerOwner, oldId);
     if (formerOwner.assets.length === 0) delete formerOwner.assets;
     if (!Array.isArray(guild.assets)) guild.assets = [];
     const newId = assetId(guild.id, kind, sweptNumber(guild, kind));
-    guild.assets.push(createAsset({ id: newId, kind, systemId, maintenanceCondition, updatedAtTick: tick }));
+    guild.assets.push(createAsset({ id: newId, kind, systemId, updatedAtTick: tick }));
     inherited.push(newId);
     if (!lostBy.has(guildId)) lostBy.set(guildId, []);
     lostBy.get(guildId).push(oldId);
@@ -259,7 +260,7 @@ function destroyDroidsIn(guild, systemId) {
 //      `venture_closed` notice; its machine drops to idle. No settlement fee is charged: the fee is the closure's
 //      CALLER's to charge, and forced closure charges none either. Then every asset the guild has in the system —
 //      the machines just freed and any already idle there, kits included ("everything the guild holds in that
-//      system", design.md §2) — is flagged `stranded = { tick }`. Each keeps its `systemId` and its condition. A
+//      system", design.md §2) — is flagged `stranded = { tick }`. Each keeps its `systemId`. A
 //      machine aboard a heavy (in transit, the asset ferry) is not in the system and is not stranded.
 //      If anything was stranded, the system's SALVAGE WINDOW opens (the header above): its deadline is this tick plus
 //      salvageWindowTicks(how many were stranded), counted now, machines and kits alike, and never moved after. A
@@ -269,6 +270,12 @@ function destroyDroidsIn(guild, systemId) {
 //      above). Destroyed, NOT stranded: a droid cannot move between systems (§1), so it has no salvage, and it opens
 //      no salvage window and is not counted in one. (A Syndicate batch still in flight to the system is forfeit when
 //      it arrives — sim/tick.js mintDroidBatch — not here: it is not in the system yet.)
+//   2c. CLEAR THE DROID RESERVE (RULED 10-11-26, roadmap checklist "Maintenance slice 1 calls" (2)). The guild's
+//      `droidComponentReserve[systemId]` — its "keep this many droid_components" floor there — is removed, through
+//      the map's one writer (sim/droids.js setDroidComponentReserve, with 0 = remove the key; the map itself goes
+//      when it empties). Why: the droids it protected are gone and the goods are forfeit, and the setter refuses a
+//      system the guild does not hold, so a leftover value would be a stale setting the player cannot clear that
+//      silently comes back into force if the system is ever retaken. Only this guild, only this system.
 //   3. FORFEIT THE GOODS (§19 #67, candidate (a)). The guild's pool in that system is dropped whole — the system's
 //      key leaves `guild.stockpiles` (sim/stock.js `forfeitSystemPool`). Goods carry no conservation ledger, so this
 //      is a plain delete; Galactic Supply falls by exactly those goods once the caller refreshes its cache — the
@@ -333,6 +340,10 @@ function evictSystem(state, guild, prefecture, cause, tick) {
   //     there is nothing to salvage: they are destroyed now, never flagged stranded, so a rival's later claim has
   //     nothing of them to sweep.
   const destroyedDroidIds = destroyDroidsIn(guild, systemId);
+
+  // 2c. Clear the droid reserve for this system (the header above says why). 0 is "no reserve": the writer
+  //     drops the key, and the whole map when it was the last one.
+  setDroidComponentReserve(guild, systemId, 0);
 
   // 3. Forfeit the goods.
   const goodsForfeit = forfeitSystemPool(guild, systemId);

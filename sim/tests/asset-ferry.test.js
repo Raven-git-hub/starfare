@@ -107,7 +107,7 @@ test('THE ROUND TRIP — load: the stranded flag clears, the heavy\'s hold locks
   const { before, s, miner, factory } = laden();
   assert.ok(assetOf(before, miner).stranded, 'stranded before');
   const m = assetOf(s, miner);
-  assert.deepEqual(m, { id: miner, kind: 'miner', systemId: TARGET, maintenanceCondition: 1, updatedAtTick: s.tick },
+  assert.deepEqual(m, { id: miner, kind: 'miner', systemId: TARGET, updatedAtTick: s.tick },
     'the same machine, the same id and location, its flag gone, stamped with the load tick');
   assert.equal(heavyOf(s).carryingAssetId, miner, 'the heavy names the machine');
   assert.equal(heavyOf(s).updatedAtTick, s.tick);
@@ -117,7 +117,7 @@ test('THE ROUND TRIP — load: the stranded flag clears, the heavy\'s hold locks
   // The snapshot: the third state on the asset row, the manifest on the vehicle row, the hold full.
   const row = ownRow(s);
   assert.deepEqual(row.assets.find((a) => a.id === miner), {
-    id: miner, kind: 'miner', systemId: TARGET, maintenanceCondition: 1, deployedToVentureId: null, inTransitOnVehicleId: HEAVY,
+    id: miner, kind: 'miner', systemId: TARGET, deployedToVentureId: null, inTransitOnVehicleId: HEAVY,
   });
   const v = row.vehicles.find((x) => x.id === HEAVY);
   assert.equal(v.carryingAssetId, miner);
@@ -159,13 +159,13 @@ test('THE ROUND TRIP — unload at a held system: the machine\'s systemId moves 
   s = tickUntil(s, (x) => heavyOf(x).status === 'idle');
   const before = s;
   s = accept(s, unload(HEAVY));
-  assert.deepEqual(assetOf(s, miner), { id: miner, kind: 'miner', systemId: HOME.id, maintenanceCondition: 1, updatedAtTick: s.tick },
+  assert.deepEqual(assetOf(s, miner), { id: miner, kind: 'miner', systemId: HOME.id, updatedAtTick: s.tick },
     'moved to HOME — the one sanctioned move of a systemId — and stamped');
   assert.equal('carryingAssetId' in heavyOf(s), false, 'the hold is free');
   assert.equal(heavyOf(s).updatedAtTick, s.tick);
   const row = ownRow(s);
   assert.deepEqual(row.assets.find((a) => a.id === miner), {
-    id: miner, kind: 'miner', systemId: HOME.id, maintenanceCondition: 1, deployedToVentureId: null,
+    id: miner, kind: 'miner', systemId: HOME.id, deployedToVentureId: null,
   }, 'idle: neither deployed nor in transit');
   const v = row.vehicles.find((x) => x.id === HEAVY);
   assert.equal('carryingAssetId' in v, false);
@@ -440,11 +440,12 @@ test('systemId MOVES ONLY THROUGH THE FERRY — the engine writes `.systemId =` 
 // carries `salvageWindows` and g1's own row carries its deadline. The pins are kept as they were: the test strips
 // exactly that field and must reproduce them byte for byte, and pins the field itself beside them. The rival's view
 // is unstripped — the window is fogged from it, so it never moved.)
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const GOLDEN_NO_SALVAGE = {
   tick: 930,
-  state: 'd5d6c0293ac87f679d634461e2f61ed6a8e826882a9b80fcc0dc3d11976efcec',
-  god: '9fbd34a455db3daa16e268325e70c08103c636311057b31de7144761253e1fb4',
-  own: '944934801e0345a910b2ad1aa7e8b4a6bfe77c50c9c972d52459f9cf8725493a',
+  state: 'edaa823e527ebe78d283eb75cd7b29b6857b4ac4325eaa8ffd8af27a313573d2',
+  god: 'eb48ce360f6081ba2ff3f675af1bdb9442c873dfd131f8534261bf23f10c48b7',
+  own: '558c0e885dfb39f615c2367bbcfb8bd21854a24ffd636c56fb999047a62e8f0c',
   rival: '6a31a2179b6d2d4ca7a36a2e702190bcbcd7651701af2ec19e8619773461bf79',
 };
 

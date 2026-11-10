@@ -45,7 +45,7 @@ const commission = (assetKind) => createCommissionBuildAction({ guildId: 'g1', v
 const deployTo = (anchor, kind) => createDispatchRouteWithActionsAction({
   guildId: 'g1', vehicleId: HEAVY, waypoints: [{ anchor, action: { type: 'deploy', kind } }],
 });
-const idleKit = (id, kind) => ({ id, kind, systemId: HOME.id, maintenanceCondition: 1 });
+const idleKit = (id, kind) => ({ id, kind, systemId: HOME.id });
 
 // buildAtTheYard(s, kind) -> the state the tick the yard's kit is minted, having asserted the build: the bill
 // consumed on the first tick, then exactly BUILD_TICKS[kind] ticks to the mint, the queue empty after.

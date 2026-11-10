@@ -5714,7 +5714,7 @@ boundary so the later hex-map swap doesn't touch it.
     (Production and Consumption) share the fix. AS-BUILT in `production-console-model.md` (the sparkline note).
     **No engine change; no game number** — the constant governs pixels only, so no checklist entry. Sim
     2,768 → **2,774** (6 in `console-sparkline-span.test.js`), tools **100** (unchanged).
-- **2.6 (maintenance) — Droids retuned + spacecraft wear and deep maintenance (`docs/maintenance.md`).** RULED 09-11-26 (the maintenance design pass); 🔶 **in progress — slice 1 of 6 built.** Two streams and only two: **droids** (`droid_components`, weekly, per system, destroyed at 0 — built, retuned: one upkeep rate, guild life ×4) and **spacecraft** (wear only in flight; a guild-wide credit pool funded per cycle and drained per tick; at 0% free, time-only deep maintenance at a held system or own Outpost). **Miners and factories never wear** — their condition field is removed. A solo facet: no rival needed. Not the storyteller's stricken state or droid catastrophic failure (2.7). Slices, one PR each (`maintenance.md` §11): **(1)** droid retune + reserve setter · **(2)** remove asset condition · **(3)** craft wear + the pool · **(4)** deep maintenance · **(5)** the Maintenance tab · **(6)** the Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit. **Exit:** a craft flown to 0% stops at its first listed maintenance point and comes back at 100% after its time; an unfunded fleet wears twice as fast as a funded one; every number from `phase-1-tuning.md` §"Maintenance"; GP-neutral, credit-conserving, no-op byte-identical where nothing flies.
+- **2.6 (maintenance) — Droids retuned + spacecraft wear and deep maintenance (`docs/maintenance.md`).** RULED 09-11-26 (the maintenance design pass); 🔶 **in progress — slices 1–2 of 6 built.** Two streams and only two: **droids** (`droid_components`, weekly, per system, destroyed at 0 — built, retuned: one upkeep rate, guild life ×4) and **spacecraft** (wear only in flight; a guild-wide credit pool funded per cycle and drained per tick; at 0% free, time-only deep maintenance at a held system or own Outpost). **Miners and factories never wear** — their condition field is removed. A solo facet: no rival needed. Not the storyteller's stricken state or droid catastrophic failure (2.7). Slices, one PR each (`maintenance.md` §11): **(1)** droid retune + reserve setter · **(2)** remove asset condition · **(3)** craft wear + the pool · **(4)** deep maintenance · **(5)** the Maintenance tab · **(6)** the Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit. **Exit:** a craft flown to 0% stops at its first listed maintenance point and comes back at 100% after its time; an unfunded fleet wears twice as fast as a funded one; every number from `phase-1-tuning.md` §"Maintenance"; GP-neutral, credit-conserving, no-op byte-identical where nothing flies.
   - **Slice 1 — the droid retune + the reserve setter. BUILT 09-11-26** (engine + snapshot; no client). **No new
     number** — all from `phase-1-tuning.md` §"Maintenance". (a) **One upkeep rate:** `DROID_UPKEEP_PER_WEEK` is now
     a single constant, **1** `droid_components` per droid-week for both sources (the Syndicate's 2 is gone);
@@ -5733,6 +5733,24 @@ boundary so the later hex-map swap doesn't touch it.
     the golden. The droid-decay no-op golden (8ffbd21, no deployed droid) is **byte-identical**. Sim 2,774 →
     **2,785**; tools **100** (unchanged). Checklist: "Maintenance slice 1 calls" below. **Next:** slice 2, remove
     asset condition.
+  - **Slice 2 — remove asset condition (+ clear a lost system's droid reserve). BUILT 10-11-26** (engine + snapshot +
+    client). **No new number.** (a) **`Asset.maintenanceCondition` is gone** (`maintenance.md` §0): `createAsset`
+    neither takes nor writes it, so no mint carries it (founding grant, operator `grantAsset`, dockyard build /
+    Syndicate delivery, kit mint, the sweep's re-mint — which now copies only kind and system). The snapshot's asset
+    rows drop it. `asset-condition-in-range` is replaced by the tripwire **`asset-has-no-condition`** (the key's
+    presence is the violation). **Old saves load:** `sim/persist.js` `dropRetiredAssetCondition` deletes the key from
+    every asset once on load, before the journal replays (vehicles untouched). `ASSET_CONDITION_NEW` / `_MIN` stay in
+    `sim/assets.js`, by name, as the droid / vehicle scale. (b) **Client:** the deploy pickers read `Miner · asset_…`
+    with no `· N%`, the ledger's asset row likewise, and the asset reel says machines never wear; craft condition
+    displays unchanged. (c) **Reserve clear (RULED 10-11-26):** `evictSystem` step 2c removes the losing guild's
+    `droidComponentReserve[systemId]` through `setDroidComponentReserve(guild, systemId, 0)` (`droids.md` §14). (d)
+    Checklist "Maintenance slice 1 calls" (1) and (2) RULED, (2) BUILT. **Deliberate re-pins:** 175 golden hashes in
+    16 test files, plus 4 of the deploy-picker client GUARD's popup hashes. Each re-pin carries a note at the golden,
+    and the proof was mechanical: main's (fbafbab) engine, run with every asset's `maintenanceCondition` deleted
+    before hashing, reproduces exactly the new pins (the GUARD: main's popups with " · N%" deleted). Vehicles and
+    droids untouched (the starter heavy is still 0.5). Sim 2,785 → **2,797** (11 in
+    `maintenance-asset-condition.test.js`, 1 client check in `deploy-picker-scope-client.test.js`); tools **100**
+    (unchanged). **Next:** slice 3, craft wear + the pool.
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
@@ -5884,16 +5902,21 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   maintenance wins a contested `droid_components` stock against a droid build starting the same tick (§10's
   "self-build eats maintenance supply"). Deterministic; confirm the priority.
 - **Maintenance slice 1 calls (09-11-26, the droid retune + the reserve setter, `docs/maintenance.md` §1) — built
-  the plainest way, flagged rather than ruled.** **(1) The reserve's tick stamp.** §15.2 says every mutation records
+  the plainest way, flagged rather than ruled.** *(⤳ (1) and (2) RULED 10-11-26; (2) BUILT 10-11-26 in maintenance
+  slice 2. CLOSED.)* ~~**(1) The reserve's tick stamp.** §15.2 says every mutation records
   its tick. `guild.droidComponentReserve` is `{ [systemId]: whole units }` (shape kept, as instructed) — there is no
   row with an `updatedAtTick` to stamp — so the setter follows its sibling guild-level setting `setProductionProfile`
   (which holds the console's `reserveLevel` and also stamps nothing in state): the write-ahead journal's
   `{ tick, action }` line is the record (test-pinned). If an in-state stamp is wanted, rule its shape (e.g. a
   per-guild `droidComponentReserveUpdatedAtTick`, or `{ [systemId]: { units, updatedAtTick } }`, which would change
-  the stored shape). **(2) A reserve outlives its system.** Losing a system (`sim/eviction.js`) destroys the droids
+  the stored shape).~~ *(⤳ **RULED 10-11-26 — ACCEPTED as built:** the reserve's tick lives only in the journal line
+  `{ tick, action }`, like `setProductionProfile`. No code change.)* ~~**(2) A reserve outlives its system.** Losing a system (`sim/eviction.js`) destroys the droids
   there but leaves `droidComponentReserve[systemId]`; the setter refuses a system the guild does not hold, so the
   player can no longer clear it. It is harmless while unheld (nothing there to maintain) and comes back into force
-  if the system is re-held. Clear it on eviction, allow a 0 for any system, or keep it as is? **(3) The auto-replace
+  if the system is re-held. Clear it on eviction, allow a 0 for any system, or keep it as is?~~ *(⤳ **RULED 10-11-26 —
+  clear it on eviction. BUILT 10-11-26** (maintenance slice 2): `evictSystem` step 2c removes the losing guild's
+  `droidComponentReserve[systemId]` through `setDroidComponentReserve(guild, systemId, 0)`, the map omitted once
+  empty; abandon and eviction alike; other systems and other guilds untouched; `docs/droids.md` §14.)* **(3) The auto-replace
   no-op golden was re-pinned** (`sim/tests/droid-autoreplace.test.js`, recorded at ef14e01): its script deploys
   droids across a week boundary, so the retune deliberately moves it (2 deaths in the run instead of 3). The diff is
   written out at the golden; noted here so the re-pin is visible, not as a question.

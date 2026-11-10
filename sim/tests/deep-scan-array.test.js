@@ -442,7 +442,7 @@ test('the kit lifecycle is kind-general: grant +1, load 0, deploy −1; an array
   let s = arrayState();
   const g = accept(s, createGrantKitAction({ guildId: 'g1', systemId: HOME.id, kind: 'deepScan' }));
   assertKitsMoved(s, g, 'g1', +1, 'the grant');
-  assert.deepEqual(g1Of(g).assets, [{ id: 'asset_g1_deepScan_01', kind: 'deepScan', systemId: HOME.id, maintenanceCondition: 1 }]);
+  assert.deepEqual(g1Of(g).assets, [{ id: 'asset_g1_deepScan_01', kind: 'deepScan', systemId: HOME.id }]);
   const l = accept(g, createLoadKitAction({ guildId: 'g1', vehicleId: craftOf(g).id, assetId: 'asset_g1_deepScan_01' }));
   assertKitsMoved(g, l, 'g1', 0, 'the load');
   assert.deepEqual(craftOf(l).cargo, { [DEEP_SCAN_KIT]: 1 });
@@ -550,10 +550,11 @@ test('DETERMINISM: two runs are byte-identical; save → restore is byte-identic
 // drives the outpost deploy end to end: the manual deploy, the on-arrival deploy, the on-arrival failure
 // and retreat, and the range / landmark / occupied refusals of both triggers. If one of these moves, the
 // generalisation changed the outpost path: find out why before re-pinning.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const OUTPOST_PATH_ON_MAIN = {
-  manualDeploy: { state: 'da8dcfa3e4e8d8e084ad5a84f888d2a7844a6374884a4046061a7d5fbb777099', godsEye: 'a96f696e096eb58a4e76c678522c30bf5231015ee40646754e566d342d87843c' },
-  arrivalDeploy: { state: 'a6a0b05f598e545dba65b5cb55327db0884d302441f2fa735ea52380c347231a', godsEye: 'b55c0fe531d0f5f965b501bb7230ee019222155b8f0adf3b2b0d1249bf013fbb' },
-  arrivalRetreat: { state: 'd6a40dc8cd6bf0bec27b21d6275a759b7e28a1a4d8e7d8773d062c2e248b75b8', godsEye: '923d861359c328fe7d2db0a814a21770414e803766ab4e6b5cd9a3b4df245da6' },
+  manualDeploy: { state: 'a5e7858f06b631ce37b63d24eddf9ec5c697e94a34e246b647e60e78f76b32ef', godsEye: 'aa4e05c6c5ca63a4a9819bb051d3a2d9052c357d50e746ed7e81c5c8b52cbae3' },
+  arrivalDeploy: { state: '47ff6f567ca596e98e165dc7d4d2f23add262918f9410df620164c20adbb330e', godsEye: '136fe1438e47430d7f6d7cb92ca86edef5e66fa89fe6b99643b23237cd6c918b' },
+  arrivalRetreat: { state: '0e6cef52bcfe23aae2a37ab3f25d090010090d334032307885941fbdfbd71073', godsEye: '875ad0e56cc1ba4fd8ce46fac9cb471c790d17c4997ccd5af88b39c39052f0ca' },
   reasons: '73debece18be90a63c6876e2b67908ee3de8c72b86fce6f20b4a744cc4dd2df8',
 };
 // ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): founding now records the home system's
@@ -561,10 +562,11 @@ const OUTPOST_PATH_ON_MAIN = {
 // a60d98e state pins above are KEPT and asserted with the slots stripped (tests/slot-strip.js) — the proof
 // that the slots are the only thing that moved; the full states are re-pinned here. The god's-eye pins and
 // the refusals did not move (the lens carries no record).
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const OUTPOST_PATH_STATE_WITH_SLOTS = {
-  manualDeploy: 'f95a36c72a9c8717d9658b2a7dee52f77674d29613320f00990e610e699cd04c',
-  arrivalDeploy: '1aa44e45cd275b424b0f9b8fef6c2561cfbb459ed503c3cbda025283126ac1cb',
-  arrivalRetreat: 'c7a1b5f0cb3473543f2514878130df2a52c802381e176771617ee1b52a41d17a',
+  manualDeploy: 'bbf58f5388e9cc77bd40f4028b06933a96b46dd4b8bc92303ba67f2a16187d66',
+  arrivalDeploy: '71adfc2fd20575549c83d279892bae4ff16fb83d12828b8fbc3052020110f5dc',
+  arrivalRetreat: '6b0cb478c5498069e07a4caffb37061ac687997bae26cf1a21b09c054b5aa7a4',
 };
 
 test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placements, anchors, retreat and refusals', () => {

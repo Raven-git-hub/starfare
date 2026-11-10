@@ -132,7 +132,7 @@ function tickToIdle(s) {
 }
 
 // The fresh idle kit the unload mints — the row createAsset makes for a kit (no venture names it).
-const idleKit = (n, systemId) => ({ id: `asset_g1_outpost_${String(n).padStart(2, '0')}`, kind: 'outpost', systemId, maintenanceCondition: 1 });
+const idleKit = (n, systemId) => ({ id: `asset_g1_outpost_${String(n).padStart(2, '0')}`, kind: 'outpost', systemId });
 
 // --- 1. the happy path ---------------------------------------------------------------------------
 

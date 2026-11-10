@@ -45,19 +45,17 @@ const ASSET_KINDS = [FACTORY, MINER];
 // row). Sorted for a stable order (invariant 9).
 const KIT_ASSET_KINDS = Object.freeze(Object.keys(DEPLOYABLE_KITS).sort());
 
-// maintenanceCondition — DESIGN-AHEAD, INERT IN THIS SLICE (design.md §4,
-// "Condition & maintenance — design-ahead, NOT built here"). Every asset carries
-// it from creation; NOTHING in this slice reads it and nothing changes it — no
-// decay tick, no repair, no maintenance spend, and (load-bearing) condition never
-// touches production, so occupying an asset changes no game number. It is carried
-// now only so the shape is stable when the maintenance slice lands, with no
-// migration.
+// The shared condition SCALE — for DROIDS and VEHICLES (spacecraft), not for assets.
+// Miners and factories never wear (docs/maintenance.md §0: a ground machine sits inside
+// its guild's own system, always within reach of parts and mechanics), so an asset
+// carries no condition at all — the field was removed in maintenance slice 2, and
+// sim/invariants.js halts if it ever comes back. The constants stay here, by name,
+// because droids (sim/droids.js), vehicles (sim/vehicles.js) and the starter package
+// still read them as their scale.
 //
-// REPRESENTATION (a slice-local ruling, not a tuning number): a plain FRACTION
-// where 1 = new/full and 0 = a stopped-but-not-destroyed machine. "New = full" is
-// an identity, not a balance number — the decay rate, the ~4x expected-life anchor
-// and the repair economics are the maintenance slice's to rule, and are NOT
-// invented here.
+// REPRESENTATION (a ruling, not a tuning number): a plain FRACTION where 1 = new/full
+// and 0 = worn out. "New = full" is an identity, not a balance number — the wear
+// rates are docs/phase-1-tuning.md's, not this file's.
 const ASSET_CONDITION_NEW = 1;
 const ASSET_CONDITION_MIN = 0;
 

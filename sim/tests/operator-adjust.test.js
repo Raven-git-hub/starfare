@@ -197,7 +197,7 @@ test('grantAsset mints a unique, well-formed, idle asset; a second gets the next
   assert.equal(a1.id, 'asset_player-guild_factory_11');
   assert.equal(a1.kind, 'factory');
   assert.equal(a1.systemId, HOME_SYSTEM);
-  assert.equal(a1.maintenanceCondition, 1, 'minted new');
+  assert.equal('maintenanceCondition' in a1, false, 'no condition — assets never wear (docs/maintenance.md §0)');
   // Idle: no venture references it (there are no ventures at all here).
   assert.equal((guildOf(g1).ventures || []).some((v) => v.assetId === a1.id), false);
   assert.equal(guildOf(g1).assets.length, before + 1);

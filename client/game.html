@@ -7643,7 +7643,7 @@ function establishRateRow(){
   return (typeof rate === 'number') ? (fmt(rate)+' <span class="mut">'+unit+'</span>') : '—';
 }
 function drawLedger(fp, cQtyCycle, ePct){
-  setRow('tAsset', S.asset ? (S.asset.label+' <span class="mut">'+S.asset.id+' · '+S.asset.condition+'%</span>') : '— <span class="mut">none</span>');
+  setRow('tAsset', S.asset ? (S.asset.label+' <span class="mut">'+S.asset.id+'</span>') : '— <span class="mut">none</span>');
   // The three REAL rows: what the engine will actually be told.
   setRow('tSite', S.site ? esc(S.site.summary) : '—');
   setRow('tOutput', S.outGood ? esc(S.outLabel) : '<span class="mut">pick a recipe</span>');
@@ -7737,7 +7737,7 @@ var REELS = {
   asset:{ title:'Choosing an asset', pages:[
     'An <em>asset</em> is the physical machine — guild-owned, and separate from the venture that operates it. A resource node takes a <em>miner</em>; a settlement slot takes a <em>factory</em>. The list above is your real inventory: every <em>idle</em> machine of the kind this site takes. A machine already at work on another site is not offered, because it cannot be in two places.',
     'Deploying <em>occupies</em> the machine, it does not consume it. It stays in your holdings — simply now referenced by this venture, which is the whole of what "deployed" means. Nothing returns it to idle yet: there is no teardown, so choose the site you mean.',
-    'The machine you pick is recorded against the venture. Its condition figure is maintenance status, carried but <em>inert</em>: nothing decays it, nothing repairs it, and by design condition never changes a production rate — a machine either runs or is stopped. And you may only deploy inside a system your guild holds; claim the ground first.' ]},
+    'The machine you pick is recorded against the venture. Miners and factories never wear: a machine on your own ground is always within reach of parts and mechanics, so it needs no maintenance. And you may only deploy inside a system your guild holds; claim the ground first.' ]},
   licence:{ title:'Licensed or not?', pages:[
     'A <em>licence</em> costs an ongoing maintenance fee, but it opens Syndicate droids to staff the venture and unlocks the two levers that cut the fee. Most guilds licence their core production.',
     'Going <em>unlicensed</em> is allowed — pressure, not prohibition. No fee is owed, but your only labour is guild-produced droids, which fail more often, and it costs you standing over time. A fair start; many licence later.',
@@ -8221,7 +8221,6 @@ function applySiteMode(){
 function kindFor(site){ return site && site.kind === 'slot' ? 'factory' : 'miner'; }
 function kindLabel(kind){ return kind === 'factory' ? 'Factory' : 'Miner'; }
 function kindPlural(kind){ return kind === 'factory' ? 'factories' : 'miners'; }
-function conditionPct(a){ return Math.round((a.maintenanceCondition || 0) * 100); }
 
 /* The rows the picker is currently offering, in the engine's own id order. Held so the
    change handler resolves a selection against exactly what was rendered. */
@@ -8229,7 +8228,7 @@ var POOL = [];
 function fillAssets(kind, systemId){
   var raw = (window.__myIdleAssets ? window.__myIdleAssets(kind, systemId) : []) || [];
   POOL = raw.map(function(a){
-    return { id:a.id, kind:a.kind, label:kindLabel(a.kind), condition:conditionPct(a) };
+    return { id:a.id, kind:a.kind, label:kindLabel(a.kind) };
   });
   var sel=$('assetSel'); sel.innerHTML='';
   if(!POOL.length){
@@ -8241,7 +8240,7 @@ function fillAssets(kind, systemId){
   sel.disabled=false;
   var first=document.createElement('option'); first.value=''; first.textContent='Select asset'; sel.appendChild(first);
   POOL.forEach(function(a){
-    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id+' · '+a.condition+'%'; sel.appendChild(o);
+    var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id; sel.appendChild(o);
   });
 }
 
@@ -8372,7 +8371,7 @@ var DPOOL = [];
 
 function fillDeutAssets(systemId){
   var raw = (window.__myIdleAssets ? window.__myIdleAssets('miner', systemId) : []) || [];
-  DPOOL = raw.map(function(a){ return { id:a.id, kind:a.kind, label:'Miner', condition:Math.round((a.maintenanceCondition||0)*100) }; });
+  DPOOL = raw.map(function(a){ return { id:a.id, kind:a.kind, label:'Miner' }; });
   var sel = $('deutAsset'); sel.innerHTML='';
   if(!DPOOL.length){
     var none=document.createElement('option'); none.value=''; none.textContent='— no idle miners in inventory —';
@@ -8380,7 +8379,7 @@ function fillDeutAssets(systemId){
   }
   sel.disabled=false;
   var first=document.createElement('option'); first.value=''; first.textContent='Select asset'; sel.appendChild(first);
-  DPOOL.forEach(function(a){ var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id+' · '+a.condition+'%'; sel.appendChild(o); });
+  DPOOL.forEach(function(a){ var o=document.createElement('option'); o.value=a.id; o.textContent=a.label+' · '+a.id; sel.appendChild(o); });
 }
 
 // The head's site line, built from the seed like #est-overlay's (node · resource · planet ·

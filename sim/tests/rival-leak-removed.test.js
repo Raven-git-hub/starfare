@@ -85,99 +85,106 @@ const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 // Recorded on main at 41fe84c — BEFORE the cleanup — by copying tests/rival-leak-script.js into a checkout of
 // that commit and hashing each step: the state (hashState), the state with `withoutRivalFacts` applied, the
 // god's-eye lens, and each guild's view with `withoutRivalGround` applied (JSON.stringify(buildSnapshot)).
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const ON_MAIN = {
   founded: {
-    state: 'da04ae04b6a8320e3abef64fb2e54df38024b0140814072a56866629d30afc8c',
-    strippedState: 'da04ae04b6a8320e3abef64fb2e54df38024b0140814072a56866629d30afc8c',
-    godsEye: 'b20f584c39a20396bc02fb3264455910a4cd24085ecd4d6242d7a80245156fab',
+    state: '801034143340e86024112907f6cdc564cb62bb4c80dbf3ea0997405725313b1b',
+    strippedState: '801034143340e86024112907f6cdc564cb62bb4c80dbf3ea0997405725313b1b',
+    godsEye: '75f849ea0b3810119115d88da6fc150e2a1551c02d432a8b1f23056a4b858a59',
     strippedView: {
-      [A]: '450ec241cdbfa7d5921b0d042189e61ab62125b29891e73c095c9e3e7bc856c3',
-      [B]: 'b34dc5ff4d94430c2bb5959b66f652449ea4bd1900607efa0c3f8b2b18be0eae',
+      [A]: 'e561fe21ff30e8760e4a0079bdf1af8074e9df3b72e8e53bdd58ebe1d1385695',
+      [B]: 'f45b54f04849c8acc1ab6bce7ceccebcacf5a901436f5059d9c772cfb943f4b5',
     },
   },
   licensed: {
-    state: 'ed3b38028b9375c14eb78000a352c6a73503ca34f5cfd267c69c2464aba5e523',
-    strippedState: '65e94a4665ea321c1b60e24958282f0d7c8988bea94236b1a4338002306d1fed',
-    godsEye: '7b380db33ba6974fd471b5764faf2d29456a5ee3bbd703c45ae229297373796c',
+    state: '09101b2fed9ba81bed401dc63fedab56a85ceeb5b98ca0bc40d754f7f9f37ae9',
+    strippedState: '36b022e8ca6b35d7e60dc47409e721039c7e586b9913cbb80351b1dab31ed2c7',
+    godsEye: '1be7a9d5fbc89282c798523b6b705a65967c5cac57d79579f4d9fec35dc38318',
     strippedView: {
-      [A]: '0b75590c4ca91f200a11b6f017793792ca871ddb374f60915893d1d1af33cefb',
-      [B]: '98f8126b24cba76c6904005a820c5ce00dc1986b84c7fe80c856b9247553b13b',
+      [A]: 'b650462f2b0eede4bae51c1bb63638864f25ccedd1752f126ccf3dadde33b0c0',
+      [B]: '2fc6c0983896126226c502ebb4dbe349ee2283d1138ccd6e6d7a46a369b08922',
     },
   },
   closed: {
-    state: '55c1dddab2097e5ac8c7b030737dbbfcd0558584edfe5ff03005e83a044b4443',
-    strippedState: 'd5a831d8760d56fa1aacbe11a3a1da58b4c76e2ab0366cf371ce2f9f7e4af80e',
-    godsEye: '9e4ff071ea8d34be5d314374c3b57df19ba6274844b060ad454417a03745d9fe',
+    state: '4f9cd1f2e4e6c6c502d66d7d2d85961f37a5decd080dbfbc3f5be07e5a324825',
+    strippedState: '0eaa0ec3f85d163ce088c0972cf18a8483ae732f72653fffd26eeefe5027093f',
+    godsEye: '5482140dbad11263201d5c580a30f1e4ff665bcba6744f463746deef32f6db2d',
     strippedView: {
-      [A]: 'ba8181f87f479cdf96d2902620ffdd2a5a597dc281cd07c093991308129bad4d',
-      [B]: '69346a07491679b33d9f922651407e0169a34a34c764ffbdf3e39e3dab7fadd3',
+      [A]: 'a8a8e9de3dc91cfd97ff4f9a3b7f08149a1ff1bb12cd3d3ab0eacecbb29aa3b6',
+      [B]: 'f369a2e1a230455af2fc20bf52ab43f718fa727647ba47baa2b5aba105a3f01a',
     },
   },
 };
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const SOLO_ON_MAIN = {
-  state: '5594ca3356c23d7fc53c100c18e3d70784fcce360f47561d042384892341f97d',
-  godsEye: 'f4737bfbcf8c9a2657877e9bc5039a5803d6b15c2ab8ab111064fecc8b6ea02a',
-  view: '46390e70553bffaa030869371d8a10b5d1e57a85eef2a64777475bd7641962eb',
+  state: '14c1d81dbc60b84c7faa38cd22329f8db680745999f89a24ce9107c91c986d71',
+  godsEye: 'cadc6b7f0349d79267141fee5840d4263398e9357e834bdad9ba56bb9963d8c9',
+  view: 'f49991770dd2fb2ddc7763655fa3f0a959ab3b0bcb2dba439bad444575f93869',
 };
 
 // The full per-guild views after the cleanup, recorded 08-10-26. Each shows the rival's home at full L2.
 // ⤳ 09-10-26: now the views with `known`'s slots stripped (the full views are WITH_SLOTS, below).
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const VIEWS_AFTER = {
   founded: {
-    [A]: 'fd5a6f2a56c3077e993603d7e7ff0bf101d0cea04420923d2026be6a1551f19a',
-    [B]: '366f9c2a2db703a61e5f4b242a5fdd5a56478512f73dd09cae39af3e37eca943',
+    [A]: '00008894c6dc1d80ba8b3007842995513a96ce0298ecb5dcb30ff02068b75067',
+    [B]: '2782713356a224817ccbffde1696b2ef9733a66f03f2c2cecb85c1e603dd2ed8',
   },
   licensed: {
-    [A]: '4bc3c874ff47a7ebe590cfcb2287fc3afcd65d4e3e4fb8f169dd96377c51bd5e',
-    [B]: 'eb99c723513cf77a74ed54537d2303d99af64a8d006d0ad590cdd255171f0d69',
+    [A]: '77d93464a3638fcdf826f48ea518fe2cdeb2445a5d22d98dddf5b9e228b062c4',
+    [B]: 'c044f2a02f8dbf489ed073da926b03a89b67cf3f52dd30525a1d68f55a2e62d3',
   },
   closed: {
-    [A]: '7a1a5ef253664205e24c39d29891013b270a0c858af3f262764d0c0bbf88d576',
-    [B]: 'f9957f00e08b878b175bab62887ba08a1c7e6364b88dee79a23270a99f8b6bdf',
+    [A]: '44a45bd2586f9fb2af253607e48fc2b39fe8380688ca477bf3c60417a1f87624',
+    [B]: 'c14fcd1e600ba86fa9d9b1d9da3947b3cdbcc48e5a2dbfe9ca2c3dbac29d94d3',
   },
 };
 
 // After the settlement-surface slice, recorded 09-10-26: the full states and per-guild views of the same steps.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const WITH_SLOTS = {
   founded: {
-    state: '17bd81c6b49fe866b6dc5a0ef537bdc18cfe97f3434228a565e771b74d2b9907',
-    [A]: '90c22f1284cb80229d466650ee887f13e6f7bcd06400ac50e3396f72f7bcdd5d',
-    [B]: 'c609f3da53136fc361fa8291754f8bc465148172baed5f29734095a496aa6038',
+    state: 'd49df18eb6c2e7c7f85bd179d5053457d0ad5b97f2a17c99ddbea1419e9f3de8',
+    [A]: '1f588134a8cc470f66bb730287992acbcd6603230b8739e8b9df3442e65f57ae',
+    [B]: '4e33535859211e4043d3350808d8194543e2964b09582e82192a527de8fe6120',
   },
   licensed: {
-    state: '83a16e83eade0ee2999fd74b8c518de14c52f2b6288a8f1790e0d222ac12fe33',
-    [A]: 'a524eb9a45976cb8f4963cd3f032010681bbd42c80aeb38df6f3ebcb4adf03d0',
-    [B]: 'db6455c7547bbbbbe7efbaddd44dd510a709aef2bcae3ca3109a031ab9770eb6',
+    state: '5610106e1a36f363f17d8d0b10d97e61772e3e1ef506318560a1748cee4c08f7',
+    [A]: '473dbfc9d58f6b6352cc1d9e23f01aef4f623e9c146bcedbe57efbfc2e11412c',
+    [B]: '7293f994fa5d94247570ee84178ffc414cdf729d8958e3e54cd80f7263f46912',
   },
   closed: {
-    state: '83e67fd7b22a5eb4a004439632264d74072e87cde55a669714548135c0b712bf',
-    [A]: '3806582115fab26e9fdc9e1de316ca9846b2c92b5bf7065ab3c996c1f92c4473',
-    [B]: 'a448b35c71e502c112825497e7e7c9a2b5c3e6d5f8ad9d3096c6c1f506602079',
+    state: '0a9bc688d77686403f0fa37331cf1e7bff5b18d24b5404e860841440953eb7ab',
+    [A]: '224f86710506481fa1d99c69bfeb92fc73b5976d83dab11f03c9037a518cdfb1',
+    [B]: 'b262f149fa239944b640a9983b251b3df83cc305ce5b60f49679bcd39df1bf68',
   },
 };
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const SOLO_WITH_SLOTS = {
-  state: 'aefc81a07b46dcc324feab31e491ab2804a903860720501dfdeb991dc7f04552',
-  view: '5b0f1f075b1ae353376afd3c8350d9cc72ac9f16bf638b1187721a8c06c8d8ef',
+  state: '49c6a794f7df6a47c6e29c9ee674abe7485f42a68400be8c33edf10b3e1fbe95',
+  view: '4cb933e9c52f1078c98fe6903511b9a9063d4308464873642a17037fde13b1d8',
 };
 
 // After the L0-board slice: the per-guild views of the same steps, with no `geography.systems`. Recorded on
 // main at 348e0fc — BEFORE the slice — by deleting `geography.systems` from each view above (WITH_SLOTS,
 // SOLO_WITH_SLOTS) and hashing the rest; the slim view must hash to exactly that. The states did not move.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const SLIM = {
   founded: {
-    [A]: 'f2658bf6a9ee94a63072de5f653dd206849454f10a30e6cea62678f3175c1984',
-    [B]: '2850d3478f17cb0c433a876a8b6d9e6f21dcb260e847b5694879b0c29c274e51',
+    [A]: '62e3da3d6cf9249cb5f293f350d8b24d280df4274bae26740726240e00dbe178',
+    [B]: '65471490d4eab3220f919181353be7dd236f7bcb9af65901d8ea91f52db2a920',
   },
   licensed: {
-    [A]: '27240ebcbabed36eb6d4a77232381604496a97280f9fcdbf9b66aec1ba8bbca7',
-    [B]: '2f1bb82bf401a2aa936cf0b43bacabd49826126726c7087de248956fc3d0ee2b',
+    [A]: 'e3a8746707a04f66afd789925c756f48ce2bb04b90b58688c571b5cc9a0ae547',
+    [B]: 'b3e66d21c23310e1b36072c1f8c256f23afa9dd319538e88ab2f4d2e6b18be43',
   },
   closed: {
-    [A]: '6e64d180856789e09b850310b84ac39e412a70a40ad822d33e83e02625178efc',
-    [B]: '4fb2ab699fe07f14f02aa4f128ce86e2b79ddb32b039a54f1f23b1fb2bd19541',
+    [A]: '7de0fb70b8b670f14ddcf2d7e2351c4ad4af349631ad3efaf82438b8570ee28c',
+    [B]: '8db7c5f1ccf5a2e1be54384ed80a497bf547960c1597a4faa4e699fd9116f77a',
   },
 };
-const SOLO_SLIM = { view: 'f7b2873ba45b1dde1f7fca8d31ba1a50eb948bc0cc4aa6f46f3e8a01ca87b148' };
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const SOLO_SLIM = { view: '85339161b0054f4ec12bbfe0393ed27faded2bb65d67b845ec98771784e52bc6' };
 
 // legacyObservePublicRegister(state) — the REMOVED end-of-tick step, copied from main at 41fe84c
 // (sim/exploration.js `publicRegisterFacts` + `observePublicRegister`) for ONE purpose: rebuilding main's bytes

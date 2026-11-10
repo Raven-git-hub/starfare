@@ -1185,7 +1185,7 @@ function createAdjustGoodsAction({ guildId, systemId, good, delta }) {
 
 // grantAsset: mint one IDLE machine into the guild's inventory (§3.4) — a fresh
 // `asset_<guildId>_<kind>_NN` id (nextAssetNumber: above every live AND every removed
-// number of that kind), new condition, attached to no venture. `kind` must be a
+// number of that kind), attached to no venture. `kind` must be a
 // buildable asset kind; `systemId` a real system. There is no negative form — an asset
 // is removed by id via removeAsset.
 function createGrantAssetAction({ guildId, kind, systemId }) {
@@ -2280,7 +2280,7 @@ function deployKit(state, guild, craft, check, kind, tick) {
 // mint, shared by grantKit, the unload, the starter package, and (2.5, 15-10-26) a finished dockyard build
 // or Syndicate delivery of an installation (sim/tick.js mintFinishedKind, which is why it is exported).
 // Bump the guild's stored kit serial (never reused — a loaded kit's id must not come back, design.md §15.4
-// "Ids never repeat"), build the `asset_<guild>_<kind>_NN` id from it, and push a new-condition asset at
+// "Ids never repeat"), build the `asset_<guild>_<kind>_NN` id from it, and push a new asset at
 // `systemId`. No venture names it, so it is idle.
 function mintKitAsset(guild, kind, systemId) {
   const serial = nextKitAssetSerial(guild);
@@ -6338,13 +6338,13 @@ function applyAction(state, action) {
 
   if (action.type === 'grantAsset') {
     // §3.4: mint one IDLE asset — a fresh `asset_<guildId>_<kind>_NN` id (above every live
-    // and every removed number for this guild+kind, via nextAssetNumber), new condition, at
+    // and every removed number for this guild+kind, via nextAssetNumber), at
     // the named system. It attaches to no venture, so occupancy stays clean; no quantity is
     // conserved, so there is no counter-move.
     const guild = findGuild(next, action.guildId);
     if (!Array.isArray(guild.assets)) guild.assets = [];
     const id = assetId(action.guildId, action.kind, nextAssetNumber(guild, action.kind));
-    guild.assets.push(createAsset({ id, kind: action.kind, systemId: action.systemId, maintenanceCondition: ASSET_CONDITION_NEW }));
+    guild.assets.push(createAsset({ id, kind: action.kind, systemId: action.systemId }));
     return next;
   }
 

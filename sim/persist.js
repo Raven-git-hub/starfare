@@ -113,6 +113,25 @@ function clearJournal(dir) {
   fs.rmSync(journalPath(dir), { force: true });
 }
 
+// dropRetiredAssetCondition(state) -> how many assets lost the key, having MUTATED `state`.
+// THE ONE load-time migration for maintenance slice 2 (docs/maintenance.md §0 / §11). A save written
+// before that slice stored `maintenanceCondition` on every asset; miners and factories never wear, so
+// the field is gone and sim/invariants.js now halts on any asset that still carries it. Deleting it
+// here, once, before anything else reads the loaded state, lets an old save restore cleanly. Only
+// `guild.assets` rows are touched — a VEHICLE's maintenanceCondition is live and is left alone.
+function dropRetiredAssetCondition(state) {
+  let dropped = 0;
+  for (const g of (state && state.guilds) || []) {
+    for (const a of g.assets || []) {
+      if (Object.prototype.hasOwnProperty.call(a, 'maintenanceCondition')) {
+        delete a.maintenanceCondition;
+        dropped++;
+      }
+    }
+  }
+  return dropped;
+}
+
 // loadOrInit(dir, initFn) — restore, or start fresh.
 //   - No state.json → return initFn() (today's pure zero-state boot).
 //   - state.json present → parse it, then REPLAY the journalled actions whose
@@ -132,6 +151,10 @@ function loadOrInit(dir, initFn) {
 
   let state = JSON.parse(fs.readFileSync(sp, 'utf8'));
   console.log(`[persist] loaded state @tick ${state.tick}`);
+  // An older save may still carry the retired asset condition — drop it BEFORE the replay, so
+  // every replayed action (and the invariants) sees the current shape.
+  const dropped = dropRetiredAssetCondition(state);
+  if (dropped > 0) console.log(`[persist] dropped the retired maintenanceCondition from ${dropped} asset(s)`);
 
   // The loaded snapshot's tick is fixed for the whole replay: applyAction never
   // advances the tick, so this stays the correct cut-off throughout the loop.
@@ -168,6 +191,7 @@ module.exports = {
   appendJournal,
   clearJournal,
   loadOrInit,
+  dropRetiredAssetCondition,
   // Path helpers exported for tests/tools that need to locate the files.
   statePath,
   journalPath,

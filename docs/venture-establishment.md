@@ -57,7 +57,7 @@ seed/state facts) · **CONFIG** (tunable constants, not per-save state) · **PRE
 | Data point | Bucket | Field / source |
 |---|---|---|
 | Selectable assets, filtered by site kind (miner⇢node, factory⇢slot) | **STORED** | guild-owned IDLE assets — snapshot `guilds[].assets` where `deployedToVentureId === null` (BUILT 30-08-26) |
-| Asset id / kind / condition (maintenance %) | STORED | snapshot `guilds[].assets[]` — `{ id, kind, maintenanceCondition }`; condition is carried but INERT until the maintenance slice |
+| Asset id / kind | STORED | snapshot `guilds[].assets[]` — `{ id, kind, systemId, deployedToVentureId }`; *(⤳ 10-11-26: the condition % is gone — assets never wear, `docs/maintenance.md` §0)* |
 
 ### 2.3 Configuration
 | Data point | Bucket | Field / source |
@@ -137,7 +137,7 @@ Most of the panel is DERIVED/CONFIG/PRESENTATION. It introduces **three genuinel
 all part of the deferred licence layer — decide each one's shape when that slice is built:
 
 1. **Asset inventory** — **BUILT 30-08-26** (`design.md` §4's asset-occupancy ruling; `sim/assets.js`,
-   `guild.assets`). Guild-owned assets: `{ id, kind:'miner'|'factory', maintenanceCondition }`, nested on
+   `guild.assets`). Guild-owned assets: `{ id, kind:'miner'|'factory', systemId }` *(⤳ 10-11-26: no `maintenanceCondition` — maintenance slice 2)*, nested on
    the guild, with a venture referencing one by its nullable `assetId`. Two corrections to the sketch
    above, from the ruling: establishment **OCCUPIES, it does not consume** — the asset stays in the
    inventory and the venture's reference is the whole of what "deployed" means — and **"unbound" is

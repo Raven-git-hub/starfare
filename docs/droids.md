@@ -793,3 +793,13 @@ number.**
 - **No-op:** a batch landing in a held system, and a loss with no droid in it, hash exactly as at 1cfea14 (state and
   every view; `sim/tests/droid-loss-noop-script.js`). **Determinism:** both the droid-destroying abandon and the
   forfeited batch re-run and save/restore byte-identically. Tests: `sim/tests/droid-system-loss.test.js`.)*
+
+*(**⤳ BUILT 10-11-26 — the reserve goes with the system** (maintenance slice 2; ruled 10-11-26, roadmap checklist
+"Maintenance slice 1 calls" (2)).* A new step **2c** in `evictSystem`, right after the droids are destroyed: the
+losing guild's `droidComponentReserve[systemId]` is removed through the map's one writer,
+`setDroidComponentReserve(guild, systemId, 0)` (0 drops the key; an emptied map is omitted). Its droids are gone and
+its goods forfeit, and the setter refuses a system the guild does not hold, so a kept value would be a stale setting
+the player could not clear and that would silently come back into force on a retake. Only that guild and that system:
+its other systems' reserves and every rival's are untouched. A guild with no reserve there is byte-identical. No tick
+is stored for it — the reserve has none (checklist item (1), ruled 10-11-26); the `system_lost` notice carries the
+tick of the loss. Tests: `sim/tests/maintenance-asset-condition.test.js`.)*

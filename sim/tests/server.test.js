@@ -469,8 +469,11 @@ test('GET / serves the REAL asset picker — the snapshot\'s idle inventory, and
   assert.match(html, /fillAssets\(site\.kind==='node' \? 'miner' : 'factory', S\.site\.systemId\);/);
   assert.match(html, /window\.__myIdleAssets \? window\.__myIdleAssets\('miner', systemId\) : \[\]/);
   assert.match(html, /fillDeutAssets\(D\.site\.systemId\);/);
-  // …and the display is derived from the real fields, not stored beside them.
-  assert.match(html, /Math\.round\(\(a\.maintenanceCondition \|\| 0\) \* 100\)/);
+  // …and no miner/factory condition % is shown any more: assets never wear (docs/maintenance.md §0, slice 2), so
+  // the pickers read only the engine's id and kind.
+  assert.ok(!html.includes('function conditionPct('), 'the asset condition helper is gone');
+  assert.ok(!/a\.maintenanceCondition/.test(html), 'no asset row reads a condition (craft read v.maintenanceCondition)');
+  assert.ok(!html.includes("+' · '+a.condition+'%'"), 'the picker options carry no "· N%"');
 
   // The picked machine rides the deploy. This is the whole point of the slice.
   assert.match(html, /assetId: S\.asset\.id,/);
@@ -529,10 +532,11 @@ test('GET / serves the DE-MOCKED establish panel — every retired string, and t
   // OCCUPY, NOT CONSUME — §4's rule, in the copy a player actually reads.
   assert.match(html, /occupied, not consumed/);
   assert.match(html, /Deploying <em>occupies<\/em> the machine, it does not consume it/);
-  // …and condition is displayed but inert: the reel must not promise it does anything.
+  // …and the reel must not promise condition does anything. Since maintenance slice 2 there is no asset condition
+  // at all (docs/maintenance.md §0), so the reel says machines never wear rather than "displayed but inert".
   assert.ok(!html.includes('a well-kept machine runs closer to its rating'),
     'condition never touches production (§4) — the reel must not say it does');
-  assert.match(html, /condition never changes a production rate/);
+  assert.match(html, /Miners and factories never wear/);
 });
 
 // --- the fee reaches the player in CREDITS (client-only, 31-08-26) ----------------
@@ -1924,7 +1928,7 @@ test('POST /admin/guild/grant-kit + /admin/vehicle/load-kit + /unload-kit: the k
   assert.equal(grant.status, 200);
   assert.equal(grant.body.accepted, true, grant.body.reason);
   assert.equal(grant.body.snapshot.tick, 0, 'a grant must not tick');
-  assert.deepEqual(kitRows(grant.body.snapshot), [{ id: 'asset_player-guild_outpost_01', kind: 'outpost', systemId: HOME_SYSTEM, maintenanceCondition: 1, deployedToVentureId: null }]);
+  assert.deepEqual(kitRows(grant.body.snapshot), [{ id: 'asset_player-guild_outpost_01', kind: 'outpost', systemId: HOME_SYSTEM, deployedToVentureId: null }]);
   assert.deepEqual(grant.body.snapshot.guilds[0].vehicles[0].cargo, {}, 'a kit no longer appears in a hold');
 
   const load = await req('POST', '/admin/vehicle/load-kit', { guildId: 'player-guild', vehicleId: HEAVY_ID, assetId: 'asset_player-guild_outpost_01' });

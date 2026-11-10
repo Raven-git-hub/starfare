@@ -374,6 +374,14 @@ storyteller trigger are later slices. No new number. *(⤳ The salvage run is BU
   `guild.exploration` is never touched (the survey record stays byte-for-byte; the live control surface of exploration
   ruling 11 lapses with control, so planets the guild saw only by holding the system leave its view); (5) **one notice** —
   a single `system_lost` event (`docs/event-log.md` §14).
+  *(⤳ Later steps joined this list: the lanes and the arrays (engine PR 3, below); the droids destroyed
+  (`docs/droids.md` §14, step 2b); and **(2c) the droid reserve cleared — BUILT 10-11-26** (maintenance slice 2,
+  ruled 10-11-26 on the roadmap checklist "Maintenance slice 1 calls" (2)): the losing guild's
+  `droidComponentReserve[systemId]` is removed through its one writer (`setDroidComponentReserve(guild, systemId, 0)`,
+  `sim/droids.js`), the map omitted once empty — a stale floor the player could not clear (the setter refuses an
+  unheld system) and that would silently return on a retake. Other systems' reserves and other guilds' are untouched.
+  And since maintenance slice 2 an asset carries **no condition** (`docs/maintenance.md` §0), so "keeping its
+  `systemId` and its condition" now reads "keeping its `systemId`".)*
 - **The stranded asset.** An additive field on the asset, `stranded: { tick }` — the `{ ..., tick }` shape of a craft's
   `deployFailed` / `laneEnded`, carrying the tick the per-asset salvage timer will need. **Omitted** on every other asset
   (so a galaxy that never abandons is byte-identical — pinned against `main`'s hashes), copied by `createAsset` (a
@@ -498,13 +506,13 @@ number: it reuses `deleteAsset`, `nextAssetNumber`, the kit serial, `createAsset
 - **The sweep, in the plant.** `plantKit` (`sim/actions.js`) calls `sweepStrandedAssets` (`sim/eviction.js`) right after
   `recoverStrandedAssets` — the planter's own machines are recovered first (flag cleared, id kept, no notice), so what is
   left stranded in the system is other guilds'. For each, in `strandedAssetsIn`'s guild-then-asset order (invariant 9):
-  its `kind` and `maintenanceCondition` are read; it is retired from its former owner through `deleteAsset` (now in
+  its `kind` (and, until maintenance slice 2 removed the field, its `maintenanceCondition`) is read; it is retired from its former owner through `deleteAsset` (now in
   `sim/assets.js`, moved from `sim/actions.js` so `sim/eviction.js` can call it without a require cycle — PR 3's `endLane`
   move), which records the former owner's `removedAssetHighWater` so the number is never reissued to it (§15.4 — the
   sweep is the game's first owner change, so this is the first time play needs that record), and the former owner's
   `assets` key goes if that was its last; and a fresh asset is minted under the planter — `assetId(planter, kind, NN)`,
-  same kind, same system (now the planter's), the SAME `maintenanceCondition` (inert, so it simply rides along — no
-  maintenance built), `updatedAtTick` = this tick, and **no `stranded` flag**: an ordinary idle asset. Each is pushed
+  same kind, same system (now the planter's) — *(⤳ 10-11-26: no condition is carried; assets have none since
+  maintenance slice 2, `docs/maintenance.md` §0. Before it, the SAME inert `maintenanceCondition` rode along)* — `updatedAtTick` = this tick, and **no `stranded` flag**: an ordinary idle asset. Each is pushed
   before the next is minted, so `nextAssetNumber` sees it and two never collide. A machine's NN continues the planter's
   per-kind sequence (`nextAssetNumber`); a **kit's** NN is the planter's kit serial, bumped (the kit's own numbering —
   below).

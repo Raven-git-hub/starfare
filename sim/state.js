@@ -812,7 +812,12 @@ function createVenture({
 // is followed HERE the way its siblings follow it — a venture stamps one because
 // stepProduction mutates it every tick; nothing in this slice ever mutates an
 // asset, so a stamp would be a field with nothing to record. It arrives with the
-// mutation that needs it (decay, in the maintenance slice).
+// mutation that needs it (the ferry and the sweep, below).
+//
+// There is NO condition field: miners and factories never wear (docs/maintenance.md
+// §0). `maintenanceCondition` was carried, inert, until maintenance slice 2 removed it.
+// Because the arguments are destructured by name, a stale input that still has the key
+// (an old scenario row) simply loses it here.
 //
 // `systemId` (12-09-26, roadmap 2.1b, the asset-economy inventory slice — design.md
 // §4 / §15.4) is the system the machine physically SITS in: its inventory location.
@@ -837,7 +842,7 @@ function createVenture({
 // the asset's last load onto a heavy or unload into a system (§15.2: every mutation
 // records its tick). OMITTED until the ferry first moves the asset, so an asset that was
 // never ferried — every asset in a galaxy that salvages nothing — stays byte-identical.
-function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITION_NEW, stranded, updatedAtTick }) {
+function createAsset({ id, kind, systemId, stranded, updatedAtTick }) {
   if (id === undefined) throw new Error('createAsset: id is required');
   if (kind === undefined) throw new Error('createAsset: kind is required');
   if (systemId === undefined) throw new Error('createAsset: systemId is required');
@@ -846,11 +851,8 @@ function createAsset({ id, kind, systemId, maintenanceCondition = ASSET_CONDITIO
     kind,
     // systemId — the machine's physical location, always present (see the note above).
     systemId,
-    // maintenanceCondition — a fraction, 1 = new/full, 0 = stopped (sim/assets.js
-    // owns the constant and the scale). DESIGN-AHEAD AND INERT: nothing in this
-    // slice reads it, nothing changes it, and it never reaches production. It is
-    // carried and serialized now so the maintenance slice needs no migration.
-    maintenanceCondition,
+    // No condition field: miners and factories never wear (docs/maintenance.md §0), so
+    // an asset carries none (removed in maintenance slice 2).
     ...(stranded === undefined ? {} : { stranded: { ...stranded } }),
     ...(updatedAtTick === undefined ? {} : { updatedAtTick }),
   };
@@ -920,10 +922,10 @@ function createDroid({ id, systemId, source, condition = ASSET_CONDITION_NEW, as
 // resolves it via seed lookups) is where legality — exactly-one-form, resolvable, in-bounds —
 // is judged, the same assemble-here / judge-there division `systemId` ran under.
 //
-// `maintenanceCondition` (2.2) is a fraction, 1 = new, and is INERT like
-// `Asset.maintenanceCondition` until the maintenance slice — nothing reads it, nothing
-// changes it. Carried and serialized now so the shape is settled with no later migration;
-// defaults to ASSET_CONDITION_NEW, the same "new = full" identity assets use.
+// `maintenanceCondition` (2.2) is a fraction, 1 = new, and is INERT until maintenance slice 3
+// makes a craft wear in flight (docs/maintenance.md §2) — nothing reads it yet, nothing
+// changes it. Defaults to ASSET_CONDITION_NEW, the shared "new = full" scale droids use too.
+// (Assets no longer carry a condition — maintenance slice 2 removed it; craft keep theirs.)
 //
 // `cargo` (2.2 cargo, engine slice 1 — design.md §4 "The dock model", §15.4 the Vehicle `cargo`
 // field) is the craft's HOLD: a `good → int` map, the vehicle twin of the Syndicate shipment's

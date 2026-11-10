@@ -147,7 +147,7 @@ test('grant: exactly one idle outpost kit asset at the system, a stable id, noth
   const before = kitState();
   const s = accept(before, grant());
   const g = guildOf(s);
-  assert.deepEqual(g.assets, [{ id: KIT_01, kind: 'outpost', systemId: HOME.id, maintenanceCondition: 1 }]);
+  assert.deepEqual(g.assets, [{ id: KIT_01, kind: 'outpost', systemId: HOME.id }]);
   assert.equal(g.kitAssetSerial, 1);
   // The craft is untouched — a kit no longer appears in a hold.
   assert.deepEqual(craftOf(s), craftOf(before));
@@ -183,7 +183,7 @@ test('grant gates: unknown guild, a system that is not on the seed, a kind with 
 test('snapshot: the kit is an idle asset row of kind outpost — exactly what __myIdleAssets("outpost") reads', () => {
   const s = granted();
   const rows = buildSnapshot(s).guilds[0].assets;
-  assert.deepEqual(rows, [{ id: KIT_01, kind: 'outpost', systemId: HOME.id, maintenanceCondition: 1, deployedToVentureId: null }]);
+  assert.deepEqual(rows, [{ id: KIT_01, kind: 'outpost', systemId: HOME.id, deployedToVentureId: null }]);
   // The client's own filter (client/game.html `__myIdleAssets`), applied verbatim to the row.
   const myIdleAssets = (kind) => rows.filter((a) => a.kind === kind && a.deployedToVentureId == null);
   assert.deepEqual(myIdleAssets('outpost').map((a) => a.id), [KIT_01]);
@@ -315,7 +315,7 @@ test('unload: the kit leaves the hold and a FRESH idle kit asset appears in the 
   const before = loaded();
   const s = accept(before, unload(before));
   const g = guildOf(s);
-  assert.deepEqual(g.assets, [{ id: KIT_02, kind: 'outpost', systemId: HOME.id, maintenanceCondition: 1 }], 'a new id — KIT_01 is never reissued');
+  assert.deepEqual(g.assets, [{ id: KIT_02, kind: 'outpost', systemId: HOME.id }], 'a new id — KIT_01 is never reissued');
   assert.equal(g.kitAssetSerial, 2);
   const craft = craftOf(s);
   assert.equal(craft.cargo, undefined, 'the hold is empty (omit-when-empty)');
