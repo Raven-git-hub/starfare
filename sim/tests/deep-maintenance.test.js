@@ -806,3 +806,142 @@ test('determinism: two runs identical; save mid-maintenance (bays AND queue) →
   }
   for (const id of ids) assert.equal(craftOf(unbroken, id).maintenanceCondition, 1, `${id} came all the way back`);
 });
+
+// ── O. a PLAIN trip at 0% stops at its first listed point too (amendment, RULED 10-11-26) ──────────────
+
+// plainTrip(units) -> a light at X, `units` of wear left, sent on a plain dispatch RIVAL_SYS → HOME → D. Returns the
+// galaxy just after the dispatch, the craft id, and the tick its leg into HOME ends.
+function plainTrip(u) {
+  let s = galaxy();
+  let id;
+  ({ s, id } = spawn(s, LIGHT_TRANSPORT, X, u / CRAFT_WEAR_SCALE));
+  const t0 = s.tick;
+  s = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: id, waypoints: [{ ...AT_RIVAL }, { ...AT_H }, { ...D }] }));
+  const atHome = t0 + legOf(LIGHT_TRANSPORT, X, AT_RIVAL) + legOf(LIGHT_TRANSPORT, AT_RIVAL, AT_H);
+  const end = atHome + legOf(LIGHT_TRANSPORT, AT_H, D);
+  return { s, id, t0, atHome, end };
+}
+const LIGHT_WEAR = craftWearPerTick(LIGHT_TRANSPORT, false);
+
+test('plain trip: at 0% during leg 1 it stops at the held system it lists — not refunded, the notice says it was cut short', () => {
+  const { s: launched, id, atHome } = plainTrip(LIGHT_WEAR);
+  const fuelAfterLaunch = g1Of(launched).fuelHoard;
+  const consumedAfterLaunch = launched.audit.totalConsumed;
+  const creditsAfterLaunch = g1Of(launched).credits;
+  let s = runUntil(launched, (x) => craftOf(x, id).status !== 'inTransit');
+  const v = craftOf(s, id);
+  assert.equal(s.tick, atHome, 'it stopped on the tick its leg into HOME ended — past the rival system, short of D');
+  assert.equal(v.status, 'maintenance');
+  assert.deepEqual(v.location, AT_H);
+  assert.equal(v.trip, undefined);
+  assert.deepEqual(v.deepMaintenance, { readyTick: atHome + FULL[LIGHT_TRANSPORT] });
+  assert.equal(v.laneEnded, undefined, 'a plain trip has no lane to flag');
+  assert.deepEqual(eventsOf(s, 'deep_maintenance_entered').map((e) => e.payload), [{
+    craftId: id, craftClass: LIGHT_TRANSPORT, point: { kind: 'system', systemId: H }, bay: true,
+    readyTick: atHome + FULL[LIGHT_TRANSPORT], tripCutShort: true, tripDestination: { ...D },
+  }]);
+  assert.equal(g1Of(s).fuelHoard, fuelAfterLaunch, 'the unflown leg is not refunded');
+  assert.equal(s.audit.totalConsumed, consumedAfterLaunch);
+  assert.equal(g1Of(s).credits, creditsAfterLaunch);
+  s = run(s, FULL[LIGHT_TRANSPORT]);
+  assert.equal(craftOf(s, id).maintenanceCondition, 1);
+  assert.deepEqual(craftOf(s, id).location, AT_H);
+});
+
+test('plain trip: above 0% it flies through to the hex; reaching 0% only after HOME it lands at the hex, idle at 0%', () => {
+  const fresh = plainTrip(CRAFT_WEAR_SCALE);
+  let s = runUntil(fresh.s, (x) => craftOf(x, fresh.id).status !== 'inTransit');
+  assert.equal(s.tick, fresh.end);
+  assert.equal(craftOf(s, fresh.id).status, 'idle');
+  assert.deepEqual(craftOf(s, fresh.id).location, D);
+  // Enough wear left to pass HOME and three ticks beyond it.
+  const probe = plainTrip(1);
+  const late = plainTrip(LIGHT_WEAR * (probe.atHome - probe.t0 + 3));
+  s = runUntil(late.s, (x) => craftOf(x, late.id).status !== 'inTransit');
+  assert.equal(s.tick, late.end);
+  assert.deepEqual(craftOf(s, late.id).location, D);
+  assert.equal(craftOf(s, late.id).status, 'idle', 'open space: no point, so it stays out');
+  assert.equal(units(craftOf(s, late.id)), 0);
+  assert.equal(eventsOf(s, 'craft_reached_zero')[0].tick, late.atHome + 3);
+  assert.equal(eventsOf(s, 'deep_maintenance_entered').length, 0);
+});
+
+test('plain trip: reaching 0% on exactly the tick an intermediate leg ends at a point stops it there', () => {
+  const probe = plainTrip(1);
+  const trip = plainTrip(LIGHT_WEAR * (probe.atHome - probe.t0)); // its last unit wears off on the HOME arrival tick
+  const s = runUntil(trip.s, (x) => craftOf(x, trip.id).status !== 'inTransit');
+  assert.equal(eventsOf(s, 'craft_reached_zero')[0].tick, trip.atHome);
+  assert.equal(s.tick, trip.atHome);
+  assert.equal(craftOf(s, trip.id).status, 'maintenance');
+  assert.deepEqual(craftOf(s, trip.id).location, AT_H);
+});
+
+test('plain trip: a Prefecture planted mid-flight in a waypoint\'s system makes that waypoint a stop', () => {
+  const launch = () => {
+    let s = K.kitGalaxy({ fuelHoard: 1_000 });
+    let kitId;
+    ({ s, kitId } = P.grantPrefectureKit(s, 'g1', P.TARGET));
+    s = P.survey(s, 'g1', P.PLANET_A);
+    let id;
+    ({ s, id } = spawn(s, LIGHT_TRANSPORT, X, oneTickLeft(LIGHT_TRANSPORT)));
+    s = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: id, waypoints: [{ ...P.AT_TARGET }, { ...D }] }));
+    return { s: run(s, 2), id, kitId };
+  };
+  // Unplanted, TARGET is fallow: the 0% craft flies through it to D.
+  const fallow = launch();
+  let s = runUntil(fallow.s, (x) => craftOf(x, fallow.id).status !== 'inTransit');
+  assert.deepEqual(craftOf(s, fallow.id).location, D);
+  // Planted while the craft flies: TARGET is held when the leg ends there, so the craft stops.
+  const planted = launch();
+  s = accept(planted.s, P.plant('g1', planted.kitId, P.SLOT_A1));
+  assert.equal(craftOf(s, planted.id).status, 'inTransit', 'still flying when the system becomes held');
+  s = runUntil(s, (x) => craftOf(x, planted.id).status !== 'inTransit');
+  assert.equal(craftOf(s, planted.id).status, 'maintenance');
+  assert.deepEqual(craftOf(s, planted.id).location, P.AT_TARGET);
+});
+
+test('plain trip: cut short at its own Outpost with all five bays full, it queues', () => {
+  let s = galaxy({ outpost: true });
+  for (let i = 0; i < 5; i += 1) ({ s } = spawn(s, LIGHT_TRANSPORT, OH, 0));
+  let id;
+  ({ s, id } = spawn(s, LIGHT_TRANSPORT, X, oneTickLeft(LIGHT_TRANSPORT)));
+  s = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: id, waypoints: [{ ...OH }, { ...D }] }));
+  s = runUntil(s, (x) => craftOf(x, id).status !== 'inTransit');
+  assert.deepEqual(craftOf(s, id).location, OH);
+  assert.deepEqual(craftOf(s, id).deepMaintenance, { queuedTick: s.tick });
+  const note = eventsOf(s, 'deep_maintenance_entered').find((e) => e.payload.craftId === id).payload;
+  assert.deepEqual({ bay: note.bay, queuePosition: note.queuePosition, tripCutShort: note.tripCutShort, tripDestination: note.tripDestination },
+    { bay: false, queuePosition: 1, tripCutShort: true, tripDestination: { ...D } });
+});
+
+test('plain trip: a laden heavy cut short keeps its kit aboard — nothing is deployed or unloaded at the stop', () => {
+  let { s } = ladenHeavyAtZero();
+  s = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: K.HEAVY, waypoints: [{ ...D }, { ...AT_H }, { ...X }] }));
+  s = runUntil(s, (x) => craftOf(x, K.HEAVY).status !== 'inTransit');
+  const v = craftOf(s, K.HEAVY);
+  assert.equal(v.status, 'maintenance');
+  assert.deepEqual(v.location, AT_H);
+  assert.deepEqual(v.cargo, { outpost_kit: 1 });
+  assert.equal(s.outposts, undefined, 'no Outpost was deployed');
+  assert.equal((g1Of(s).assets || []).some((a) => a.kind === 'outpost'), false, 'and the kit was not unloaded into HOME');
+});
+
+test('plain trip: two runs identical; save mid-trip at 0% → restore → continue identical', () => {
+  const a = run(plainTrip(LIGHT_WEAR).s, 1200);
+  const b = run(plainTrip(LIGHT_WEAR).s, 1200);
+  assert.equal(hashState(a), hashState(b));
+  let { s, id } = plainTrip(LIGHT_WEAR);
+  s = run(s, 5);
+  assert.equal(craftOf(s, id).status, 'inTransit');
+  assert.equal(units(craftOf(s, id)), 0);
+  const unbroken = run(s, 1200);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deep-maintenance-plain-'));
+  try {
+    saveState(s, dir);
+    const restored = run(loadOrInit(dir, () => { throw new Error('should restore, not init'); }), 1200);
+    assert.equal(hashState(restored), hashState(unbroken));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(craftOf(unbroken, id).maintenanceCondition, 1, 'it was cut short, maintained and came back');
+});

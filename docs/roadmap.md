@@ -5812,7 +5812,12 @@ boundary so the later hex-map swap doesn't touch it.
     vocabulary test counts eighteen types and `VEHICLE_STATUSES` four. The no-op script is pinned against main
     (e10146d). Client: untouched — it prints the raw `maintenance` lane-end reason and filters the non-idle craft out
     of its pickers, so nothing throws. Sim 2,829 → **2,860** (31 in `deep-maintenance.test.js`); tools **100**
-    (unchanged). Checklist: "Maintenance slice 4 calls" below. **Next:** slice 5, the Maintenance tab (client).
+    (unchanged). Checklist: "Maintenance slice 4 calls" below. *(⤳ **Amendment 10-11-26, same PR:** a PLAIN multi-leg
+    dispatch at 0% now stops at its first listed waypoint that is a maintenance point too (checklist item (1), RULED) —
+    `cutTripShort` in `sim/deep-maintenance.js`, one call from `stepVehicleArrivals`; no refund for the legs not flown;
+    the entered notice carries `tripCutShort` / `tripDestination`. Items (2)–(9) ACCEPTED. A probe over the whole
+    existing suite found no craft cut short, so no test or golden moved. Sim 2,860 → **2,867** (7 new, section O);
+    tools **100**.)* **Next:** slice 5, the Maintenance tab (client).
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
@@ -5964,27 +5969,24 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   maintenance wins a contested `droid_components` stock against a droid build starting the same tick (§10's
   "self-build eats maintenance supply"). Deterministic; confirm the priority.
 - **Maintenance slice 4 calls (10-11-26, deep maintenance, `docs/maintenance.md` §4) — built the plainest way,
-  flagged rather than ruled.** **(1) A plain multi-leg dispatch is not stopped mid-trip.** Rule 1 lives in the route
-  funnel, so it reaches every ROUTED craft (`dispatchRouteWithActions`, the route builder's path). A plain
-  `dispatchVehicle` with several waypoints flies one frozen trip whose waypoints are turning points: a craft above 0%
-  that reaches 0% on it flies on through a held system and lands at the trip's end (the sweep then applies there). The
-  dispatch rule still refuses a plain dispatch of a craft ALREADY at 0% through a point. Confirm, or rule that a plain
-  trip is cut short too. **(2) The point is not stored.** "Which point it is at" is read from the craft's `location`
-  (unchanged while in), not stored as a second field (invariant 5). **(3) Early maintenance with a lane.** A craft idle
-  with a lane (waiting for fuel or its cadence at a point) is refused the early action — stop or cancel the lane first —
-  rather than having the lane ended for it. **(4) The settle runs after every action**, not after a named list (plant,
-  deploy, unload …): it is a no-op unless a 0% craft stands at its own point or an Outpost queue has a free bay. So an
-  operator spawn at 0% at a point goes in at once (§9 said "at the end of that tick"), and a removed bay craft's place
-  goes to the queue head on the removal's tick. **(5) A queued craft taking a bay writes a second
-  `deep_maintenance_entered`** (`fromQueue: true`, with its ready tick) — the queue notice told the player it was
-  waiting; this one tells them when it will be out. **(6) Names** — the action `startDeepMaintenance`, the field
-  `deepMaintenance { readyTick | queuedTick }`, the quote code `zero-condition-maintenance-stop`, the lane-end reason
-  `maintenance`, the three notice types and their payloads (`event-log.md` §19), the snapshot keys
-  `earlyMaintenanceAllowed`, `deepMaintenance`, the Outpost row's `maintenance`. **(7) The quote's order** — the 0%
-  refusal is reported after the route's own geometry refusals (an unresolvable waypoint, a dead leg), so a broken route
-  names its geometry first. **(8) An aborted maintenance writes no notice** of its own; the Outpost's removal (operator)
-  or the `system_lost` notice is the record. **(9) The early action does not clear** a stale `laneEnded` /
-  `deployFailed` flag — the next dispatch does, as before.
+  flagged for a ruling.** *(⤳ **ALL NINE CLOSED 10-11-26**: (1) RULED and BUILT, (2)–(9) ACCEPTED as built.)*
+  **(1) A plain multi-leg dispatch at 0% — RULED 10-11-26 and BUILT (the slice-4 amendment on the same PR):** "a craft
+  at 0% cannot proceed past a point where it could receive maintenance, if that point was a listed waypoint on its
+  route", so a plain trip obeys it too: on the tick an intermediate leg ends at a maintenance point of its guild, a
+  craft at 0% lands there and goes in; the rest of the trip is dropped and not refunded; the entered notice carries
+  `tripCutShort: true, tripDestination` (`maintenance.md` §4.3 AS-BUILT, `transport-model.md` §4). **(2) ACCEPTED** — the
+  point is read from the craft's `location`, not stored as a second field (invariant 5). **(3) ACCEPTED** — a craft idle
+  with a lane waiting at a point is refused the early action; the player stops or cancels the lane first. **(4)
+  ACCEPTED** — the settle runs after every action, so an operator spawn at 0% at a point goes in at once (`maintenance.md`
+  §9 corrected), and a removed bay craft's place goes to the queue head on the removal's tick. **(5) ACCEPTED** — a queued
+  craft taking a bay writes a second `deep_maintenance_entered` (`fromQueue: true`, with its ready tick). **(6)
+  ACCEPTED** — the names: `startDeepMaintenance`, `deepMaintenance { readyTick | queuedTick }`, the quote code
+  `zero-condition-maintenance-stop`, the lane-end reason `maintenance`, the three notice types and their payloads
+  (`event-log.md` §19, now with the plain trip's `tripCutShort` / `tripDestination`), the snapshot keys
+  `earlyMaintenanceAllowed`, `deepMaintenance` and the Outpost row's `maintenance`. **(7) ACCEPTED** — the quote reports the
+  0% refusal after the route's own geometry refusals. **(8) ACCEPTED** — an aborted maintenance writes no notice of its
+  own; `system_lost` or the operator's removal already tell the story. **(9) ACCEPTED** — the early action leaves an old
+  `laneEnded` / `deployFailed` flag for the next dispatch to clear.
 - **Maintenance slice 3 calls (10-11-26, craft wear + the pool, `docs/maintenance.md` §2–§3) — built the plainest
   way, flagged rather than ruled.** **(1) Who is told the pool "ran dry".** `maintenance_pool_dry` fires only for a
   guild *funding* maintenance — a budget above 0, or a pool that held credits this cycle. A guild with budget 0 and an

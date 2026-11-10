@@ -13,7 +13,8 @@
 //
 //   GOING IN — three ways: (1) a craft at 0% never DEPARTS from a maintenance point: a routed craft about to start
 //   its next leg or lap there goes in instead, its lane ended 'maintenance' (stopForMaintenance, called from
-//   sim/actions.js advanceRoute / finishLap); (2) THE SWEEP: any idle 0% craft standing at one of its guild's
+//   sim/actions.js advanceRoute / finishLap), and a PLAIN multi-leg trip at 0% ends at an intermediate waypoint that
+//   is a point (cutTripShort, called from sim/tick.js stepVehicleArrivals); (2) THE SWEEP: any idle 0% craft standing at one of its guild's
 //   points goes in (sweepZeroCraft) — except one waiting in, or occupying, an Outpost dock queue / slot, whose
 //   stop's actions run first; (3) the player sends a craft below 20% in early (the `startDeepMaintenance` action).
 //
@@ -148,11 +149,12 @@ function guildOf(state, guildId) {
 
 // ── going in ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// enterDeepMaintenance(state, guild, craft, tick, early) — MUTATES the craft. The caller has proved the craft is
+// enterDeepMaintenance(state, guild, craft, tick, note) — MUTATES the craft. The caller has proved the craft is
 // standing at one of its guild's points with no trip and no route. Held system: straight into a bay. Outpost: a
 // bay if fewer than OUTPOST_MAINTENANCE_BAYS are taken, else the queue (only a 0% craft is ever sent here then —
-// an early request at a full Outpost is refused at validate). Stamped, and the entered notice written.
-function enterDeepMaintenance(state, guild, craft, tick, early) {
+// an early request at a full Outpost is refused at validate). Stamped, and the entered notice written; `note` holds
+// any extra payload fields the caller adds to that notice (`early`, or a cut-short trip's — see cutTripShort).
+function enterDeepMaintenance(state, guild, craft, tick, note = {}) {
   const point = maintenancePointAt(state, guild.id, craft.location);
   if (point === null) {
     throw new Error(`enterDeepMaintenance, tick ${tick}: vehicle ${JSON.stringify(craft.id)} of guild ${JSON.stringify(guild.id)} is not at a maintenance point (location ${JSON.stringify(craft.location)})`);
@@ -168,7 +170,7 @@ function enterDeepMaintenance(state, guild, craft, tick, early) {
     ...(full
       ? { bay: false, queuePosition: queuedAt(state, guild, point.outpost).findIndex((v) => v.id === craft.id) + 1 }
       : { bay: true, readyTick: craft.deepMaintenance.readyTick }),
-    ...(early ? { early: true } : {}),
+    ...note,
   });
 }
 
@@ -177,7 +179,7 @@ function enterDeepMaintenance(state, guild, craft, tick, early) {
 // 'maintenance' first: a craft in maintenance has no route (§4.3), and the player re-dispatches after the ready tick.
 function enterAtZero(state, guild, craft, tick) {
   if (craft.route) endLane(craft, 'maintenance', tick);
-  enterDeepMaintenance(state, guild, craft, tick, false);
+  enterDeepMaintenance(state, guild, craft, tick);
 }
 
 // stopForMaintenance(state, guild, craft, tick) -> true when RULE 1 caught the craft: it is at 0% and standing at a
@@ -187,6 +189,29 @@ function enterAtZero(state, guild, craft, tick) {
 function stopForMaintenance(state, guild, craft, tick) {
   if (!isAtZero(craft) || maintenancePointAt(state, guild.id, craft.location) === null) return false;
   enterAtZero(state, guild, craft, tick);
+  return true;
+}
+
+// cutTripShort(state, guild, craft, tick) -> true when RULE 1 caught a PLAIN trip (RULED 10-11-26, maintenance slice
+// 4 amendment): "a craft at 0% cannot proceed past a point where it could receive maintenance, if that point was a
+// listed waypoint on its route". A plain multi-leg dispatch's waypoints are listed, so on the tick one of its
+// INTERMEDIATE legs ends, a craft at 0% (however it got there — this very tick's wear included, which runs first)
+// whose leg ends at a maintenance point of its guild stops there: it lands as a final arrival would — idle at that
+// leg's `to`, the trip cleared — and goes in at once. The point is asked at the leg's end, not at dispatch, so a
+// system that became held mid-flight counts and one that stopped being a point does not. Called by sim/tick.js
+// stepVehicleArrivals before the landings, for a craft flying a plain trip (a routed craft flies one leg at a time,
+// and rule 1 meets it in advanceRoute). Nothing is refunded for the legs not flown: fuel is committed at launch
+// (transport-model.md §11.3). The entered notice says the trip was cut short and where it had been heading.
+function cutTripShort(state, guild, craft, tick) {
+  if (craft.status !== 'inTransit' || !craft.trip || craft.route || !isAtZero(craft)) return false;
+  const legs = craft.trip.legs;
+  const ending = legs.slice(0, -1).find((leg) => leg.arrivalTick === tick); // an intermediate leg ending now
+  if (!ending || maintenancePointAt(state, guild.id, ending.to) === null) return false;
+  const destination = { ...legs[legs.length - 1].to };
+  craft.location = { ...ending.to };
+  craft.status = 'idle';
+  delete craft.trip;
+  enterDeepMaintenance(state, guild, craft, tick, { tripCutShort: true, tripDestination: destination });
   return true;
 }
 
@@ -309,7 +334,7 @@ function earlyRefusal(state, guildId, vehicleId) {
 
 // startEarly(state, guild, craft, tick) — the early action's apply. The gate above has passed.
 function startEarly(state, guild, craft, tick) {
-  enterDeepMaintenance(state, guild, craft, tick, true);
+  enterDeepMaintenance(state, guild, craft, tick, { early: true });
 }
 
 // ── the dispatch rule (§4.5) ─────────────────────────────────────────────────────────────────────────────
@@ -383,6 +408,7 @@ module.exports = {
   queuedAt,
   atOutpost,
   stopForMaintenance,
+  cutTripShort,
   sweepZeroCraft,
   stepDeepMaintenance,
   afterAction,

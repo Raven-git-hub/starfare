@@ -36,7 +36,7 @@ const {
   decayDroidsIn, fundDroidUpkeep, refillAutoReplaceVacancies,
 } = require('./droids.js');
 const { stepCraftMaintenance } = require('./craft-maintenance.js');
-const { stepDeepMaintenance, sweepZeroCraft } = require('./deep-maintenance.js');
+const { stepDeepMaintenance, sweepZeroCraft, cutTripShort } = require('./deep-maintenance.js');
 const { getSystem } = require('./seed.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
@@ -1484,6 +1484,11 @@ function stepVehicleArrivals(state, _actions) {
     // landings, so a craft landing now is still flying and is charged for its arrival tick: a leg dispatched
     // at d and arriving at a wears ticks d+1 … a, exactly its length (docs/maintenance.md §2 AS-BUILT).
     stepCraftMaintenance(state, guild, thisTick, isCycleBoundary);
+    // A PLAIN TRIP CUT SHORT (maintenance slice 4 amendment, RULED 10-11-26; docs/maintenance.md §4.3): a craft at
+    // 0% — this tick's wear above included — whose plain multi-leg trip has an intermediate leg ending NOW at one of
+    // its guild's maintenance points lands there and goes in, instead of flying on (sim/deep-maintenance.js
+    // cutTripShort). In id order (invariant 9), before the landings, so a cut craft is no longer `inTransit` below.
+    for (const craft of [...(guild.vehicles || [])].sort((a, b) => cmp(a.id, b.id))) cutTripShort(state, guild, craft, thisTick);
     // Collect the craft landing this tick, then land them in a FIXED id order (invariant 9). No total
     // depends on the order — each landing touches only its own craft — but it is pinned anyway, the
     // same discipline stepArrivals' deposit order follows.

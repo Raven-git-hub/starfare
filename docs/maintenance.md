@@ -365,9 +365,16 @@ Every number is read from `phase-1-tuning.md` §"Maintenance"; none was invented
   one waiting at its last stop, is ended 'maintenance' first) — guilds in order, craft by id. **RULED:** it skips a craft
   waiting in, or occupying, an Outpost dock queue / slot; rule 1 catches it when the turnaround ends. A one-shot whose
   LAST stop is a point is caught by the sweep, so it carries no lane-ended flag (its run finished). A 0% craft passes
-  every waypoint that is not a point; only listed waypoints count. *A plain (route-less) multi-leg dispatch is a frozen
-  trip whose intermediate waypoints are turning points, not stops — rule 1 does not reach it; it lands at its end and the
-  sweep applies there (decision checklist).*
+  every waypoint that is not a point; only listed waypoints count. *A plain (route-less) multi-leg dispatch obeys the same rule* (RULED 10-11-26, the slice-4 amendment — "a craft at 0%
+  cannot proceed past a point where it could receive maintenance, if that point was a listed waypoint on its route"):
+  on the tick an INTERMEDIATE leg of a plain trip ends, a craft at 0% (this tick's wear included) whose leg ends at a
+  maintenance point of its guild lands there as a final arrival would — idle at that leg's `to`, the trip cleared — and
+  goes in at once (`cutTripShort`, `sim/deep-maintenance.js`, called from `stepVehicleArrivals` after the wear and before
+  the landings, craft in id order). The point is asked at each leg's end, so a system that became held mid-flight
+  counts and one that stopped being a point does not. Nothing is refunded for the legs not flown (fuel is committed at
+  launch, `transport-model.md` §11.3). A plain dispatch carries no on-arrival action, so nothing runs at the stop — a
+  kit aboard stays aboard. The `deep_maintenance_entered` notice carries `tripCutShort: true, tripDestination` (the
+  trip's final anchor); no craft flag. Above 0%, or at a waypoint that is no point, the craft flies through unchanged.
 - ***The same-tick order (§4.7, RULED).*** (1) craft whose ready tick has come **finish** and leave their bays; (2) each
   freed Outpost bay takes its **queue head** — earliest `queuedTick`, id tie-break; (3) **new entries** join, a bay if
   free, else the queue. (1)–(2) are `stepDeepMaintenance`, at the **head of tick step 5** (`stepVehicleArrivals`, before
@@ -379,7 +386,7 @@ Every number is read from `phase-1-tuning.md` §"Maintenance"; none was invented
   Outpost under the craft), an operator spawn at 0% at a point, a cancel out of a dock queue, an operator removal that
   frees a bay — and does nothing when no craft is at 0% and nothing is queued. Its tick is the action's. (§9's "an
   operator spawn at condition 0 at a maintenance point → the sweep sends it into maintenance at the end of that tick"
-  therefore happens **at once**, on the spawn.)
+  therefore happens **at once**, on the spawn — ACCEPTED 10-11-26, and §9 now says so.)
 - ***The dispatch rule (§4.5).*** `zeroConditionRouteRefusal` — a craft at 0% may be dispatched, but a route with a
   maintenance point at any waypoint **before the last** is refused whole; it may end at one. Both dispatches refuse it;
   `quoteDispatch` returns `{ ok: false, reason, code: 'zero-condition-maintenance-stop', waypointIndex }` — the code
@@ -416,7 +423,7 @@ Every number is read from `phase-1-tuning.md` §"Maintenance"; none was invented
   0% craft at its own point outside a dock queue / slot.
 - ***Neutral (§5).*** Nothing moves but the craft: a twin galaxy whose craft sits idle elsewhere hashes identically with
   the craft row and notices set aside (test-pinned).
-- *Tests: `sim/tests/deep-maintenance.test.js` A–N. No-op: a galaxy where no craft reaches 0% hashes as main's state, and
+- *Tests: `sim/tests/deep-maintenance.test.js` A–N, and O for the plain-trip amendment. No-op: a galaxy where no craft reaches 0% hashes as main's state, and
   its snapshot as main's with the two added keys removed; every existing snapshot golden is asserted against its
   ORIGINAL pin through `sim/tests/deep-maintenance-strip.js` (nothing re-pinned).)*
 
@@ -511,12 +518,14 @@ Follow `design.md` §15.5 / §18; each of these is a tripwire.
 - **Deploying an Outpost / planting a Prefecture at 0%** → the sweep sends the craft into
   maintenance there (§4.4).
 - **A repeating lane** → ends at the maintenance stop; redispatch (§4.3).
+- **A plain multi-leg dispatch reaching 0% mid-trip** → stops at its first listed waypoint that is a maintenance
+  point, the rest of the trip dropped, no refund (§4.3, the slice-4 amendment).
 - **Exactly 20%** → early maintenance refused (strictly below).
 - **A heavy with an asset or kit aboard** → the hold is locked for the duration; the asset stays
   "in transit" (derived from the manifest) until the craft is out and unloads.
 - **An operator spawn at condition 0 at a maintenance point** → the sweep sends it into maintenance
-  at the end of that tick (expected, not a bug). *(⤳ AS-BUILT slice 4: at once — the sweep also runs after every
-  action, §4.4's AS-BUILT note.)*
+  at once, on the spawn — the sweep runs after every action as well as every tick (expected, not a bug; slice 4,
+  ACCEPTED 10-11-26).
 - **Bots** → their budget is 0, so their craft wear unmaintained; bot maintenance behaviour is a 2.7
   question.
 - **A droid deployed before the retune** → keeps its condition fraction; units rescale exactly (§1b).
@@ -559,7 +568,8 @@ droid reserve default 0 (unchanged). Derived, not tuned: `DROID_WEAR_SCALE` 161,
    0% stop rule + the sweep, the dispatch refusal + quote, early maintenance, Outpost slots + queue,
    teardown refusal, eviction abort, the three craft notices.
    *(⤳ **BUILT 10-11-26** — §4.9's AS-BUILT note. New file `sim/deep-maintenance.js`; hooked at the head of tick step 5
-   (finish + promote), in the route funnel (rule 1), at the end of step 5 (the sweep) and after every action. No golden
+   (finish + promote, then — amendment — a plain trip cut short), in the route funnel (rule 1), at the end of step 5
+   (the sweep) and after every action. No golden
    was re-pinned: no golden's craft reaches 0%, so every state hash is main's, and every snapshot golden still matches
    its original pin with the two added keys stripped.)*
 5. **The Maintenance tab** (client).

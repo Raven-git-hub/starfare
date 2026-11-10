@@ -1128,7 +1128,7 @@ crossing** (a craft spawned at 0 never crossed, so it writes none). Payload: `cr
 flying; it goes into deep maintenance at the first maintenance point it stops at.
 
 **`deep_maintenance_entered`** — a craft **went into deep maintenance**. ONE writer, `sim/deep-maintenance.js`: rule 1
-and the sweep (a 0% craft at one of its guild's points), the early action (`startDeepMaintenance`), and a queued craft
+and the sweep (a 0% craft at one of its guild's points), a plain trip cut short at 0%, the early action (`startDeepMaintenance`), and a queued craft
 taking a freed bay. Payload: `craftId`, `craftClass`, `point` (`{ kind: 'system', systemId }` or `{ kind: 'outpost',
 outpostId }`), then either
 - `bay: true, readyTick` — it took a bay (a held system always has one) and is idle again at 100% on that tick; with
@@ -1137,12 +1137,17 @@ outpostId }`), then either
 - `bay: false, queuePosition` — every one of the Outpost's 5 bays was taken, so it waits in that Outpost's maintenance
   queue, 1 = next to be served.
 
+Either shape also carries `tripCutShort: true, tripDestination` (the trip's final anchor) when the craft was flying a
+PLAIN multi-leg trip at 0% that was cut short at this waypoint (the slice-4 amendment, `maintenance.md` §4.3) — the
+player is told the trip did not reach where it was going. No craft flag is set for it.
+
 **`deep_maintenance_finished`** — a craft **finished deep maintenance**: idle at 100% at its point, on its ready tick.
 ONE writer, `stepDeepMaintenance` (`sim/deep-maintenance.js`, the head of tick step 5). Payload: `craftId`, `craftClass`,
 `point`. An ABORTED maintenance (its Outpost removed by the operator, its system lost) writes nothing here — the craft
 did not finish; the removal or the `system_lost` notice is the record.
 
-(The type strings and payload names are this slice's, on the roadmap decision checklist, "Maintenance slice 4 calls".)
+(The type strings and payload names are this slice's — ACCEPTED 10-11-26, roadmap decision checklist "Maintenance
+slice 4 calls" (6).)
 
 **The surface — today.** No new snapshot field for the notices: `guilds[].events` carries the rows and
 `attention.notices` counts them while unread. **Not built: the client** — the inbox rows and their voice wait for
