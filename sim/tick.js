@@ -36,6 +36,7 @@ const {
   decayDroidsIn, fundDroidUpkeep, refillAutoReplaceVacancies,
 } = require('./droids.js');
 const { stepCraftMaintenance } = require('./craft-maintenance.js');
+const { stepDeepMaintenance, sweepZeroCraft } = require('./deep-maintenance.js');
 const { getSystem } = require('./seed.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
@@ -1472,6 +1473,12 @@ function stepVehicleArrivals(state, _actions) {
   const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
   const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
   const isCycleBoundary = isWindowBoundary(thisTick, windowN, dayAnchorTick);
+  // DEEP MAINTENANCE, the first two of the same-tick order (maintenance slice 4; sim/deep-maintenance.js,
+  // docs/maintenance.md §4.7): craft whose ready tick is this tick FINISH (idle at 100%), then each freed Outpost bay
+  // takes its queue head. BEFORE the landings below, so a craft that reaches a full Outpost this tick queues behind
+  // the ones already waiting, and finds every bay a finisher freed already taken by them. A craft in maintenance is
+  // not flying, so the wear below never touches it.
+  stepDeepMaintenance(state, thisTick);
   for (const guild of state.guilds || []) {
     // CRAFT WEAR + THE MAINTENANCE POOL (maintenance slice 3; sim/craft-maintenance.js) — BEFORE this tick's
     // landings, so a craft landing now is still flying and is charged for its arrival tick: a leg dispatched
@@ -1541,9 +1548,21 @@ function stepVehicleArrivals(state, _actions) {
 // its own; tick()'s end-of-steps derive owns the cache. `thisTick = state.tick + 1` (tick() assigns
 // next.tick only after the steps), the same convention stepVehicleArrivals/stepArrivals use.
 function stepOutpostDocks(state, _actions) {
-  const outposts = state.outposts || [];
-  if (outposts.length === 0) return state; // no Outposts → nothing to dock (the byte-identical no-op)
   const thisTick = state.tick + 1;
+  dockOutposts(state, thisTick);
+  // THE DEEP-MAINTENANCE SWEEP (maintenance slice 4; docs/maintenance.md §4.4) — the third of the same-tick order,
+  // and the last thing step 5 does: every idle craft at 0% standing at one of its guild's maintenance points goes in
+  // (or queues). AFTER the dock step, so a routed craft whose last stop was an Outpost turnaround that completed this
+  // tick is caught this tick; a craft still in a dock queue / slot is skipped (its stop's actions run first). A no-op
+  // when no craft is at 0%.
+  sweepZeroCraft(state, thisTick);
+  return state;
+}
+
+// dockOutposts(state, thisTick) — the dock step's body (the comment above stepOutpostDocks).
+function dockOutposts(state, thisTick) {
+  const outposts = state.outposts || [];
+  if (outposts.length === 0) return; // no Outposts → nothing to dock (the byte-identical no-op)
 
   // Iterate Outposts in a fixed id order (invariant 9). No cross-Outpost total depends on the order —
   // each Outpost's dock is self-contained — but it is pinned anyway, the stepVehicleArrivals discipline.
@@ -1614,7 +1633,6 @@ function stepOutpostDocks(state, _actions) {
       if (outpost.slots.length === 0) delete outpost.slots;
     }
   }
-  return state;
 }
 
 // recordFuelGrant(...) — stamp this cycle's fuel grant onto the guild, so a reader can say

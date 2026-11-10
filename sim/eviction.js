@@ -59,6 +59,7 @@ const {
 const { endLane } = require('./routes.js');
 const { voidDetachedScans } = require('./deep-scan-arrays.js');
 const { setDroidComponentReserve } = require('./droids.js');
+const { abortAtSystem } = require('./deep-maintenance.js');
 
 // The causes that DESTROY a Prefecture (§19 #69). Only the owner's abandonment is built; the storyteller's cause
 // joins this list when §9 is built. An unknown cause is a caller bug, so evictSystem HALTS on one rather than write
@@ -282,6 +283,8 @@ function destroyDroidsIn(guild, systemId) {
 //      market-visible drop the ruling chose. Goods aboard the guild's craft are not the pool, and are untouched.
 //   4. END THE LANES (engine PR 3). Every guild's lane with a stop at the system ends `system-lost`
 //      (`endLanesStoppingAt` above) — the evicted guild's and its rivals' alike.
+//   4b. ABORT DEEP MAINTENANCE (maintenance slice 4). The guild's craft in maintenance at the system go idle in place,
+//      condition unchanged (sim/deep-maintenance.js abortAtSystem).
 //   5. DARKEN THE ARRAYS (engine PR 3). Each of the guild's Deep Scan Arrays that is running a scan and no longer
 //      touches the guild's own control — the lost system was what it hung off — has its scan voided, with a
 //      `scan_voided` notice, reason 'anchor-lost' (sim/deep-scan-arrays.js `voidDetachedScans`). The array itself
@@ -350,6 +353,13 @@ function evictSystem(state, guild, prefecture, cause, tick) {
 
   // 4. End the lanes — every guild's.
   endLanesStoppingAt(state, systemId, tick);
+
+  // 4b. Abort deep maintenance here (maintenance slice 4, docs/maintenance.md §4.8). Each of the guild's craft in
+  //     maintenance at the lost system becomes idle where it stands, its condition UNCHANGED — deep maintenance
+  //     credits nothing until the ready tick. Step 1 has already unclaimed the system, so it is no maintenance point
+  //     now and the after-action sweep leaves a 0% craft there alone: it may fly on (§4.5). Only this guild's craft:
+  //     a system is a maintenance point only for the guild that holds it.
+  abortAtSystem(guild, systemId, tick);
 
   // 5. Darken the arrays — the guild's own. Step 1 has already taken the system's control away, so attachment is
   //    asked of the ground as it now stands.

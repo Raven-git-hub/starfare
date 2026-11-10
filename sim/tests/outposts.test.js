@@ -126,6 +126,8 @@ test('spawn: the snapshot surfaces the outpost with an empty stockpile view', ()
     // The dock state (2.2 cargo engine slice 2) — always emitted as stable arrays; empty on a fresh spawn.
     queue: [],
     slots: [],
+    // The maintenance bays (maintenance slice 4 — docs/maintenance.md §4.1): always emitted; empty on a fresh spawn.
+    maintenance: { bays: 5, inBays: [], queue: [] },
   }]);
 });
 

@@ -106,7 +106,10 @@ const { computeGalacticSupply } = require('./supply.js');
 const {
   getSite, getPlanet, getLandmark, getSystem, getTerranHomeworld, isHexInBounds, seedLandmarkAtHex,
 } = require('./seed.js');
-const { outpostNumberOf, DEPLOY_FAILED_REASONS } = require('./outposts.js');
+const { outpostNumberOf, DEPLOY_FAILED_REASONS, isDockEngaged } = require('./outposts.js');
+const {
+  maintenancePointAt, isAtZero, bayOccupants, queuedAt, OUTPOST_MAINTENANCE_BAYS,
+} = require('./deep-maintenance.js');
 const {
   deepScanArrayId, deepScanArrayNumberOf, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND, isArrayAttached,
 } = require('./deep-scan-arrays.js');
@@ -196,6 +199,67 @@ function checkCraftMaintenance(state) {
         if (value !== true) out.push({ rule: 'craft-maintenance-flag-is-true-or-absent', where: `${where}.${key}`, detail: { value } });
       } else if (!Number.isSafeInteger(value) || value < 1) {
         out.push({ rule: 'craft-maintenance-whole-credits-above-0-or-absent (§15.2)', where: `${where}.${key}`, detail: { value } });
+      }
+    }
+  }
+  return out;
+}
+
+// Deep maintenance (maintenance slice 4; docs/maintenance.md §4 / §8; sim/deep-maintenance.js). The tripwires:
+//   - `status: 'maintenance'` and the `deepMaintenance` record go together — neither without the other;
+//   - the record is exactly `{ readyTick }` (a whole tick still ahead: one whose time had come was finished at the head
+//     of that tick) or `{ queuedTick }` (a whole tick no later than now, §15.2);
+//   - a craft in maintenance has no trip and no route, is in no dock queue or slot, and stands at a valid maintenance
+//     point of its OWN guild — and only an Outpost has a queue (a held system has unlimited room);
+//   - an Outpost has at most OUTPOST_MAINTENANCE_BAYS craft in its bays, and a queue only while every bay is taken
+//     (a free bay beside a waiting craft means a promotion was missed);
+//   - no idle craft at 0% stands at one of its guild's maintenance points, except one waiting in or occupying an
+//     Outpost dock queue / slot (its stop's actions run first — the dock rule, §4.4).
+// A pure read: it mutates nothing.
+function checkDeepMaintenance(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.vehicles || []) {
+      const where = `guild:${g.id}.vehicle:${v.id}`;
+      const dm = v.deepMaintenance;
+      if ((v.status === 'maintenance') !== (dm !== undefined)) {
+        out.push({ rule: 'deep-maintenance-status-and-record-together', where, detail: { status: v.status, deepMaintenance: dm } });
+        continue;
+      }
+      if (v.status !== 'maintenance') {
+        if (v.status === 'idle' && isAtZero(v) && !isDockEngaged(state, v.id) && maintenancePointAt(state, g.id, v.location) !== null) {
+          out.push({ rule: 'deep-maintenance-no-idle-zero-craft-at-own-point (§4.4)', where, detail: { location: v.location, maintenanceCondition: v.maintenanceCondition } });
+        }
+        continue;
+      }
+      const keys = dm && typeof dm === 'object' ? Object.keys(dm) : [];
+      const shapeOk = keys.length === 1
+        && ((keys[0] === 'readyTick' && Number.isInteger(dm.readyTick) && dm.readyTick > state.tick)
+          || (keys[0] === 'queuedTick' && Number.isInteger(dm.queuedTick) && dm.queuedTick >= 0 && dm.queuedTick <= state.tick));
+      if (!shapeOk) {
+        out.push({ rule: 'deep-maintenance-record-shape (§15.2)', where: `${where}.deepMaintenance`, detail: { deepMaintenance: dm, tick: state.tick } });
+      }
+      if (v.trip !== undefined || v.route !== undefined) {
+        out.push({ rule: 'deep-maintenance-no-trip-no-route', where, detail: { hasTrip: v.trip !== undefined, hasRoute: v.route !== undefined } });
+      }
+      if (isDockEngaged(state, v.id)) {
+        out.push({ rule: 'deep-maintenance-not-docked', where, detail: { vehicleId: v.id } });
+      }
+      const point = maintenancePointAt(state, g.id, v.location);
+      if (point === null) {
+        out.push({ rule: 'deep-maintenance-at-own-maintenance-point (§4.1)', where: `${where}.location`, detail: { location: v.location } });
+      } else if (point.kind === 'system' && dm && dm.queuedTick !== undefined) {
+        out.push({ rule: 'deep-maintenance-queue-only-at-an-outpost (§4.7)', where: `${where}.deepMaintenance`, detail: { systemId: point.systemId } });
+      }
+    }
+    for (const o of (state.outposts || []).filter((x) => x.ownerGuildId === g.id)) {
+      const inBays = bayOccupants(state, g, o).length;
+      const queued = queuedAt(state, g, o).length;
+      if (inBays > OUTPOST_MAINTENANCE_BAYS) {
+        out.push({ rule: 'deep-maintenance-bays-within-limit (§4.1)', where: `outpost:${o.id}`, detail: { inBays, bays: OUTPOST_MAINTENANCE_BAYS } });
+      }
+      if (queued > 0 && inBays < OUTPOST_MAINTENANCE_BAYS) {
+        out.push({ rule: 'deep-maintenance-queue-only-when-bays-full (§4.7)', where: `outpost:${o.id}`, detail: { inBays, queued, bays: OUTPOST_MAINTENANCE_BAYS } });
       }
     }
   }
@@ -3251,6 +3315,7 @@ function checkInvariants(state, tick) {
     ...checkFuelConservation(state),
     ...checkCreditConservation(state),
     ...checkCraftMaintenance(state),
+    ...checkDeepMaintenance(state),
     ...checkNonNegativityAndIntegrality(state),
     ...checkBatchCarry(state),
     ...checkTimedProduction(state),

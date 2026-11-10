@@ -56,7 +56,12 @@ const { createState } = require('../state.js');
 const { tick } = require('../tick.js');
 const { hashState } = require('../serialize.js');
 const { saveState, loadOrInit } = require('../persist.js');
-const { buildSnapshot } = require('../snapshot.js');
+const { buildSnapshot: buildSnapshotWithDeepMaintenance } = require('../snapshot.js');
+// Maintenance slice 4 added two derived snapshot keys (vehicle `craftMaintenance.earlyMaintenanceAllowed`, the owner's
+// Outpost `maintenance`). Every lens in this file is read with exactly those keys taken out, so each pin below is
+// still the one recorded before that slice — the proof they are its only delta (tests/deep-maintenance-strip.js).
+const { withoutDeepMaintenanceReadout } = require('./deep-maintenance-strip.js');
+const buildSnapshot = (...args) => withoutDeepMaintenanceReadout(buildSnapshotWithDeepMaintenance(...args));
 // ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
 const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { withoutControlMap } = require('./control-map-strip.js');

@@ -241,7 +241,8 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
     // 2.2 read-only Outpost Manager: the hold space figures — capacity (per-class cap) + used (0, empty).
     capacity: VEHICLE_SPECS[MEDIUM_TRANSPORT].capacity, used: 0,
     // maintenance slice 3: the engine-derived flight ticks left to 0% — a new medium, its two lives (no `covered`: idle).
-    craftMaintenance: { flightTicksLeftMaintained: 120_960, flightTicksLeftUnmaintained: 60_480 },
+    // earlyMaintenanceAllowed (maintenance slice 4): a new craft is far above the 20% early threshold.
+    craftMaintenance: { flightTicksLeftMaintained: 120_960, flightTicksLeftUnmaintained: 60_480, earlyMaintenanceAllowed: false },
   }]);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });
@@ -384,8 +385,9 @@ test('checkVehicleIntegrity catches a bad class, an unresolvable location, a bad
   assert.ok(ruleOf({ maintenanceCondition: 'x' }).includes('vehicle-condition-in-range'), 'non-number condition trips');
   assert.ok(ruleOf({ status: 'parked' }).includes('vehicle-status-legal'), 'illegal status trips');
   // The legal set is idle / inTransit (the design pair) plus `loading` (a craft in an Outpost dock
-  // slot, 2.2 cargo engine slice 2 — design.md §4). `parked` above is still not a real status.
-  assert.deepEqual(VEHICLE_STATUSES, ['idle', 'inTransit', 'loading']);
+  // slot, 2.2 cargo engine slice 2 — design.md §4), and `maintenance` (a craft in deep maintenance, maintenance
+  // slice 4 — docs/maintenance.md §4.2). `parked` above is still not a real status.
+  assert.deepEqual(VEHICLE_STATUSES, ['idle', 'inTransit', 'loading', 'maintenance']);
 });
 
 // --- 5b. the location model (landmark or bare hex) + its selector ------------------------------

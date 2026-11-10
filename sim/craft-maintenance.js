@@ -6,7 +6,7 @@
 //
 //   WEAR (§2) — a craft wears ONLY on a tick it is flying (stored status `inTransit`), one tick of wear per
 //   tick of flight, at its class's maintained or unmaintained rate. Idle, docked (`loading`) or anything else:
-//   no wear. Clamped at 0 — a craft at 0 keeps flying and stays at 0 (deep maintenance is slice 4).
+//   no wear. Clamped at 0 — a craft at 0 keeps flying and stays at 0 until deep maintenance (sim/deep-maintenance.js).
 //
 //   THE POOL (§3) — guild-wide credits held aside for maintenance. Every tick, the guild's flying craft are
 //   ordered lowest condition first (id tie-break) and each is COVERED if the pool still holds its class rate:
@@ -30,7 +30,7 @@ const {
   LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, SPYCRAFT, VEHICLE_CLASSES,
 } = require('./vehicles.js');
 const { DEFAULT_WINDOW_N, TIER3_WINDOW_N, winStartFor } = require('./windows.js');
-const { recordEvent, MAINTENANCE_POOL_DRY } = require('./events.js');
+const { recordEvent, MAINTENANCE_POOL_DRY, CRAFT_REACHED_ZERO } = require('./events.js');
 
 // A week of ticks — the 10,080-tick week (7 days × 1,440) the droid lives are written in, so both kinds of
 // wear are measured against one week.
@@ -199,6 +199,7 @@ function byConditionThenId(a, b) {
 //      (RULED 10-11-26 — maintenance cannot slow a craft with nothing left to lose).
 //   2. WEAR — every flying craft takes one tick of wear at its rate: maintained if covered, unmaintained if not.
 //      Not re-stamped (`updatedAtTick` untouched): wear is ambient, as droids.
+//      The tick a craft's condition first reaches 0, a `craft_reached_zero` notice (slice 4).
 //   3. THE NOTICE — the first tick in a cycle a craft above 0 went uncovered, one `maintenance_pool_dry`.
 //   4. BOUNDARY (the cycle's last tick only, AFTER the drain): spentThisCycle rolls into spentLastCycle, then
 //      the refill moves min(budget, credits) into the pool (never from credits below 0).
@@ -249,6 +250,11 @@ function stepCraftMaintenance(state, guild, tick, isCycleBoundary) {
     // Tripwire: wear only goes down, and a craft at 0 stays at 0.
     if (!(v.maintenanceCondition < before || (before === 0 && v.maintenanceCondition === 0))) {
       throw new Error(`stepCraftMaintenance: vehicle ${v.id} at tick ${tick} went from condition ${before} to ${v.maintenanceCondition} — wear must only go down`);
+    }
+    // REACHED 0% (maintenance slice 4, docs/event-log.md §19) — on the tick the condition FIRST hits 0. A craft
+    // already at 0 does not cross again; only finishing deep maintenance raises it, so this is once per crossing.
+    if (before > 0 && v.maintenanceCondition === 0) {
+      recordEvent(guild, tick, CRAFT_REACHED_ZERO, { craftId: v.id, craftClass: v.class });
     }
   }
 
