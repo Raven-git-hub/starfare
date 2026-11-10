@@ -30,7 +30,7 @@ const { buildSnapshot } = require('../snapshot.js');
 const { hashState } = require('../serialize.js');
 const { guildTotals } = require('../stock.js');
 const {
-  STARTER_MINERS, STARTER_FACTORIES, ASSET_CONDITION_NEW, idleAssets, deployedAssetIds,
+  STARTER_MINERS, STARTER_FACTORIES, idleAssets, deployedAssetIds,
 } = require('../assets.js');
 const { GUILD_STARTING_FUEL } = require('../fuel.js');
 const { STARTER_HUMAN_CREDITS, STARTER_HUMAN_KITS } = require('../starter-package.js');
@@ -72,7 +72,7 @@ test('a founded guild receives exactly 15 idle Miners + 10 Factories, all at ful
   assert.equal(g.assets.filter((a) => a.kind === 'miner').length, STARTER_MINERS);
   assert.equal(g.assets.filter((a) => a.kind === 'factory').length, STARTER_FACTORIES);
   assert.equal(g.assets.filter((a) => a.kind === 'outpost').length, STARTER_HUMAN_KITS.length, 'the rest is the starter kit');
-  assert.ok(g.assets.every((a) => a.maintenanceCondition === ASSET_CONDITION_NEW), 'every starter asset is new');
+  assert.ok(g.assets.every((a) => !('maintenanceCondition' in a)), 'no starter asset carries a condition (assets never wear)');
 
   // ALL IDLE: idleness is derived, so the proof is that nothing references them.
   assert.equal(deployedAssetIds(g).size, 0, 'no venture references any of them');
@@ -395,11 +395,13 @@ test('a kind mismatch (a mining venture running a Factory) is caught', () => {
   assert.deepEqual(ruleNames(s), ['venture-asset-kind-matches']);
 });
 
-test('an out-of-scale maintenanceCondition is caught (§15.2 field check)', () => {
-  for (const bad of [1.5, -0.1, Number.NaN, Number.POSITIVE_INFINITY, '1', null]) {
+test('an asset carrying ANY maintenanceCondition is caught — assets never wear (docs/maintenance.md §0)', () => {
+  // A valid-looking 1 is caught exactly like garbage: the key's presence is the violation, so the field cannot
+  // quietly come back. (Before maintenance slice 2 the rule was "in range"; the field is gone now.)
+  for (const any of [1, 0, 0.5, 1.5, Number.NaN, '1', null, undefined]) {
     const s = assetState();
-    s.guilds[0].assets[0].maintenanceCondition = bad;
-    assert.ok(ruleNames(s).includes('asset-condition-in-range'), `condition ${String(bad)} should be caught`);
+    s.guilds[0].assets[0].maintenanceCondition = any;
+    assert.deepEqual(ruleNames(s), ['asset-has-no-condition (docs/maintenance.md §0)'], `condition ${String(any)} should be caught, and nothing else`);
   }
 });
 
@@ -456,15 +458,14 @@ test('the snapshot reports each asset and whether it is deployed or idle', () =>
     id: 'asset_player-guild_miner_01',
     kind: 'miner',
     systemId: HOME_SYSTEM,
-    maintenanceCondition: ASSET_CONDITION_NEW,
     deployedToVentureId: `mine_${HOME_MINE}`,
   }], 'the engine answers idle-vs-deployed so the client never recomputes it');
   assert.equal(g.assets.filter((a) => a.deployedToVentureId === null).length, FOUNDED_ASSETS - 1);
   // The same fact from the venture's end.
   assert.equal(buildSnapshot(s).ventures[0].assetId, 'asset_player-guild_miner_01');
   // Mutating the snapshot cannot reach back into engine state.
-  g.assets[0].maintenanceCondition = 0;
-  assert.equal(player(s).assets[0].maintenanceCondition, ASSET_CONDITION_NEW);
+  g.assets[0].systemId = 'elsewhere';
+  assert.equal(player(s).assets[0].systemId, HOME_SYSTEM);
 });
 
 // --- 8. persistence + determinism --------------------------------------------
@@ -495,7 +496,9 @@ test('a guild with NO assets carries no key at all (the omit-when-empty no-op)',
     syndicate: { ledger: 0 },
   });
   assert.equal('assets' in bare.guilds[0], false, 'no assets key => byte-identical to pre-slice state');
-  assert.equal(createAsset({ id: 'a', kind: 'miner', systemId: 'sysA' }).maintenanceCondition, ASSET_CONDITION_NEW);
+  assert.deepEqual(createAsset({ id: 'a', kind: 'miner', systemId: 'sysA' }), { id: 'a', kind: 'miner', systemId: 'sysA' });
+  // A stale input that still has the retired key (an old scenario row) loses it — createAsset reads fields by name.
+  assert.deepEqual(createAsset({ id: 'a', kind: 'miner', systemId: 'sysA', maintenanceCondition: 1 }), { id: 'a', kind: 'miner', systemId: 'sysA' });
   assert.throws(() => createAsset({ kind: 'miner', systemId: 'sysA' }), /id is required/);
   assert.throws(() => createAsset({ id: 'a', systemId: 'sysA' }), /kind is required/);
   // systemId is required exactly as id and kind are — a machine with no location is

@@ -304,9 +304,10 @@ test('snapshot: the in-flight batch row names its kind and count, to its owner o
 // --- 8. no-op -------------------------------------------------------------------------------------------------
 
 // RECORDED AT c613414 (the branch base, before this slice's code existed) by running droid-batch-noop-script.js there.
-const NO_BATCH_STATE_C613414 = '458c1c9066952281c4233312128cbea96b2d8aad858ab786a96ee95bb54ea6c1';
-const NO_BATCH_SNAPSHOT_C613414 = '7961f9b70647dfdff5a9c47c9c20bbd7dc5976e0a3eb278ab3ff17f93ace0d4e';
-const NO_BATCH_VIEW_C613414 = '70e7f7345d71013d3ad834f90a509237fafc6a23342c1815559de5fe8b0d41dd';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const NO_BATCH_STATE_C613414 = '931f12bd3f8d9ab990537162d00d9da6e6d4a7d2166365e43c826483ca42d84c';
+const NO_BATCH_SNAPSHOT_C613414 = '1a6b98d5df52f96beeec1a722944c8fb7c160ac2ed6a631f1059ceac71612761';
+const NO_BATCH_VIEW_C613414 = '107534e02006cb5864e4c56ac6c7e38a14ba2e5b6fcd1f970ae61a7e8dcace77';
 
 test('no-op: a galaxy that never buys a droid batch is byte-identical to c613414; its snapshot moved only by droidBatchQuote', () => {
   const s = noBatchScript();

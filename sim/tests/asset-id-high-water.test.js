@@ -236,7 +236,7 @@ test('invariants: the not-reissued rule fires when the deleted id comes back', (
   assert.deepEqual(checkInvariants(s, s.tick), []);
   // Forge the bug: put miner 15 back, as the old "highest live + 1" would have.
   const bad = structuredClone(s);
-  guildOf(bad).assets.push({ id: TOP_MINER, kind: 'miner', systemId: HOME_SYSTEM, maintenanceCondition: 1 });
+  guildOf(bad).assets.push({ id: TOP_MINER, kind: 'miner', systemId: HOME_SYSTEM });
   const hit = checkInvariants(bad, bad.tick).find((v) => v.rule === 'removed-asset-number-not-reissued');
   assert.deepEqual(hit.detail, { assetId: TOP_MINER, kind: 'miner', removedHighWater: 15 });
   assert.equal(hit.where, `guild:${GUILD}.asset:${TOP_MINER}`);

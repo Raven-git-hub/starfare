@@ -124,12 +124,14 @@ test('createDroid: idle is exactly slice 2\'s four fields; assigned adds assigne
 // RECORDED AT b226b3a (main, before this slice's code existed) by running droid-assign-noop-script.js there.
 // A galaxy that builds a guild droid, buys a miner from the Syndicate and closes a venture — but buys and
 // assigns no droid — must not move by a byte.
-const NO_BUY_NO_ASSIGN_GOLDEN_B226B3A = '68e5bb474400953cde39cdcf02a592ec7a2ca9ec54b4e2b99c964150d6f57114';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const NO_BUY_NO_ASSIGN_GOLDEN_B226B3A = 'ad81553940ef4c55cb36da2308c7b8057833b2246c8546ff9de8aabd02178b4b';
 // ⤳ droid engine slice 4 (tick-stamping, §15.2): every minted droid now carries `updatedAtTick`, so this run's
 // one guild droid gained that field and the run RE-PINS below. The b226b3a proof still stands, and is checked:
 // with the droids' `updatedAtTick` deleted, the end state hashes to the b226b3a digest exactly — the new field
 // is the ONLY change.
-const NO_BUY_NO_ASSIGN_GOLDEN_SLICE4 = '795d9f9afb99e97f51e5ebdd507b1aa9d759e0a02518fa1ee49c4295954fb1e3';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const NO_BUY_NO_ASSIGN_GOLDEN_SLICE4 = '0c697dab1ea4eb66fe8ed266d91fbd1d6988d191952c871d93845df1f30f6596';
 
 test('no-op: a run that buys and assigns no droid is byte-identical to b226b3a, but for the droid\'s new updatedAtTick', () => {
   const s = noBuyNoAssignScript();

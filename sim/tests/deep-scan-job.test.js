@@ -369,32 +369,34 @@ test('createState carries a handed-in job, as a copy — never an alias', () => 
 // hashes to these 52e5e3f bytes, so that is the ONLY place it moved. The full views are re-pinned in
 // IDLE_ARRAY_VIEWS_RULING_11. The state and god's-eye pins did not move (no rival licensed venture here, so the
 // removed register step never wrote anything; and the god's-eye lens carries no record).
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const IDLE_ARRAY_ON_MAIN = {
   deployed: {
-    state: '3825f536725ca4d7faffe854b6d440fa94684d67e89a151be06405c941062714',
-    godsEye: 'b0fda20377e1a559f4c37dda69e7b69167bfddb3485e9eb60bc5935d15c31576',
-    [A]: 'e0f03ca72baeebde95b1d42c03aa0e77ffca4410f70e2fdf305cd1f490be6b3e',
-    [B]: '3f7fe69eee6201eb346891bc6fdb63e4a3a87aa96edc9d62a98416e3b7fb23d0',
+    state: '4e2d006b07d9aecde8617a1e23325d0cc6a8deae823932eb494e59bbe4265b7d',
+    godsEye: '79d5edd65d21ee30e7ab19e06978858acfb1b658ff0c4012cbde2fd4be22ebe4',
+    [A]: 'e8f63ed3ed769d972d17406a47b517081b0679b14595f706f870c0e94cc87fbb',
+    [B]: 'c21166150e8a98b149919352f64f9cec142c852d2f529fbf706b6217bd25f7a2',
   },
   ticked: {
-    state: 'b6dee985522cd9f8325681ea33c62b7d87538abd8edd8b06fec00cf303490aea',
-    godsEye: '03d2d6a983d816f54d70b1e2c1163d8ad81e2f6618961fd375e001f2cc5e2951',
-    [A]: '89aefae54fc19156bed0b52a9e91660deeeb19746cbcdef90c4ea998e1476380',
-    [B]: 'c683bc7acd15047681051ef50665a31ca0af221ca007cb205773e69e8531b822',
+    state: 'be08506563553dd7ea22aafecd2b552e2299ac483244eebd975c516885af2fef',
+    godsEye: '4f76a6882a195df8e4254981402fb9f00045606fb72ecba1645942fe575c9c69',
+    [A]: '7ad9de8739f5dc3ce2da5cf84c73017b80482e044b61154f20c8b25b8260a8f7',
+    [B]: '049930e8c9382243133e578004b5e231758902f685abca3d28116cda7431573e',
   },
 };
 
 // The full per-guild views of the same two steps, recorded 08-10-26 after ruling 11's cleanup.
 // ⤳ 09-10-26 (the settlement-surface slice): no longer the full views either — each `known` entry now
 // carries `slots` — but kept as the strip-and-prove: strip the slots and the view still hashes to these.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const IDLE_ARRAY_VIEWS_RULING_11 = {
   deployed: {
-    [A]: '38aa0162983f763375e5bdf6e11c9a3a9e3216e985441d553800f5d2b2df6126',
-    [B]: 'eee5a52c165a4e00b9c31b402224e1980a9cc6db7466eae5354ec34038517464',
+    [A]: 'cd6dbd8ef33862cf1cc6d18ac376e907015de304631a53b3278fc2b097a4f5b6',
+    [B]: 'b0511dc4b86521226c148a413aa445c54bb070ebec123abb09fa42a8af131006',
   },
   ticked: {
-    [A]: '9ba88230bcdc7792b915ddb4ef8d82789ec722c3cd306eaf18fb7f519769d691',
-    [B]: 'b5b3bc82cd14988d9d4628349fae1751e4624e3e4a6c10c2b481e07580fcf7f5',
+    [A]: 'a59e93f8e0f166f427e15dc433ffabf5fe6bedbc7d022cda7b0b6a704f490897',
+    [B]: 'c56475f13cd4ac396bca6c213c527e8e75a738770937d750ea61dae0eea5587d',
   },
 };
 
@@ -403,29 +405,31 @@ const IDLE_ARRAY_VIEWS_RULING_11 = {
 // ⤳ 09-10-26 (the L0-board slice): the two VIEW pins are no longer the full views — `geography.systems` is
 // gone — but kept as the put-back-and-prove: put the block back (from the board + the view's own claims) and
 // the view still hashes to these. The state pins are still the full state (the slice moved no state).
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const IDLE_ARRAY_WITH_SLOTS = {
   deployed: {
-    state: 'dff65aced43b8488180286038c77604deb3b13754ad4207cfe40e1308fcdb62e',
-    [A]: 'aa37082ccb13f97730e0ad7837fc539f8d5c8e5a953b00db0278eb49035bd6e4',
-    [B]: '45d2504db6d10ba3f5159717542d74287cc49620cf2d5a1ea4f25d0f3f4f0f30',
+    state: 'aa6fe11d5605368ce2014b54db5806a6227e45822c2b2d94b82f19a362e78462',
+    [A]: '2d2c07b2c9b84c9d24773e01245feef3858dcec4d6f5dad038375b8a30d36cda',
+    [B]: '2c22d3df091932f143866e104b8fbb1fcbc0c2b4d5e76037df431509bc120d5a',
   },
   ticked: {
-    state: '4b15fc8e92722715539c4f33e3f43fa2dd531e917c7a506d26fdaaca3abf8f51',
-    [A]: 'eda31d3343e757521f529605050d37c044bde1d38395f1aa48fcf00a9e791e8e',
-    [B]: 'a340c002a0024265b579682222a1d0677dc0d51d285d9a7d6663a1ae734b1051',
+    state: '2221f17fbe16c2adfa119a64ca86921382fa6afb1ececa43ab39a556d3c817a0',
+    [A]: 'fd4aa75d89bb1250b39d92aa6305b01f95f180d4d2bffefdb42047ae61e6e992',
+    [B]: 'fbf483a3b0b6753fbd01ae3ff155f84d0bdbe396e58e2785695fe7ec586341ca',
   },
 };
 
 // The full per-guild views after the L0-board slice (ruling 12 slice 2). Recorded on main at 348e0fc — BEFORE
 // the slice — by deleting `geography.systems` from each IDLE_ARRAY_WITH_SLOTS view and hashing the rest.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const IDLE_ARRAY_SLIM = {
   deployed: {
-    [A]: '1564dcd40cb37caaa443f702547f93fac2fabc6018c150f95612eff53ccb2888',
-    [B]: 'a65b2001a233873b2ecf321d78eb0d7810f846389fc7dbd0ca2d2b5213f67e63',
+    [A]: '473d2b6dc20b589ba903545b575509a38eb1d64df37f600d76127266742c0dae',
+    [B]: '6e0f461d181051b0844efd2aa51423ac4fef37b33946294a87be54750373181f',
   },
   ticked: {
-    [A]: 'b55d7eeef72c1820f2f381fef6bb9e29cd5b02a2f42d78b591122d3d7865a8dd',
-    [B]: 'a5f02291961040a8c306b9be8366543173e769eeb8a6ad01bf4bdf341a5e00bd',
+    [A]: '990669023bbe6cab791afde44dd0cac0288702311fb8d022573256e472dced07',
+    [B]: 'abdb4128b2b93f41afcfefa840b1a5ea2a307610edd6af6f60f9c3e19e5a3f03',
   },
 };
 

@@ -20,7 +20,7 @@
 //                         stockpiles?,
 //                         ventures? (each: siteId?, assetId?, resourceType? |
 //                         recipeId?, productionRate?, reputation?),
-//                         assets? ([{ id, kind, systemId, maintenanceCondition, stranded? }] —
+//                         assets? ([{ id, kind, systemId, stranded?, updatedAtTick? }] —
 //                           the guild's ground-asset inventory, §4; absent when empty;
 //                           stranded = { tick } only on a machine an eviction left behind),
 //                         homeSystemId?, homePlanetId?,
@@ -1346,11 +1346,12 @@ function checkSiteOccupancy(state) {
 // depend on an asset being present, and demanding one would make every
 // directly-constructed test venture illegal. What it does require is that any
 // reference which IS there is sound. For each guild:
-//   - every asset is well-formed: a known kind, a maintenanceCondition that is a
-//     finite number inside its scale (the §15.2 field check — the field is inert
-//     in this slice, but a garbage value must still fail loudly rather than sit
-//     there waiting for the maintenance slice to trip over it), and a `systemId`
-//     present (the machine's physical location, §4/§15.4 — 12-09-26);
+//   - every asset is well-formed: a known kind, a `systemId` present (the machine's
+//     physical location, §4/§15.4 — 12-09-26), and NO `maintenanceCondition` key
+//     (`asset-has-no-condition`). Miners and factories never wear (docs/maintenance.md
+//     §0) and maintenance slice 2 removed the field; this tripwire is what stops it
+//     quietly coming back — a stray mint path, an old save that skipped the load-time
+//     drop (sim/persist.js), or a test fixture copied from the old shape;
 //   - every non-null venture.assetId names an asset owned by that SAME guild (you
 //     cannot run a machine out of someone else's inventory);
 //   - no asset is referenced by two ventures — one machine runs one venture;
@@ -1363,7 +1364,7 @@ function checkSiteOccupancy(state) {
 //     a mismatch is corruption.
 // KIT assets (design.md §4, RULED 02-10-26 — an undeployed kit idle in a system,
 // kind 'outpost') share the inventory and every rule above that reads only the asset
-// (known kind, condition, systemId). Two more rules are theirs alone:
+// (known kind, no condition, systemId). Two more rules are theirs alone:
 //   - a kit is NEVER run by a venture (`kit-asset-never-deployed`): no path deploys
 //     one (Gate 2 wants a miner or factory), so a venture naming a kit is corruption;
 //   - `kitAssetSerial` >= the highest number among the guild's live kit assets
@@ -1405,9 +1406,9 @@ function checkAssetOccupancy(state) {
         const n = assetNumberOf(a.id);
         if (n != null && n > maxKitNumber) maxKitNumber = n;
       }
-      const cond = a.maintenanceCondition;
-      if (typeof cond !== 'number' || !Number.isFinite(cond) || cond < ASSET_CONDITION_MIN || cond > ASSET_CONDITION_NEW) {
-        out.push({ rule: 'asset-condition-in-range', where: `guild:${g.id}.asset:${a.id}.maintenanceCondition`, detail: { maintenanceCondition: cond, min: ASSET_CONDITION_MIN, max: ASSET_CONDITION_NEW } });
+      // The key's PRESENCE is the violation, whatever its value (even a valid-looking 1): assets carry no condition.
+      if (Object.prototype.hasOwnProperty.call(a, 'maintenanceCondition')) {
+        out.push({ rule: 'asset-has-no-condition (docs/maintenance.md §0)', where: `guild:${g.id}.asset:${a.id}.maintenanceCondition`, detail: { maintenanceCondition: a.maintenanceCondition } });
       }
       // systemId — the machine's physical location (design.md §4/§15.4, 12-09-26),
       // stored and always present. A missing or non-string location is corruption the

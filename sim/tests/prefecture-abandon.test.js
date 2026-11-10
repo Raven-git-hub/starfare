@@ -399,11 +399,12 @@ test('THE SNAPSHOT: `stranded` rides on the guild\'s own asset rows (and the god
 // Pinned from `main` at 6bbe114 (before this slice), running the very scenario below: a galaxy that plants, builds,
 // produces and never abandons. The state hash and all three views must not move by a byte — `stranded` is
 // omit-when-absent, and claims / stockpiles / prefectures are touched only by an abandon.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const GOLDEN_NO_ABANDON = {
   tick: 490,
-  state: '811e8067102ec7806e75c6aeee3cd190cac4c715ff0a29b4f14f3c8f76db3bc2',
-  god: '0254efade578b0accf9e59241533fecf7e6492806eaea67af8c581f431f7466f',
-  own: '8a92055eb58bc8c99b7e5accac5f15b20b05a4a03a728d76b3e9e4c83cb33ebe',
+  state: '444de751eb464a0ff9ab6590d71e9f15448b904ea1460c1c2112829fd63e8b6f',
+  god: 'e7124149d48617e77ce8a2453e3e6e21a532f2c8840db2093f979a028c1238b0',
+  own: '8593c237aec1d86d5473d0475972e3c6d50f427d8758f344f89f278018592dc2',
   rival: 'bf6252d4c2b0197b0c01e95c2f43bfc1896be794107aaea9c542803e01b5ffc6',
 };
 

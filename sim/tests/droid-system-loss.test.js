@@ -284,6 +284,7 @@ test('TRIPWIRE — a droid of g1 standing in a system the rival now holds halts'
 // --- 8. byte-identity --------------------------------------------------------------------------------------------
 
 // Recorded at 1cfea14 (the branch base) by running droid-loss-noop-script.js there.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const NOOP_PINS = {
   heldLanding: {
     tick: 1000,
@@ -294,9 +295,9 @@ const NOOP_PINS = {
   },
   droidlessLoss: {
     tick: 480,
-    state: '0b27e75b4f7e86e10a66c42518db74b016acfeb1b685ac9e3fcf191d9a036abf',
-    god: '752fe19bad0c9e184bf994ac80a9f407e113c2f96a696e3e98194151fa4bec66',
-    g1: '1127a52b16c668984394c03e0e8af8899f8939728df29aa0d1478d313a76e084',
+    state: 'd7f19735db6bab85ada7df2084b8a4a03fd0d9e1dbd0a75ba86b2e4a5fe457be',
+    god: '3623004088b8fa33927474d7d375fb51173d3653a665ff1c01f8cedd603edcac',
+    g1: 'fad56d6f6e2c2546536f5f2167467e18b2eef9b4f2dfa8aeb7a58364f7d69382',
     g2: 'c5ea4c37497e63d0efd476852c8c35656dd4afd60a10853cd071888ba91028d6',
   },
 };

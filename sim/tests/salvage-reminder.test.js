@@ -376,12 +376,13 @@ test('THE VIEW: the owner sees its reminders (with their calendar day, and count
 
 // Pinned from `main` at 479894f (before this slice), by the very build below: planted() run across the first midnight. A
 // galaxy that evicts nothing crosses a boundary without a byte of difference — state and every view.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const GOLDEN_NEVER_EVICTS = {
   tick: 1440,
-  state: 'f27a685806a8fe349c58c8441f15ad6f56b2746d00fb0edcbc6958619b42cd9e',
-  god: 'f61b673cfb6a1c8b991ebc0e4d76d95b817379ea64d2e418208be0653e6a844c',
+  state: 'ccf8c92925d197ee98b6b440783107e5baaba9cc9ff9ad39b525224b884018c1',
+  god: '3108b42620161d0bd729ef1492ab63617e43ae1b9e9e497643e5a257aaa0bed3',
   g1: '0e484bb98c4b30181a6cb79f4361a96ee7f19538d3a3279646b97d6669619920',
-  g2: 'c504f39037e324232edb2118c80720dccc54332e3903255cfc3e0bfbfbd686a8',
+  g2: '47c253f75b7bb070a411a794a0a9e855c912bd99c32f4e97076f6c2453a8fe76',
 };
 
 test('BYTE-IDENTITY: a galaxy that evicts nothing crosses midnight with no reminder, hashing exactly as it did on main', () => {

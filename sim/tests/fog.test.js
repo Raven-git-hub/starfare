@@ -130,12 +130,13 @@ function ok(state, actions) {
 // `godsEyeScript` below against that tree and hashing `JSON.stringify(buildSnapshot(state))` (the
 // bytes GET /snapshot serves). If one of these moves, the operator lens changed: that is never a
 // side effect of fog, so find out why before re-pinning.
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const GODS_EYE_ON_MAIN = {
   zero: '0e20f585e9405efdf85afa882c9ad0a82163e1267ecadc2f2784d9d368d46f1b',
-  founded: '6e400a2c53705bdbf9d93ec65a769fe820f10531ef278b2b4007f908070a767b',
-  rivalVentures: '7319859995ba7445ec376e78ba454616668bb3c4078dbe68de4e402047443c00',
-  withShipments: '1efdb36513ea418c1a5435ae231ee8c6523bc49bb9ccfdaa4b8705aaec24df66',
-  afterClosure: '4db0f5b5699bbd6a7db312264ca5ff9d1a12ce24924b6921e84c473476daad37',
+  founded: '86479c4ecd4dec07be70fbe5af74f7e568a64b61468453cb952c1b3800140869',
+  rivalVentures: 'ad309408005774ab372191a2fcef04ec2a353f80a4dce9f0758ac03bc03e1885',
+  withShipments: '38d46d7f45c29a1bc1987e99dbcea6028183c5b12ebf4aea0f44508f7e129190',
+  afterClosure: '5b60f3c8cd88c6f987799605cbbf0d8a4e8478dda54304376d88b2764096778a',
 };
 
 // The script those hashes came from: a bot rival with a licensed and an unlicensed mine, two buys,

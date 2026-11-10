@@ -377,7 +377,8 @@ test('double-apply guard: a snapshot-baked action still in the journal is not re
 const GOLDEN_HASH = '55896afecbe70715b35d466a618afbb2dca1fb9cf7718a756083a2f50523c116';
 const GOLDEN_HASH_WITH_PRICES = '532e94465e77de088168c44e66f527eef9e78b672dc0098485aaa2630cf2dc0d';
 const GOLDEN_HASH_WITH_HISTORY = '9c0e2f03198a7c7714a9dd2a369df7612b6a88d649dc8aa5fb5ee7c51f8695ad';
-const GOLDEN_HASH_WITH_ASSETS = '138f41f4d19c6d093d6cdfbc255b32c13bd9b405b874700d9e4fdfab7e3ffda4';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_ASSETS = '4831671ca9abd2c79ead4eaca681b7332009cd2c1a52a2b848bc3d682088c8e5';
 
 // FUEL SLICE 5a (31-08-26) — the pool got a real seed. The Syndicate reserve
 // (`state.reserve.reserveLevel`) opened on a `[SHEET]` placeholder 30 from the walking
@@ -389,7 +390,8 @@ const GOLDEN_HASH_WITH_ASSETS = '138f41f4d19c6d093d6cdfbc255b32c13bd9b405b874700
 // this run is 2 ticks on the 1,440-tick default window, so it crosses NO boundary — no
 // influx, no issuance, no grant record. The value the full hash held before this slice,
 // kept so the un-seed proof has something to prove against:
-const GOLDEN_HASH_BEFORE_POOL_SEED = '02f2676f28ad9f1b860483bb145e3688ab469ace4e43be0649da53b3b1a18cef';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_BEFORE_POOL_SEED = '128f4b414254b99c9f243c700a4193ae8092d79482c2b5273f6b7e0c2557d92d';
 // What that line seeded before POOL_SEED replaced it.
 const RETIRED_POOL_PLACEHOLDER = 30;
 
@@ -405,11 +407,13 @@ const RETIRED_POOL_PLACEHOLDER = 30;
 // window, so it crosses NO cycle boundary — no issuance, so the newborn's modifier rising
 // from ×0.30 to ×1.00 changes no fuel in THIS run. (A run that did cross a boundary would
 // also see the grant rise, which is the point of the slice.)
-const GOLDEN_HASH_BEFORE_ENDOWMENT = 'fbadad5967bd515b4d9301c6552d5e3d1d350ea9aadf8db83521a374080c37e3';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_BEFORE_ENDOWMENT = '0f2518e46073a8b0283252f877dced46a6579147ee66f4d9de904bb25d2bd5b0';
 
 // The pre-fuel-slice full hash, kept so the un-granting proof below has something to
 // prove against. It is the value `GOLDEN_HASH_WITH_ASSETS` held before 31-08-26.
-const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'eea032935a21822769c63aa6da4a6f75b985f9cd54c78806ae7ef058b269c1b7';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'f4208dc26d20613551b7b27e3404e2fcebaaf2a393534cff626c13b79a216bc7';
 
 // FUEL PRICE MEDIATION (01-09-26, slice 5b-i — docs/fuel-supply-and-allocation.md §4.2).
 // The reserve gains `fuelPrice`, the galaxy's ONE market price of `deuterium_fuel`. It is
@@ -420,7 +424,8 @@ const GOLDEN_HASH_BEFORE_FUEL_GRANT = 'eea032935a21822769c63aa6da4a6f75b985f9cd5
 // and altered NOTHING else about this sequence, byte for byte — no grant, no hoard, no
 // pool, no valuation. The new full hash is pinned beside them so a drift in the price
 // itself is caught too.
-const GOLDEN_HASH_WITH_FUEL_PRICE = '699e3a300bc7cffe9f536957f814d7ea2297d18ef0df7d6e9adb3f1873b3885a';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_FUEL_PRICE = '0dd72bd7319288bf438059e963970da03fbcc1a9775a4dd55cac6a6d6f34671c';
 
 // THE FUEL PRICE CONTROLLER (01-09-26, slice 5b-ii — §4.2). The reserve gains `avgDraw`,
 // the trailing average of galaxy demand the controller steers against. Real serialized
@@ -433,12 +438,14 @@ const GOLDEN_HASH_WITH_FUEL_PRICE = '699e3a300bc7cffe9f536957f814d7ea2297d18ef0d
 // crosses NO cycle boundary — so the controller never runs, `avgDraw` is still its seed,
 // `fuelPrice` is still the reference, and the added key is the entire delta. The runs that
 // DO cross a boundary are in commitment-scaffold.test.js, and their hashes moved for real.
-const GOLDEN_HASH_WITH_AVG_DRAW = 'dd412842b55db5d0be7ace0729ce6d236c4d36607ef18e6bb6829143db25804b';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_AVG_DRAW = '80f87c7963c454b903e6a9dfc1a25cdd0e78974f2a061f10d1ac176f4149bc41';
 
 // SLICE A′ (03-09-26): the full hash with `fuelHoardAtCycleStart` stamped at founding. The
 // delta from GOLDEN_HASH_WITH_AVG_DRAW is that single key (= GUILD_STARTING_FUEL) on the
 // founded guild — proven by asserting the stripped hash returns the value above, below.
-const GOLDEN_HASH_WITH_GUILD_HALL = '9006e910043828a1f29f3c8917ad1cf473ef33c0a787c0426d977dcdb43c3217';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_GUILD_HALL = '687fc5cf1da018b0a887fd890e5a82734651c2313b088ffa96ff139e98c39f6c';
 
 // §8.1 QUOTE-LOCK — THE PER-TICK PRICE RING (04-09-26, docs/transport-model.md §8.1). The
 // state gains `priceRing`, an always-on top-level field seeded at tick 0 and appended to
@@ -450,7 +457,8 @@ const GOLDEN_HASH_WITH_GUILD_HALL = '9006e910043828a1f29f3c8917ad1cf473ef33c0a78
 // ⤳ 26-09-26 it is [1, 1, 1] now — titanium's own Tier-1 base),
 // deterministic from the seed. The new full hash is pinned so a drift in the ring itself
 // is caught too.
-const GOLDEN_HASH_WITH_PRICE_RING = '2f7c959ac67cf78f24b172d638e92ed2d864b76224e539d00a4090e09927ff0b';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_PRICE_RING = '9b940d88bf76c5eeaabaa04341a8a2d90c8b284ed37118b30a018c1d67fb4577';
 
 // THE FUEL Δ FOUNDING BASELINE (06-09-26, docs/guild-hall.md §2, Slice D′). The `foundGuild`
 // apply now stamps `guild.foundingEntitlement = grantFor(next, guild)` — the credit entitlement
@@ -462,7 +470,8 @@ const GOLDEN_HASH_WITH_PRICE_RING = '2f7c959ac67cf78f24b172d638e92ed2d864b76224e
 // mine established after founding does not count toward it). The new full hash is pinned so a
 // drift in the baseline itself is caught too. (A `createState` galaxy never founds, so its
 // goldens carry no such key and are untouched.)
-const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = '43e9c2628314ef07df9f1629af9d4f92e10dd23e804a518f0a156777451c54ea';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = 'f3fa19187aa60570d378ac6ff66074b5bfa6604fa7162160f56bdcce33152a01';
 
 // THE GALAXY-WIDE FUEL-PRICE HISTORY (07-09-26, docs/guild-hall.md §4.2 — sim/fuel-price-history.js).
 // The state gains a top-level `fuelPriceHistory` (ring + current-bucket accumulator). It advances
@@ -470,7 +479,8 @@ const GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT = '43e9c2628314ef07df9f1629af9d4f92e
 // FULL hash moved even though it closes no bucket (its ring is empty; its accumulator sampled both
 // ticks). ADDED serialized state, so the ordinary strip works: `withoutFuelPriceHistory` takes it
 // back out and GOLDEN_HASH_WITH_FOUNDING_ENTITLEMENT returns byte-for-byte — the whole delta proof.
-const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'd08a394e5aba62d53744704e28f648c4be7ad76a1d14f0f4edfbc1b0f8c1df20';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = '281bc05c3a96499d019937c2b9df143f6a9b1ab8af63d7b1d049d7316914061b';
 
 // THE TIER-3 MODULE CATALOG (2.1a — docs/asset-recipes.md). The slice added 26 goods to
 // the priced/stockpile vocabulary (luminite_glass + 25 modules), so this sequence's FULL
@@ -491,20 +501,23 @@ const GOLDEN_HASH_WITH_FUEL_PRICE_HISTORY = 'd08a394e5aba62d53744704e28f648c4be7
 // proof (not a standing test — the bands are frozen module constants): with every module put back on
 // the old uniform 100 / 20 / 100,000 band and the rest of the slice in place, both previous values
 // (99fe2e11… and d99ea97b…) came back byte for byte.
-const GOLDEN_HASH_WITH_TIER3_CATALOG = '7e409b53c6e1bb29f8ad83fc381f565051fb9547b595d228c02e60996841dcee';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_TIER3_CATALOG = '80d2e8b8da45a1d096c6ffa9f2447c73fc198612cf2fc14459c8747e57bb6b59';
 
 // ASSET SYSTEMID (2.1b, 12-09-26): the full hash with a `systemId` on every asset row —
 // the 25 founding-granted starter machines plus the one the mine occupies, all at the
 // guild's home system. The delta from GOLDEN_HASH_WITH_TIER3_CATALOG is that single
 // per-asset key, proven by asserting `withoutAssetSystemId(s)` returns the value above.
 // (⤳ re-pinned 27-09-26 for the Tier-3 re-band — see the note above GOLDEN_HASH_WITH_TIER3_CATALOG.)
-const GOLDEN_HASH_WITH_ASSET_SYSTEMID = 'd5a2ddf51ea1f02bd4cec11e3597abab82d454826229e0a5bf08a8f492d10f2b';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_ASSET_SYSTEMID = '1d6b37d88fd366b93635b34543a75a5bd26b8480ab3956f8bb719537e920b60a';
 
 // THE HUMAN STARTER PACKAGE (design.md §13, RULED 04-10-26): the full hash once FOUND — a HUMAN
 // founding, `isBot` absent — opens on STARTER_HUMAN_CREDITS (not its 120) and is granted the four
 // starter craft and the Outpost kit. The delta from GOLDEN_HASH_WITH_ASSET_SYSTEMID is that package
 // alone, proven by asserting `withoutStarterPackage(s)` returns the value above.
-const GOLDEN_HASH_WITH_STARTER_PACKAGE = '7e3ab80d8ef5faa3272461bcfc17ca619a72b625a3914da679e1e9a647382acc';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_STARTER_PACKAGE = 'f4a467a6ce9a60c2e5a4c4958cdc7db489268f96a517b772128bb07cfd88a601';
 
 // THE EXPLORATION RECORD (docs/exploration-model.md §6/§7, roadmap 2.5 engine slice 1, 05-10-26):
 // the full hash once FOUND also seeds the guild's `exploration` record with its whole home system
@@ -512,14 +525,16 @@ const GOLDEN_HASH_WITH_STARTER_PACKAGE = '7e3ab80d8ef5faa3272461bcfc17ca619a72b6
 // GOLDEN_HASH_WITH_STARTER_PACKAGE is that ONE added guild key, proven by asserting
 // `withoutExploration(s)` returns the value above. (One guild, so the end-of-tick public-register
 // observation has no rival to read and writes nothing here.)
-const GOLDEN_HASH_WITH_EXPLORATION = '562bb753bfc67cc8d8d3505ae8c3944e19faf868d09089f037e211231330892e';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_EXPLORATION = '132e8c18c10023f758fbcbf28bab2af94bfab27213f0d704b2ca50763f459c8a';
 
 // THE SETTLEMENT SURFACE (docs/exploration-model.md §4 ruling 10, §7 — roadmap 2.5, the settlement-surface
 // engine slice, 09-10-26): every record entry now carries a `slots` map beside `nodes`, and founding fills
 // the home system's slots. The delta from GOLDEN_HASH_WITH_EXPLORATION is exactly those maps — proven by
 // asserting `stripRecordSlots(s)` (tests/slot-strip.js) returns the value above. It is the newest,
 // OUTERMOST strip.
-const GOLDEN_HASH_WITH_SETTLEMENT_SLOTS = 'a9a52bc8a816307ae774f1b5a25f9b3f157f6a8e09dceac952e2e9253340e899';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const GOLDEN_HASH_WITH_SETTLEMENT_SLOTS = 'b3ed578ffcf6730ca980019083db5a33c138714ca79fb787b7fe625d66f3dc0d';
 
 // withoutExploration(state) -> a COPY with every guild's `exploration` key removed — the plain
 // added-key strip. It is the newest, OUTERMOST strip: peel it and every earlier golden returns.

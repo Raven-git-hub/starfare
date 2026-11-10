@@ -63,7 +63,7 @@ test('the ferry: a Prefecture kit flown to an UNCLAIMED system on an unload rout
   assert.equal(craft.cargo, undefined, 'the hold is empty');
   assert.equal(craft.route, undefined, 'the one-shot run ended');
   assert.equal(craft.deployFailed, undefined);
-  assert.deepEqual(g1Of(s).assets.find((a) => a.id === kitId), { id: kitId, kind: 'prefecture', systemId: TARGET, maintenanceCondition: 1 });
+  assert.deepEqual(g1Of(s).assets.find((a) => a.id === kitId), { id: kitId, kind: 'prefecture', systemId: TARGET });
   assert.equal(P.held(s, 'g1', TARGET), false, 'unloading the kit is not the claim — the plant is');
   assert.equal(s.claims.length, before.claims.length, 'no claim row written');
 });

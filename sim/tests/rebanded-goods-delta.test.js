@@ -52,74 +52,76 @@ const { kitFerryScript } = require('./kit-ferry-script.js');
 
 // Recorded on 79807db — the state, god's-eye and own-view digests of each scripted step, ALL FOUR re-banded goods
 // stripped; and the digest of each script's refusal texts, unstripped. (Re-recorded 02-11-26 — see the header.)
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const RECORDED_ON_79807DB = {
   'outpostDeploy.manualDeploy': {
-    state: 'bde62c668b5ca69678095d699705236b00b27acee6076221856b73fa983c467d',
-    godsEye: '16c0b942164d8412cefd5e49448f6d41cf75406f3aee5e06b4c36743c6b2e4d0',
-    ownView: 'c6b0a936f5c8cf6ec9ab3658a80b7e6c2a3e1eccda7fe23f131dfc2cd67849d1',
+    state: '0e0ec661e53c3d98db0414899dffbdb4f46e130b55ecaaa589b9348f6ecb71ad',
+    godsEye: 'a386fc5c6324d73bfa74574b6aba64f03215b96658a90f80bf0960b9ae8fa25a',
+    ownView: 'a835026c5bd7a38a1465120933058909c285e179368b7375275d96a3c422342b',
   },
   'outpostDeploy.arrivalDeploy': {
-    state: 'b0faf28b06a6e7e7f4de4ed79d917dcddd249391c3ff6b435ce959a91c433077',
-    godsEye: '26877ccfe870fdd79a6cfd038669d20a935d720f506d5c5505132fa8c5d8ca4d',
-    ownView: '5e2fddc9c0d544d493adfe4b70f8183dd75580ace75fd24c53ea08203fea83a4',
+    state: 'f5228944f745fbda31d90c14d42cd096d30ff514b41075b47057d1f5d1b76510',
+    godsEye: '89842e82fcedf669a6057860e512809e375b141ce889716acc2d5a287a68e49e',
+    ownView: '5eed634b45734bc0350064c12f21bff100abbecd5745bd5ba7e2d1a644ad8141',
   },
   'outpostDeploy.arrivalRetreat': {
-    state: 'ac9578a9e8a602cc4763890290484e4abb3568c3defc1d13b8ba35bffd285d1e',
-    godsEye: '84342ae3ccf5f48c5b7400587f4abead9947f81e7f7fa860d2b4039b4a17a062',
-    ownView: 'cb17ae416cc98afe0ec86069ed6de37272221ddb66f69a259a225d8759b26bc5',
+    state: '8bcdcb8e6f49912304a899e28ccf492c5b02362213ccd4cd375e5dabb0acd64c',
+    godsEye: '190290343a3e22fd394fdf0d4fe05f76ce3075bcfba1e8da0f99b06b69c43d4d',
+    ownView: '092bb11ec2ef30876fa90592e7e33da4ef6d7c292e68fa56d6861c99b0b57b0e',
   },
   'outpostDeploy.reasons': 'a3972de8f1528acdf1a311e4351524e166918afd66c7862c396e2e6769e6188a',
   'kitFerry.unloadOnArrival': {
-    state: '6d84fc3f735d08e65a9724d3c6d2f6efa116cae9c853d507a2ad4b25f07d1ad4',
-    godsEye: '22566b6608d5bac42e809d2570a6e5a97f61d5d61de33521dbda7655bea88e64',
-    ownView: '62a49b0383fa3f3ff598e77443611ad867e5ae4d0e0b23ee0d51f454f266dd52',
+    state: '23024dde12de9bd0585924bb851a3e07119eb620f06fcb27876804373a49a3bc',
+    godsEye: '494bd7a9b6f13090700ccdfa4ea597511da52e4567810ce5dec70e487ea2cbfd',
+    ownView: '07d7f7837ef00fd4a8e570a525e5ad0a8d4c1ed6529eca2704db0bf32d32af12',
   },
   'kitFerry.standaloneUnload': {
-    state: '9c57369db0afd6acc00f2a52f9339f96cdc3c0d604b07368f837fcc6649c6000',
-    godsEye: 'ab6fcc0eac2123fc7fe9983306916abf9a409564bea1556d65237b4335f0b0d2',
-    ownView: '7f356aa11e9eff8af6d26a8f06d339658c1c5cbb5ca4e4a8d5af33643af1f3c8',
+    state: 'b4037354ef1433fee1e330785b091706240de8ed85e0fc2fae4404c0ef2bd17d',
+    godsEye: '19f39c6caee72bb9ec9570ed794b101ee473a2077f069e974b4a53e1ca29c5ec',
+    ownView: '7b679130e42a2927e8c142ed2e29b5c58bd42a01e69a7d3c3c9f7f56f866ea48',
   },
   'kitFerry.factoryOnSlot': {
-    state: '5ddff71429ef65af359f062a61c2c0fe09222fc24913c3850329625603f090a4',
-    godsEye: '05369c8c99aef8ab1718c6095bb5b20232114762a33c75cf3c2ecebb18c7e093',
-    ownView: 'a2a5586616a56cc2e9cd5132347a2bcf34e70eb3cead8ab4800a1a72ee1f3da8',
+    state: '5c9cf5989ee2b6fb13acb87fdbbd743e097d594af3b3d27a707de63a4da1fce2',
+    godsEye: '47559b3768c9e8181a0a1a54d0f95cf85b2440ee3c1f9335482f9700b15b9751',
+    ownView: 'ed7d4f75aa8d5f6bf5b8948eebf7bedb5e66ea201278bed0cdd3cf2d30c16ec7',
   },
   'kitFerry.reasons': 'ec7876192fdb623d0b087eb1cb4c2cddb591c63f8b69be551d66af6a32d6da3e',
 };
 
 // Recorded on 4bf6cbb — the same shape, with ONLY drive_module and droid_components stripped. (4bf6cbb already had the
 // control map, so no control-map strip is needed against it.)
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const RECORDED_ON_4BF6CBB = {
   'outpostDeploy.manualDeploy': {
-    state: 'cd74e4d073474522bdf8427083b94abd8bd4d80d980fdfd8a959a6cb72c6f989',
-    godsEye: 'e1d796ebbbf1f18741cdf68078b20d1ba0e0c902ee1cbbd5b3bc51ed98633293',
-    ownView: '418ce091d10c01147c468d18cb889e665b64cecd24a969dce51baeefe8184958',
+    state: '9fc5e6c47783d779f7b0774df18e6c83a6b00eb852eff4da8b4eabc8f44c64bc',
+    godsEye: '9d47aff72383b62f4ec1eb54fadfbf39a042cc01f4379418c8e5361e3bc5e240',
+    ownView: '8668f4bc0bdf3514440fd81798c567349a4e0a90be501f7a3178a6471f795161',
   },
   'outpostDeploy.arrivalDeploy': {
-    state: '4601a59b9b6338da60ff87d571ff17fe5ca582a3675ce41bd77801f393f12368',
-    godsEye: '5bd1fb45103bf624bdb80e9702318465daba4356e423cc8ab5347c717e257aba',
-    ownView: 'b9a72fd8668af3ac1d745a903a9e4dda859c9e7ad0ad5ef0dea53923bf07ada2',
+    state: 'f7927e9d6cf8112308e343bd2ff80034da8ae329fec23571fc637e82bd96c990',
+    godsEye: '9e851ab4f72a916ac4b5b32b58228ab77e460f2bb64ea96f9cc2663e123059b8',
+    ownView: 'f08395b6b6df3d4eb45424338902b9eea1bc84e6fed773a41eaadd592fa0dd3a',
   },
   'outpostDeploy.arrivalRetreat': {
-    state: 'e8fc7ce294d083b23e421c9dd4dc683272dbde5054d6218b318f7d7d3d49bc8c',
-    godsEye: '3147d0bdbc6d1dcf63d22eb5a384a3dbde2f2aead8f6630640a6bcc779b7083c',
-    ownView: 'f46e3674a913c7e9fc33971afb2a98a37d20af6fbe53eb7a2d7c3016a96ed822',
+    state: 'fb006023deb2d58c96f06fd887918cc7b20793f231928e5c77ebe1b193092869',
+    godsEye: '821c3e5384356d3a587d1c3bbccaadf315f36acf0b561978463732fab61a80e2',
+    ownView: 'f12f616bc060c9df70b99d208b1052e4c04aadd812931c7d0d7575394b06ee4a',
   },
   'outpostDeploy.reasons': 'a3972de8f1528acdf1a311e4351524e166918afd66c7862c396e2e6769e6188a',
   'kitFerry.unloadOnArrival': {
-    state: '0c9972461b21dad2e036571430ea35ad95efdf75acd0ac06fd8d492a73f0fff3',
-    godsEye: '81848f9f862ff838e280c16c00fb1f0c5111121a5d70ced6139354f2b2a6addb',
-    ownView: '800cc0fe6dcbde0e37a004d9f17fb6b96a2c253bf4bc57b0685f4a60e1dfa5fe',
+    state: '52a5138660f26f064401481102f94b5a982eac160195466044464af786df6b5c',
+    godsEye: '90b9cebae59d9d0d84b468e998026cf1ef21ae4132e282da169cc6874c2008e0',
+    ownView: '94d58578707428464ea1d50e490e315630ee805a61a62c55fa07af60da0a96dd',
   },
   'kitFerry.standaloneUnload': {
-    state: '7dab64b4db6303e2b4209ee5dd9729870394743143c3ac3efbe5c00c61b767d9',
-    godsEye: '78c0309b44d127993a1e906145cf311895e5a970b14df226c3f3c61350f54d73',
-    ownView: '005ada7a53b94b45496f5a194cc119ac3f38bc74a5ca3480c860bfeeba1006b4',
+    state: '9961596b2bbabb0c44494dae60d9c3b603d2c362900f02589435cd983d27ffd5',
+    godsEye: '7afb8423960b1dd5761ca09e93f8ad8c2f6abc3182de0ff64c49662b92977332',
+    ownView: '8d0a7820b3b178681935318ca204c720e163163750cc7f538ceb35332dd91de5',
   },
   'kitFerry.factoryOnSlot': {
-    state: '3d2e8d9ec3f9cbe5d27201e3ae0046d2b841f895540514962ebf293b937909b2',
-    godsEye: 'c615cbc1ab41e126aada3ae195f8b9b8bc66bbe46feb9f7701c28d40d007ceb8',
-    ownView: '399df3e948bb0eb1c2d0aefc078c71c2edc149d287bb8cc62bb6a5b1645675ec',
+    state: '830d7b916ece97076bd25d549e9840a2006bd147bacdf86f7499c6929ee9b36f',
+    godsEye: '399020acbbd67043df80b1e5895ae7b764df8889ac200e21e55d4b75797fc07e',
+    ownView: '53737bc469d18371a9184e9ae4e74de710c28dfcc60927d83729deac65b9b320',
   },
   'kitFerry.reasons': 'ec7876192fdb623d0b087eb1cb4c2cddb591c63f8b69be551d66af6a32d6da3e',
 };

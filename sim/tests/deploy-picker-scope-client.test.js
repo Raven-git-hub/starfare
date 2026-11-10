@@ -367,11 +367,12 @@ function popupAsMain(state, systemId, site) {
 }
 // Every case, as main's own engine + client drew it at 0a3ccea — hashed there by this same test (it reads nothing this
 // slice changed, so it passes on main's game.html too) and pinned.
+// RE-PINNED 10-11-26 (maintenance slice 2): the four full-pool cases are main's (fbafbab) drawn popups with each option's " · N%" deleted — the asset condition's removal is the only change.
 const PINS = {
   'bare, HOME node': '527932cd6c9db038', 'bare, HOME slot': '20b84d204891263f', 'bare, TARGET node': '36d4689c54b2cc7a',
   'bare, TARGET slot': 'c90b29a013310463', 'bare, TARGET deuterium': '74e7ca9411bca927',
-  'position, HOME node': '56c258d2ddf2f8d8', 'position, TARGET slot': '3578939dd4b36e31',
-  'one miner, TARGET node': 'dee88070c59aabf6', 'one miner, TARGET deuterium': '8ce3ae68e6f5039e',
+  'position, HOME node': '799b3a2d236f9f34', 'position, TARGET slot': '73ffa598c0c06b78',
+  'one miner, TARGET node': '9936b38d6b747ad1', 'one miner, TARGET deuterium': 'dce9e0d64f361dc2',
   'fallow, TARGET node': 'd1de023d25570fae',
 };
 
@@ -389,4 +390,27 @@ test('GUARD: its cases reach every picker, empty and full, in a held system and 
     reached.add(P.held(s, 'g1', systemId) ? 'held' : 'unheld');
   }
   assert.deepEqual([...reached].sort(), ['deuterium empty', 'deuterium full', 'held', 'node empty', 'node full', 'slot empty', 'slot full', 'unheld']);
+});
+
+// --- 7. maintenance slice 2: no asset condition on screen ----------------------------------------------------------
+
+test('NO ASSET CONDITION — both pickers list a machine as "<kind> · <id>", with no "· N%", and the picked machine\'s ledger row shows none either; craft still show theirs', () => {
+  // docs/maintenance.md §0: miners and factories never wear, and the field is gone from the snapshot (slice 2).
+  for (const site of [AT[TARGET].node, AT[TARGET].deuterium]) {
+    const p = page(ONE_MINER);
+    const opened = p.open(site);
+    assert.equal(opened.offered.length, 1, `premise: the one miner is offered at ${site.id}`);
+    const [, text] = opened.options.find(([v]) => v === opened.offered[0]);
+    assert.equal(text, `Miner · ${opened.offered[0]}`, 'exactly kind and id — no condition');
+    p.pick(opened.popup, opened.offered[0]);
+    if (opened.popup === 'establish') {
+      assert.ok(p.$('tAsset').innerHTML.includes(opened.offered[0]), 'premise: the ledger row names the picked machine');
+      assert.ok(!p.$('tAsset').innerHTML.includes('%'), 'the ledger row shows no condition %');
+    }
+  }
+  // Craft condition is a different thing and stays (it goes live in maintenance slice 3): the Dispatch popup's
+  // Maint line and the transport card both still render the vehicle's maintenanceCondition as a percent.
+  assert.ok(html.includes("$('dpMaint').textContent = maint + '%';"), 'the Dispatch popup still shows craft condition');
+  assert.equal((html.match(/var maint = Math\.round\(\(typeof v\.maintenanceCondition === 'number' \? v\.maintenanceCondition : 0\) \* 100\);/g) || []).length, 2,
+    'both craft displays still read v.maintenanceCondition');
 });

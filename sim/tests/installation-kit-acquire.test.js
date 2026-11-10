@@ -322,7 +322,7 @@ test('destination: a bought kit lands idle at the system it was sent to, even on
   assert.equal(s.shipments[0].arrivalTick, arrivalTickFor(s.tick, nearestWaystation(ELSEWHERE).distance),
     'it rides a Syndicate hauler from the nearest waystation, like a miner or factory');
   s = tickUntil(s, (x) => !x.shipments || x.shipments.length === 0);
-  assert.deepEqual(g1Of(s).assets, [{ id: 'asset_g1_deepScan_01', kind: 'deepScan', systemId: ELSEWHERE, maintenanceCondition: 1 }]);
+  assert.deepEqual(g1Of(s).assets, [{ id: 'asset_g1_deepScan_01', kind: 'deepScan', systemId: ELSEWHERE }]);
   // What happens next is the existing kit rules, unchanged: a heavy berthed there can load it (loadKit asks only
   // "same system")…
   s = accept(s, createSpawnVehicleAction({ guildId: 'g1', class: 'heavyTransport', location: { landmarkKind: 'system', landmarkId: ELSEWHERE } }));

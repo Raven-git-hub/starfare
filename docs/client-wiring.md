@@ -882,7 +882,8 @@ keeps the player guild's own `assets` rows (`LIVE.myAssets`), and a new bridge
 `window.__myIdleAssets(kind)` returns the ones the engine reports **idle**
 (`deployedToVentureId == null`) of the matching kind — `miner` for a resource node, `factory`
 for a settlement slot. The label comes from `kind` and the condition from
-`Math.round(maintenanceCondition * 100)`: every figure is the engine's, and the browser
+`Math.round(maintenanceCondition * 100)` *(⤳ 10-11-26, maintenance slice 2: no longer — assets never wear and the
+field is gone, so the option reads `Miner · asset_…` with no %; the asset row in the ledger likewise)*: every figure is the engine's, and the browser
 **re-derives nothing** — least of all idle-vs-deployed, which `sim/snapshot.js` already answers
 (§7's display rule). Option shape is unchanged (`Miner · asset_… · 100%`).
 *(⤳ 29-10-26 — the picker's scope fix: the bridge is now `window.__myIdleAssets(kind, systemId)`. It also requires

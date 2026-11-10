@@ -140,7 +140,7 @@ test('human: the heavy starts at the ruled 0.5 condition (territory-model.md §7
 test('human: exactly one idle Outpost kit at the home system, beside the unchanged 15 + 10 machines', () => {
   const g = guildOf(humanFounded());
   const kits = g.assets.filter((a) => a.kind === 'outpost');
-  assert.deepEqual(kits, [{ id: KIT_ID, kind: 'outpost', systemId: HOME_SYSTEM, maintenanceCondition: ASSET_CONDITION_NEW }]);
+  assert.deepEqual(kits, [{ id: KIT_ID, kind: 'outpost', systemId: HOME_SYSTEM }]);
   assert.equal(STARTER_HUMAN_KITS.length, kits.length);
   assert.equal(g.kitAssetSerial, 1, 'the guild\'s kit serial sits at the kit it minted');
   assert.equal(deployedAssetIds(g).has(KIT_ID), false, 'the kit is idle — no venture names it');
@@ -235,14 +235,16 @@ test('a human founding with the package undone is byte-identical to a bot foundi
 // GOLDENS recorded on main at 074e4d1, BEFORE this slice's code existed, with exactly these two
 // actions on the zero-state. If a later ruling legitimately changes a bot founding, re-record them
 // and say why; if anything else moves them, the bot path has been touched by accident.
-const BOT_FOUNDING_GOLDEN = '3ac36e07e37e17a0866969565383f26339b8a5598fc5192a5b6a993108fd12f8';
-const BOT_INLINE_FOUNDING_GOLDEN = 'e886ad7767699c03a90ba1751c8338502a53aa89c6841f75e0d5183719d49c1d';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const BOT_FOUNDING_GOLDEN = 'ed64c0e570a9a59e887536f2ca25c287a8b1384c8249800972988873db0528c5';
+const BOT_INLINE_FOUNDING_GOLDEN = 'e0261a008a63b3e99662f192900aab64fc5fed5cccc866735c8e16de1de5d466';
 // ⤳ 05-10-26 (roadmap 2.5, the exploration record): EVERY founding — bot included — now seeds the
 // guild's `exploration` record with its home system (docs/exploration-model.md §6), so both full
 // hashes moved. They are re-pinned below, and the two goldens above are KEPT and asserted against the
 // state with that one added key stripped — the proof that the record is the only thing that moved.
-const BOT_FOUNDING_GOLDEN_WITH_EXPLORATION = '9ff02f651fee77bf3ec44b1ca23e5d01629b1c4fa32927646e63b7b2fab1eb03';
-const BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION = 'a1cb5f577b6b3d4e51bd95ba51d49570958f9fd9ddcb52fbade183ce953de9da';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const BOT_FOUNDING_GOLDEN_WITH_EXPLORATION = 'c152dbc9acd7b7abc7a9cdf8ea99fe8fccc176ba2e1a9169b8548ef1f1604cee';
+const BOT_INLINE_FOUNDING_GOLDEN_WITH_EXPLORATION = 'bd13ff79e706327223173e5abed25083d59d98413a0ae9fdb48ce2712300ec65';
 const withoutExploration = (state) => ({
   ...state,
   guilds: state.guilds.map((g) => { const { exploration, ...rest } = g; return rest; }),
@@ -251,8 +253,9 @@ const withoutExploration = (state) => ({
 // map and founding fills the home system's slots, so both full hashes moved again. Re-pinned below; the two
 // `…_WITH_EXPLORATION` values above are KEPT and asserted with the slots stripped (tests/slot-strip.js) —
 // the proof that the slots are the only thing that moved.
-const BOT_FOUNDING_GOLDEN_WITH_SLOTS = '7ce69053461c4ae71fd930d15e67ec6a598cbfbd8165cce8542ec09c2c16f29a';
-const BOT_INLINE_FOUNDING_GOLDEN_WITH_SLOTS = '89e16f2ed9ce37d321f8be8c249395616540562254da665c9f4a55e7fb3b0d6c';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const BOT_FOUNDING_GOLDEN_WITH_SLOTS = '352b5cceb16af0e7a18f893c00c99c44a57bb999df1fb4d083efc502c2c6b7e3';
+const BOT_INLINE_FOUNDING_GOLDEN_WITH_SLOTS = '2ce1294a835d54eed97d7979d235640a47c507ec84334955d2268f72d6794d9c';
 
 test('bot: founding is byte-identical to the pre-slice golden (bare, and with an inline venture)', () => {
   const z = createZeroState();

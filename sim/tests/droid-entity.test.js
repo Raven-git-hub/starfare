@@ -87,8 +87,9 @@ test('createGuild omits droids and droidSerial when empty, and deep-copies them 
 
 // RECORDED AT fb550f7 (main, before this slice's code existed) by running these exact two scripts
 // (droid-noop-script.js). A galaxy that builds no droid must not move by a byte.
-const YARD_SCRIPT_GOLDEN_FB550F7 = 'd7139cf962d7fc2897e2d24c260027d918d5fa33fd5b27694c8d28eb6fc2576f';
-const FOUNDING_SCRIPT_GOLDEN_FB550F7 = '7c19184aad9aa33d7a4364814c76ee78d697f7d42d2c7e0cd490ee46bfe1819a';
+// RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+const YARD_SCRIPT_GOLDEN_FB550F7 = '797faf169e2d95842d71ef0e41e44e045637e35da4b10e238e0e4300ab835879';
+const FOUNDING_SCRIPT_GOLDEN_FB550F7 = '954c2facaf70086b024635cb149c550c196cf24a687378c4a43c6400347225b9';
 
 test('no-op: a droidless dockyard run (a light transport, then a miner) is byte-identical to fb550f7', () => {
   const s = yardScript();

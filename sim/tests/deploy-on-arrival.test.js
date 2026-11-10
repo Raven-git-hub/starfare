@@ -401,7 +401,7 @@ test('clamp + unload: a craft pulled back AT its held system drops the kit into 
   const s = accept(parked, createUnloadKitAction({ guildId: 'g1', vehicleId: craftOf(parked).id }));
   assertKitsMoved(parked, s, 'g1', 0, 'unloadKit after a retreat');
   assert.equal(craftOf(s).cargo, undefined, 'the hold is empty');
-  assert.deepEqual(s.guilds[0].assets, [{ id: 'asset_g1_outpost_02', kind: 'outpost', systemId: HOME.id, maintenanceCondition: 1 }],
+  assert.deepEqual(s.guilds[0].assets, [{ id: 'asset_g1_outpost_02', kind: 'outpost', systemId: HOME.id }],
     'a fresh idle kit at home — the loaded kit was _01, and ids never repeat');
   // The kit is back in an inventory, so the failed deploy is over: the unload clears the flag (RULED 02-10-26)
   // rather than leaving it stale on an empty, idle craft. The key is gone, not set to null (omit-when-absent).

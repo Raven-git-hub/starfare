@@ -9,7 +9,7 @@
 > Outposts. **Miners and factories never wear**, and their condition field is **removed**. Nothing
 > here moves GP, RP, the mean line or fuel.
 
-Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26, the rest not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
+Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26; slice 2 (remove asset condition) BUILT 10-11-26; the rest not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
 §"Maintenance". This doc is the authority on the *mechanism*; phase-1-tuning is the authority on the
 *numbers*; `docs/droids.md` §5 stays the authority on the droid engine except where §1 below retunes it.
 
@@ -21,7 +21,7 @@ Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26,
 |---|---|---|---|
 | **Droid** | while **deployed** | `droid_components`, from its own system's stock, funded weekly | **destroyed** (built, droids.md §5) |
 | **Spacecraft** (light / medium / heavy / spycraft) | while **flying** only | **credits**, from the guild's maintenance pool, per tick of flight | **deep maintenance** — out of action for a while, back to 100%, never destroyed by wear |
-| **Miner / factory** | **never** | — | — |
+| **Miner / factory** | **never** — no condition field at all (removed, slice 2 — BUILT 10-11-26) | — | — |
 | **Installations** (Outpost, Deep Scan Array, Prefecture, toll gate) | **never** (not this slice, nothing planned) | — | — |
 
 **Why miners and factories never wear (the narrative):** a ground machine sits inside a guild's own
@@ -410,6 +410,14 @@ droid reserve default 0 (unchanged). Derived, not tuned: `DROID_WEAR_SCALE` 161,
 2. **Remove asset condition** (engine + snapshot + client): `Asset.maintenanceCondition` gone from
    `createAsset`, the eviction sweep's re-mint, the operator levers, the invariants, the snapshot and
    the client; old saves restore with the field dropped.
+   *(⤳ **BUILT 10-11-26.** The field is gone from `createAsset` and so from every mint, the sweep's
+   re-mint included; the snapshot's asset rows and the client's deploy pickers / asset row drop it; the
+   invariant `asset-condition-in-range` became the tripwire `asset-has-no-condition`; `sim/persist.js`
+   `dropRetiredAssetCondition` drops the key from an old save on load, before the replay. `ASSET_CONDITION_*`
+   kept by name as the droid / vehicle scale. Riding along (ruled 10-11-26): losing a system now also
+   clears the guild's `droidComponentReserve` for it (`evictSystem` step 2c, `docs/droids.md` §14). The
+   goldens that moved are re-pinned with a "main's end state, minus every asset's condition" proof at each.
+   Tests: `sim/tests/maintenance-asset-condition.test.js`.)*
 3. **Craft wear + the pool** (engine + snapshot): wear in flight, the per-tick drain and triage,
    the cycle refill, budget and top-up actions, the readout, the pool-ran-dry notice.
 4. **Deep maintenance** (engine + snapshot): the `maintenance` status, the maintenance points, the
