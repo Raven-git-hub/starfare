@@ -1014,7 +1014,9 @@ function createVehicle({
     ...(carryingAssetId === undefined ? {} : { carryingAssetId }),
     // maintenanceCondition — LIVE since maintenance slice 3: a fraction (1 = new) that wears only while the craft
     // flies, in the whole wear units of sim/craft-maintenance.js (CRAFT_WEAR_SCALE). Like `trip` / `route`, the
-    // drain's `maintenanceCovered: true` flag is never assembled here — the per-tick step writes it.
+    // drain's `maintenanceCovered: true` flag is never assembled here — the per-tick step writes it. Nor is
+    // `deepMaintenance` (maintenance slice 4, sim/deep-maintenance.js), the record a craft in status `maintenance`
+    // carries: like a `trip`, it is written only by the engine, and a save restores it from the raw JSON (sim/persist.js).
     maintenanceCondition,
     status,
     // §15.2: "every mutation records its tick." null until something (a

@@ -524,8 +524,9 @@ test('readout: pool, budget, ceiling, spentLastCycle, nextRefillTick; per craft 
     pool: 40, budget: 300, ceiling: (1 + 5) * DAY, spentLastCycle: 0, nextRefillTick: DAY,
   });
   const heavyRow = row.vehicles.find((v) => v.class === HEAVY_TRANSPORT);
-  assert.deepEqual(heavyRow.craftMaintenance, { flightTicksLeftMaintained: 40_320, flightTicksLeftUnmaintained: 20_160 },
-    'no covered flag while not flying');
+  assert.deepEqual(heavyRow.craftMaintenance, {
+    flightTicksLeftMaintained: 40_320, flightTicksLeftUnmaintained: 20_160, earlyMaintenanceAllowed: false, // slice 4's flag
+  }, 'no covered flag while not flying');
   s = accept(s, createDispatchVehicleAction({ guildId: 'g1', vehicleId: LIGHT_ID, waypoints: [{ q: 3, r: 0 }] }));
   assert.equal(buildSnapshot(s, 'g1').guilds[0].vehicles.find((v) => v.id === LIGHT_ID).craftMaintenance.covered, false,
     'not yet drained: false until its first flight tick');
@@ -536,6 +537,7 @@ test('readout: pool, budget, ceiling, spentLastCycle, nextRefillTick; per craft 
     flightTicksLeftMaintained: Math.ceil((CRAFT_WEAR_SCALE - 6) / 3),
     flightTicksLeftUnmaintained: Math.ceil((CRAFT_WEAR_SCALE - 6) / 6),
     covered: true,
+    earlyMaintenanceAllowed: false, // maintenance slice 4: in flight, so not now
   });
   assert.equal(row.craftMaintenance.pool, 38);
   // The rival sees none of it — not the pool, not a craft.

@@ -12,7 +12,10 @@
 const crypto = require('node:crypto');
 
 const { hashState } = require('../serialize.js');
-const { buildSnapshot } = require('../snapshot.js');
+const { buildSnapshot: buildSnapshotWithDeepMaintenance } = require('../snapshot.js');
+// Read with maintenance slice 4's two added snapshot keys taken out, so the pins stay main's (tests/deep-maintenance-strip.js).
+const { withoutDeepMaintenanceReadout } = require('./deep-maintenance-strip.js');
+const buildSnapshot = (...args) => withoutDeepMaintenanceReadout(buildSnapshotWithDeepMaintenance(...args));
 // ⤳ 07-11-26: the droid batch-buy slice's one snapshot delta, stripped so the goldens below keep their old pins.
 const { withoutDroidBatchQuote } = require('./droid-batch-quote-strip.js');
 const { getSystemLayout } = require('../seed.js');

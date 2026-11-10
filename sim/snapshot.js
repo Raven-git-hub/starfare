@@ -51,6 +51,7 @@ const {
   isDroidMaintained, weeklyUpkeepFor, SYNDICATE_DROID_TARIFF, SYNDICATE_DROID_BATCHES,
 } = require('./droids.js');
 const { craftMaintenanceReadout, vehicleMaintenanceReadout } = require('./craft-maintenance.js');
+const { vehicleDeepMaintenanceReadout, outpostMaintenanceReadout } = require('./deep-maintenance.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
 const { copyScanJob, isArrayAttached } = require('./deep-scan-arrays.js');
@@ -1095,7 +1096,7 @@ function snapshotRoute(route, craft, fuelPrice) {
 // on read — `fuelValue(Σ legFuelBurn(length, fuelCostToRun, isToll), fuelPrice)` — so it floats with
 // the fuel price (a display figure, §4), while the units themselves are fixed seed geometry. Fresh
 // objects (coords copied); nothing here is serialized beyond the `guild.vehicles` rows it reads.
-function snapshotVehicleRow(v, fuelPrice, dockStatus) {
+function snapshotVehicleRow(v, fuelPrice, dockStatus, deepMaintenance) {
   const base = {
     id: v.id, class: v.class, maintenanceCondition: v.maintenanceCondition, status: v.status,
     // The HOLD (2.2 cargo, engine slice 1 — design.md §4, §15.4 the `cargo` field). A FRESH map so a
@@ -1142,7 +1143,11 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // and the unmaintained rate, and — only while flying — whether the pool covered it on its most recent flight
     // tick. Engine-derived (sim/craft-maintenance.js); the client computes none of it. On the owner's row only — a
     // rival's guild row carries no vehicles (sim/fog.js RIVAL_GUILD_FIELDS).
-    craftMaintenance: vehicleMaintenanceReadout(v),
+    // Maintenance slice 4 adds the deep-maintenance keys (sim/deep-maintenance.js vehicleDeepMaintenanceReadout):
+    // `earlyMaintenanceAllowed` always (the early action would be accepted now — the slice-6 button reads it), and
+    // `deepMaintenance` only while the craft is in maintenance — `{ point, readyTick }` in a bay, or
+    // `{ point, queuedTick, queuePosition }` waiting at an Outpost. Additive: nothing already here changes.
+    craftMaintenance: { ...vehicleMaintenanceReadout(v), ...deepMaintenance },
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;
@@ -1182,7 +1187,7 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
 // (empty this slice) `stockpile` view. `stockpile` is ALWAYS EMITTED as a map (a stable `{}` when the
 // outpost holds nothing) — unlike the STATE field, which is omit-when-empty for the determinism hash;
 // the snapshot answers to a reader, for whom a stable shape beats a key that appears only once goods land.
-function snapshotOutpostRow(o, thisTick, vehicleClassById) {
+function snapshotOutpostRow(o, thisTick, vehicleClassById, maintenance) {
   return {
     id: o.id,
     ownerGuildId: o.ownerGuildId,
@@ -1229,6 +1234,12 @@ function snapshotOutpostRow(o, thisTick, vehicleClassById) {
         manifest: s.manifest.map(copyManifestLine), // canonical shape (max → { dir, good, max: true })
       };
     }),
+    // The MAINTENANCE BAYS (maintenance slice 4 — docs/maintenance.md §4.1 / §4.7; sim/deep-maintenance.js
+    // outpostMaintenanceReadout): `{ bays, inBays: [{ vehicleId, readyTick, eta }], queue: [{ vehicleId, queuedTick }] }`
+    // — the bay count, who is in each bay (by id) with its ready tick and the ticks left, and the queue in serving
+    // order. DERIVED from the owner's craft (nothing is stored on the Outpost). Always emitted, like queue / slots; a
+    // rival's row is allow-listed (sim/fog.js RIVAL_OUTPOST_FIELDS), so only the owner sees it.
+    ...(maintenance ? { maintenance } : {}),
   };
 }
 
@@ -1683,7 +1694,7 @@ function buildGodsEyeSnapshot(state) {
       // `defenseRating` are engine stats the client reads from the catalog, not per-row. Sorted by id
       // (the deterministic mint order); derived-on-read like `assets`, fresh objects so a consumer
       // mutating the snapshot can't alias into engine state.
-      vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice, dockStatusByVehicle.get(v.id)))
+      vehicles: (g.vehicles || []).map((v) => snapshotVehicleRow(v, fuelPrice, dockStatusByVehicle.get(v.id), vehicleDeepMaintenanceReadout(state, g, v)))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // droids (roadmap 2.6, droid engine slices 2–3; docs/droids.md §1): the guild's droids, one row each —
       // `{ id, systemId, source, condition, assignedToVentureId? }`, the stored fields echoed, fresh objects
@@ -1995,7 +2006,7 @@ function buildGodsEyeSnapshot(state) {
   // deterministic (invariant 9). ADDITIVE: a galaxy with no outpost has no `state.outposts` key, so
   // this is `[]` and no serialized byte moves. Territory infrastructure, surfaced beside `claims`.
   const outposts = (state.outposts || [])
-    .map((o) => snapshotOutpostRow(o, state.tick, vehicleClassById))
+    .map((o) => snapshotOutpostRow(o, state.tick, vehicleClassById, outpostMaintenanceReadout(state, o, state.tick)))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   // Every Deep Scan Array (docs/exploration-model.md §5; roadmap 2.5 (b1)), fresh rows sorted by stable id

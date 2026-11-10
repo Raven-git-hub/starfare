@@ -176,6 +176,14 @@ direct unit test, so the toll slice only has to supply the flag.
   the craft; the engine never steps on them. So a multi-leg dispatch is the **built single-leg
   Syndicate delivery with a richer stored schedule** — the performance contract (design.md §15.4) is
   untouched, with no per-tick per-craft movement loop.
+  *(⤳ **AS-BUILT 10-11-26 — the one exception: a trip can end early at an intermediate waypoint** (maintenance slice
+  4 amendment, RULED 10-11-26; `docs/maintenance.md` §4.3). A craft at **0% condition** cannot fly past a listed
+  waypoint that is a maintenance point of its guild (a system it holds, or one of its own Outposts). So on the tick an
+  intermediate leg ends, `stepVehicleArrivals` asks, for a craft at 0% only, whether that leg's `to` is such a point
+  (`cutTripShort`, `sim/deep-maintenance.js`); if it is, the trip ends there exactly as a final arrival would — idle at
+  that anchor, the trip dropped — and the craft goes into deep maintenance. Nothing is refunded for the legs not flown
+  (fuel is committed at launch, §11.3). It is a check on the leg schedule already frozen in the trip, run once per
+  flying craft per tick, not a movement loop; a craft above 0% never meets it.)*
 
 **Failure modes (ruled).** A dispatch is **rejected at validation** if any leg is **zero-length** (an
 endpoint equal to the previous — the position interpolation would divide by zero), any waypoint's
@@ -769,6 +777,14 @@ Two DISTINCT failure classes, separated by whether the target still EXISTS:
   *(⤳ 28-10-26 — **the client words it** (losing ground client slice 2): the IN TRANSIT ended-lane notice reads "… — a
   stop's system was lost." where it printed the raw `system-lost`, and, because such a lane ends with its craft still
   flying, names where the craft will land (the leg's end), not "Unknown" (`docs/operations-hub.md` §4).)*
+  *(⤳ **AS-BUILT 10-11-26 — a third reason, `maintenance`** (maintenance slice 4; `docs/maintenance.md` §4.3). A craft
+  at **0% condition** that has just finished a stop's actions at a **maintenance point** of its guild (a system it holds,
+  or one of its own Outposts) does not start its next leg — or, for a repeating lane, its next lap: the lane ends through
+  the one `endLane`, `laneEnded = { reason: 'maintenance', tick }`, and the craft goes into deep maintenance where it
+  stands (`sim/deep-maintenance.js` `stopForMaintenance`, called from `advanceRoute` / `finishLap`). A one-shot whose
+  LAST stop is such a point simply finishes there and goes in, unflagged. The player re-dispatches after the ready
+  tick. A dispatch of a 0% craft through a maintenance point before its last waypoint is refused whole (§4.5 there).
+  The client prints the raw reason until maintenance slice 5 words it.)*
 - **Fuel short — the lane WAITS** *(RULED 23-09-26)*. A lap is fuelled UP FRONT (§11.3); if the hoard
   cannot cover the next lap the lane does NOT drop — it WAITS at the safe berth, burns nothing, and
   RE-ATTEMPTS at each fuel-cycle boundary (where the hoard grows, §1.4) until it can afford the lap, then

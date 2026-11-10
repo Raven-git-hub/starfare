@@ -9,7 +9,7 @@
 > Outposts. **Miners and factories never wear**, and their condition field is **removed**. Nothing
 > here moves GP, RP, the mean line or fuel.
 
-Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26; slice 2 (remove asset condition) BUILT 10-11-26; slice 3 (craft wear + the pool) BUILT 10-11-26; the rest not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
+Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26; slice 2 (remove asset condition) BUILT 10-11-26; slice 3 (craft wear + the pool) BUILT 10-11-26; slice 4 (deep maintenance) BUILT 10-11-26; the client slices 5–6 not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
 §"Maintenance". This doc is the authority on the *mechanism*; phase-1-tuning is the authority on the
 *numbers*; `docs/droids.md` §5 stays the authority on the droid engine except where §1 below retunes it.
 
@@ -336,6 +336,97 @@ a craft **reached 0%**; a craft **entered deep maintenance** (including entering
 **finished deep maintenance**; the maintenance pool **ran dry** (at most once per guild per cycle).
 Fogged from rivals.
 
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 4, deep maintenance (engine + snapshot; no client).** New file
+`sim/deep-maintenance.js` — a sibling of `sim/craft-maintenance.js`, which would otherwise have passed ~450 lines.
+Every number is read from `phase-1-tuning.md` §"Maintenance"; none was invented.*
+
+- ***Points (§4.1).*** `maintenancePointAt(state, guildId, anchor)` is THE one answer, for a craft (its `location`) and a
+  route waypoint (its `anchor`) alike: a **system landmark the guild holds** (`guildHolds` — the landmark test the
+  transfer and kit actions use) or **one of its own Outposts** on that hex (`ownedOutpostAt`, the dock model's own
+  hex-coincidence, moved from `sim/actions.js` into `sim/outposts.js` so both modules ask the same function). Anything
+  else — a rival's system, a fallow one, a waystation, a bare hex — is not a point. A held system has unlimited room;
+  an Outpost has `OUTPOST_MAINTENANCE_BAYS` = **5** bays, separate from its 10 dock slots.
+- ***The state (§4.2, RULED for this slice — the facts live on the vehicle only).*** `vehicle.status = 'maintenance'`
+  (a fourth `VEHICLE_STATUSES` entry) and `vehicle.deepMaintenance = { readyTick }` (in a bay) **or** `{ queuedTick }`
+  (waiting for an Outpost bay). *Which point* it is at is the craft's own `location`, which does not move while it is in
+  maintenance — so it is **read from the location, never stored a second time** (invariant 5). An Outpost's bays and
+  queue are **derived** from its guild's vehicles (`bayOccupants` / `queuedAt`), never stored on the Outpost. A craft in
+  maintenance has no trip and no route.
+- ***Duration (§4.2).*** `deepMaintenanceTicks` = `ceil(missingUnits × fullTicks ÷ CRAFT_WEAR_SCALE)` in whole wear
+  units, integer arithmetic throughout; full times `DEEP_MAINTENANCE_FULL_TICKS` light **720** · medium **720** · heavy
+  **1,440** · spycraft **2,880**. On its ready tick the craft is `idle` at condition **1**, stamped `updatedAtTick`, where it
+  stood.
+- ***Going in at 0% (§4.3 / §4.4) — two rules.*** **Rule 1:** a craft at 0% never departs from a maintenance point.
+  `stopForMaintenance` is called from the one route funnel, wherever a routed craft would start its next leg
+  (`advanceRoute` — after an arrival with no action, after a stop's instant action, after an Outpost turnaround) or its
+  next lap (`finishLap`, a repeating lane going round again or holding per-cycle); the stop's actions have always run
+  first. Its lane ends `laneEnded = { reason: 'maintenance', tick }` (a third `LANE_END_REASONS` entry) and it goes in.
+  **The sweep:** `sweepZeroCraft` — every idle craft at 0% at one of its guild's points goes in (a lane it still holds,
+  one waiting at its last stop, is ended 'maintenance' first) — guilds in order, craft by id. **RULED:** it skips a craft
+  waiting in, or occupying, an Outpost dock queue / slot; rule 1 catches it when the turnaround ends. A one-shot whose
+  LAST stop is a point is caught by the sweep, so it carries no lane-ended flag (its run finished). A 0% craft passes
+  every waypoint that is not a point; only listed waypoints count. *A plain (route-less) multi-leg dispatch obeys the same rule* (RULED 10-11-26, the slice-4 amendment — "a craft at 0%
+  cannot proceed past a point where it could receive maintenance, if that point was a listed waypoint on its route"):
+  on the tick an INTERMEDIATE leg of a plain trip ends, a craft at 0% (this tick's wear included) whose leg ends at a
+  maintenance point of its guild lands there as a final arrival would — idle at that leg's `to`, the trip cleared — and
+  goes in at once (`cutTripShort`, `sim/deep-maintenance.js`, called from `stepVehicleArrivals` after the wear and before
+  the landings, craft in id order). The point is asked at each leg's end, so a system that became held mid-flight
+  counts and one that stopped being a point does not. Nothing is refunded for the legs not flown (fuel is committed at
+  launch, `transport-model.md` §11.3). A plain dispatch carries no on-arrival action, so nothing runs at the stop — a
+  kit aboard stays aboard. The `deep_maintenance_entered` notice carries `tripCutShort: true, tripDestination` (the
+  trip's final anchor); no craft flag. Above 0%, or at a waypoint that is no point, the craft flies through unchanged.
+- ***The same-tick order (§4.7, RULED).*** (1) craft whose ready tick has come **finish** and leave their bays; (2) each
+  freed Outpost bay takes its **queue head** — earliest `queuedTick`, id tie-break; (3) **new entries** join, a bay if
+  free, else the queue. (1)–(2) are `stepDeepMaintenance`, at the **head of tick step 5** (`stepVehicleArrivals`, before
+  the wear and the landings); (3) is rule 1 during step 5's arrivals and dock turnarounds, then the sweep as the **last
+  thing step 5 does** (the end of `stepOutpostDocks`, after the dock step). The eight-step order is unchanged.
+- ***No window at the action seam.*** The invariants are checked after every player / operator action as well as every
+  tick (`sim/server.js`), so `applyAction` now ends with `afterAction`: freed bays take queue heads, then the sweep. It
+  runs after **every** action rather than a list that could miss one — a plant (the system becomes held), a deploy (an
+  Outpost under the craft), an operator spawn at 0% at a point, a cancel out of a dock queue, an operator removal that
+  frees a bay — and does nothing when no craft is at 0% and nothing is queued. Its tick is the action's. (§9's "an
+  operator spawn at condition 0 at a maintenance point → the sweep sends it into maintenance at the end of that tick"
+  therefore happens **at once**, on the spawn — ACCEPTED 10-11-26, and §9 now says so.)
+- ***The dispatch rule (§4.5).*** `zeroConditionRouteRefusal` — a craft at 0% may be dispatched, but a route with a
+  maintenance point at any waypoint **before the last** is refused whole; it may end at one. Both dispatches refuse it;
+  `quoteDispatch` returns `{ ok: false, reason, code: 'zero-condition-maintenance-stop', waypointIndex }` — the code
+  (`ZERO_CONDITION_STOP_CODE`) and index are for the slice-6 route builder, so it need not parse prose. Above 0%: no
+  restriction.
+- ***Going in early (§4.6).*** The action **`startDeepMaintenance { guildId, vehicleId }`**, through `POST /action`.
+  THE ONE gate, `earlyRefusal`, read by the validate and by the snapshot flag: the craft is `idle`, in no dock queue,
+  holds no lane (a lane waiting at its stop is stopped or cancelled first — decision checklist), stands at one of its
+  guild's points, its condition strictly below **20%** — `EARLY_DEEP_MAINTENANCE_BELOW_UNITS` = 20% of the scale =
+  **96,768** units, derived from the one `EARLY_DEEP_MAINTENANCE_BELOW_PERCENT` and asserted whole at load; exactly
+  20% is refused — and, at an Outpost, a bay is free (an early request never queues). Each refusal names its reason.
+- ***The locked hold (§4.2).*** Every action that names a craft requires it `idle` (or, for a lane control, a lane), so
+  each refuses a craft in a bay or in the queue: `dispatchVehicle`, `dispatchRouteWithActions` (and `quoteDispatch`),
+  `transferCargo`, `deployAsset`, `loadKit`, `unloadKit`, `loadAsset` (salvage), `unloadAsset`, `reclaimOutpost`,
+  `cancelRoute`, `stopRouteAfterRun`, and `startDeepMaintenance` itself. No sale or transfer draws on a craft's hold (a
+  sale ships from a system's or Outpost's stock), so there is none to lock. One test each, in a bay and in the queue.
+- ***When a point goes away (§4.8).*** The player's teardown (`reclaimOutpost`) is refused while any craft is in its
+  bays or queue. The operator's `removeOutpost` aborts maintenance there (`abortDeepMaintenance`): idle in space on the
+  Outpost's hex, condition **unchanged**, no lane, stamped. `evictSystem` (step 4b) aborts the evicted guild's craft in
+  maintenance at the lost system the same way, after the claim is gone. `removeVehicle` may remove a craft in a bay or
+  the queue; the freed bay goes to the queue head at once (`afterAction`). An aborted 0% craft stands at a non-point and
+  may be dispatched under §4.5.
+- ***Notices (§4.9; `docs/event-log.md` §19).*** `craft_reached_zero { craftId, craftClass }` from the slice-3 wear step,
+  on the tick a craft's condition first hits 0 (once per crossing); `deep_maintenance_entered { craftId, craftClass,
+  point, bay: true, readyTick, early?, fromQueue? }` or `{ …, bay: false, queuePosition }`; `deep_maintenance_finished
+  { craftId, craftClass, point }`. Owner only. (A queued craft taking a bay writes a second `entered`, `fromQueue: true`.)
+- ***The readout (snapshot, owner only).*** Each vehicle row's `craftMaintenance` gains `earlyMaintenanceAllowed`
+  (always — the slice-6 button reads it) and, while in maintenance, `deepMaintenance { point, readyTick }` or `{ point,
+  queuedTick, queuePosition }`; each own Outpost row gains `maintenance { bays: 5, inBays: [{ vehicleId, readyTick, eta }],
+  queue: [{ vehicleId, queuedTick }] }` (a rival's row is allow-listed, `sim/fog.js`). Additive only.
+- ***Invariants (§8).*** `checkDeepMaintenance` (`sim/invariants.js`): status and record together; the record's shape
+  (`readyTick` still ahead, or `queuedTick` no later than now); no trip, no route, no dock entry; at a valid point of
+  its own guild, a queue only at an Outpost; ≤ 5 in an Outpost's bays and a queue only when all five are taken; no idle
+  0% craft at its own point outside a dock queue / slot.
+- ***Neutral (§5).*** Nothing moves but the craft: a twin galaxy whose craft sits idle elsewhere hashes identically with
+  the craft row and notices set aside (test-pinned).
+- *Tests: `sim/tests/deep-maintenance.test.js` A–N, and O for the plain-trip amendment. No-op: a galaxy where no craft reaches 0% hashes as main's state, and
+  its snapshot as main's with the two added keys removed; every existing snapshot golden is asserted against its
+  ORIGINAL pin through `sim/tests/deep-maintenance-strip.js` (nothing re-pinned).)*
+
 ---
 
 ## 5. Neutral — GP, RP, fuel
@@ -427,11 +518,14 @@ Follow `design.md` §15.5 / §18; each of these is a tripwire.
 - **Deploying an Outpost / planting a Prefecture at 0%** → the sweep sends the craft into
   maintenance there (§4.4).
 - **A repeating lane** → ends at the maintenance stop; redispatch (§4.3).
+- **A plain multi-leg dispatch reaching 0% mid-trip** → stops at its first listed waypoint that is a maintenance
+  point, the rest of the trip dropped, no refund (§4.3, the slice-4 amendment).
 - **Exactly 20%** → early maintenance refused (strictly below).
 - **A heavy with an asset or kit aboard** → the hold is locked for the duration; the asset stays
   "in transit" (derived from the manifest) until the craft is out and unloads.
 - **An operator spawn at condition 0 at a maintenance point** → the sweep sends it into maintenance
-  at the end of that tick (expected, not a bug).
+  at once, on the spawn — the sweep runs after every action as well as every tick (expected, not a bug; slice 4,
+  ACCEPTED 10-11-26).
 - **Bots** → their budget is 0, so their craft wear unmaintained; bot maintenance behaviour is a 2.7
   question.
 - **A droid deployed before the retune** → keeps its condition fraction; units rescale exactly (§1b).
@@ -473,5 +567,10 @@ droid reserve default 0 (unchanged). Derived, not tuned: `DROID_WEAR_SCALE` 161,
 4. **Deep maintenance** (engine + snapshot): the `maintenance` status, the maintenance points, the
    0% stop rule + the sweep, the dispatch refusal + quote, early maintenance, Outpost slots + queue,
    teardown refusal, eviction abort, the three craft notices.
+   *(⤳ **BUILT 10-11-26** — §4.9's AS-BUILT note. New file `sim/deep-maintenance.js`; hooked at the head of tick step 5
+   (finish + promote, then — amendment — a plain trip cut short), in the route funnel (rule 1), at the end of step 5
+   (the sweep) and after every action. No golden
+   was re-pinned: no golden's craft reaches 0%, so every state hash is main's, and every snapshot golden still matches
+   its original pin with the two added keys stripped.)*
 5. **The Maintenance tab** (client).
 6. **The Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit** (client).

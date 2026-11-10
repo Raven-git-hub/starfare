@@ -23,7 +23,7 @@
 
 const { HEAVY_HOLD } = require('./fuel.js');
 const {
-  LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT,
+  LIGHT_TRANSPORT, MEDIUM_TRANSPORT, HEAVY_TRANSPORT, resolveVehicleLocation,
 } = require('./vehicles.js');
 const { usedSpace } = require('./manifest.js');
 
@@ -167,6 +167,36 @@ function consignmentSummary(cargo) {
   };
 }
 
+// ownedOutpostAt(state, guildId, anchor) -> the guild's own Outpost standing on `anchor`'s hex, or null. A guild
+// Outpost is NOT a location `landmarkKind` (design.md §4 / §15.4): a craft is "at" an Outpost by HEX-COINCIDENCE —
+// it was dispatched to the Outpost's `{q,r}`, so its idle `location` is a bare hex on that hex. This resolves the
+// anchor's coords and finds the OWN-ONLY (§4 — only the owning guild's craft dock) Outpost standing there. A
+// system-berthed craft resolves to a landmark's coords, never an Outpost's (an Outpost cannot share a seed
+// landmark's hex, checkOutpostIntegrity), so the system path is untouched. It lives here (moved from
+// sim/actions.js, maintenance slice 4) so sim/deep-maintenance.js can ask the very same question without a
+// require cycle; actions.js re-uses it from here.
+function ownedOutpostAt(state, guildId, anchor) {
+  const r = resolveVehicleLocation(anchor);
+  if (!r) return null;
+  const { q, r: rr } = r.coords;
+  return (state.outposts || []).find(
+    (o) => o.ownerGuildId === guildId && o.coords.q === q && o.coords.r === rr,
+  ) || null;
+}
+
+// isDockedAt(outpost, vehicleId) -> true when the craft holds a manifest at this Outpost — waiting in its `queue`
+// or serving a `slot`. The one-manifest-per-craft guard (design.md §4). Moved here from sim/actions.js (maintenance
+// slice 4) beside ownedOutpostAt, for the same reason.
+function isDockedAt(outpost, vehicleId) {
+  return (outpost.queue || []).some((e) => e.vehicleId === vehicleId)
+    || (outpost.slots || []).some((e) => e.vehicleId === vehicleId);
+}
+
+// isDockEngaged(state, vehicleId) -> true when the craft is waiting in, or occupying, ANY Outpost's dock queue / slot.
+function isDockEngaged(state, vehicleId) {
+  return (state.outposts || []).some((o) => isDockedAt(o, vehicleId));
+}
+
 module.exports = {
   OUTPOST_CAPACITY,
   OUTPOST_DOCK_SLOTS,
@@ -180,4 +210,7 @@ module.exports = {
   nextOutpostSerial,
   outpostFreeSpace,
   consignmentSummary,
+  ownedOutpostAt,
+  isDockedAt,
+  isDockEngaged,
 };

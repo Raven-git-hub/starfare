@@ -1113,3 +1113,47 @@ engine-first notice.
 **A NO-OP elsewhere.** A guild that never funds maintenance writes no such notice, so every log, snapshot and golden
 whose craft fly unfunded is unchanged by it. The vocabulary test (`sim/tests/events.test.js`) now counts fifteen types;
 the notice itself is pinned by `sim/tests/craft-maintenance.test.js` (section J).
+
+## 19. The craft deep-maintenance notices — `craft_reached_zero`, `deep_maintenance_entered`, `deep_maintenance_finished` (2.6 maintenance slice 4, 10-11-26)
+
+Three discrete moments in a craft's maintenance cycle (`docs/maintenance.md` §4), each a fact the player cannot re-derive
+later (the craft may be flying again, or back at 100%, by the time they look) — so each is an EVENT (§0). Passive and
+informational — no action-item. Born unread. **Owner only** — fogged from rivals, as every notice is (a rival's guild
+row carries no `events`). Their payloads are self-contained.
+
+**`craft_reached_zero`** — a craft's condition **reached 0%** in flight. ONE writer: the slice-3 wear step
+(`stepCraftMaintenance`, `sim/craft-maintenance.js`, the head of tick step 5), on the tick the condition FIRST hits 0. A
+craft already at 0 does not cross again, and only finishing deep maintenance raises it, so it fires **once per
+crossing** (a craft spawned at 0 never crossed, so it writes none). Payload: `craftId`, `craftClass`. The craft keeps
+flying; it goes into deep maintenance at the first maintenance point it stops at.
+
+**`deep_maintenance_entered`** — a craft **went into deep maintenance**. ONE writer, `sim/deep-maintenance.js`: rule 1
+and the sweep (a 0% craft at one of its guild's points), a plain trip cut short at 0%, the early action (`startDeepMaintenance`), and a queued craft
+taking a freed bay. Payload: `craftId`, `craftClass`, `point` (`{ kind: 'system', systemId }` or `{ kind: 'outpost',
+outpostId }`), then either
+- `bay: true, readyTick` — it took a bay (a held system always has one) and is idle again at 100% on that tick; with
+  `early: true` when the player sent it in early, and `fromQueue: true` when it is a queued craft taking a freed bay
+  (so a craft that queued writes this notice twice: once on joining the queue, once on taking its bay); or
+- `bay: false, queuePosition` — every one of the Outpost's 5 bays was taken, so it waits in that Outpost's maintenance
+  queue, 1 = next to be served.
+
+Either shape also carries `tripCutShort: true, tripDestination` (the trip's final anchor) when the craft was flying a
+PLAIN multi-leg trip at 0% that was cut short at this waypoint (the slice-4 amendment, `maintenance.md` §4.3) — the
+player is told the trip did not reach where it was going. No craft flag is set for it.
+
+**`deep_maintenance_finished`** — a craft **finished deep maintenance**: idle at 100% at its point, on its ready tick.
+ONE writer, `stepDeepMaintenance` (`sim/deep-maintenance.js`, the head of tick step 5). Payload: `craftId`, `craftClass`,
+`point`. An ABORTED maintenance (its Outpost removed by the operator, its system lost) writes nothing here — the craft
+did not finish; the removal or the `system_lost` notice is the record.
+
+(The type strings and payload names are this slice's — ACCEPTED 10-11-26, roadmap decision checklist "Maintenance
+slice 4 calls" (6).)
+
+**The surface — today.** No new snapshot field for the notices: `guilds[].events` carries the rows and
+`attention.notices` counts them while unread. **Not built: the client** — the inbox rows and their voice wait for
+maintenance slice 5; no tripwire requires client wording for every type, so none was added. Until then the live
+client's renderer treats an unknown type as it treats every engine-first notice.
+
+**A NO-OP elsewhere.** A galaxy where no craft reaches 0% and nobody starts deep maintenance writes none of them, so every
+log, snapshot and golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts eighteen
+types; the notices themselves are pinned by `sim/tests/deep-maintenance.test.js` (section J, and B / F / G).

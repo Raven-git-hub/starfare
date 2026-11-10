@@ -36,13 +36,16 @@ const REPEAT_MODES = Object.freeze(['once', 'continuous', 'nRun']);
 const CADENCES = Object.freeze(['immediate', 'perCycle']);
 
 // LANE_END_REASONS — why a lane ENDED on its own (transport-model.md §11.6), recorded on the craft as
-// `laneEnded = { reason, tick }` so the player can see it. Two reasons:
+// `laneEnded = { reason, tick }` so the player can see it. Three reasons:
 //   'target-gone' — a stop's store no longer exists (an Outpost torn down);
 //   'system-lost' — a stop is at a system that has just gone FALLOW (its Prefecture destroyed — losing
 //                   ground, engine PR 3, sim/eviction.js). The system still exists, so this is not
 //                   'target-gone': the player is told the ground was lost, not that a store vanished.
+//   'maintenance' — the craft is at 0% condition and has reached a maintenance point of its guild with more of
+//                   its route still to fly, so it went into deep maintenance there instead of departing
+//                   (maintenance slice 4, docs/maintenance.md §4.3). A repeating lane ends the same way.
 // A lane that simply finishes, or that the player stops, is not flagged: nothing went wrong.
-const LANE_END_REASONS = Object.freeze(['target-gone', 'system-lost']);
+const LANE_END_REASONS = Object.freeze(['target-gone', 'system-lost', 'maintenance']);
 
 // WAIT_REASONS — why a repeating lane is WAITING at its last waypoint instead of starting its next lap,
 // recorded on the route as `waiting = { reason, sinceTick }` (transport-model.md §11.6 / §11.10). Two

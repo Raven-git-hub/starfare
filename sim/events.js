@@ -35,7 +35,9 @@
 // something of the owner's is still stranded there. The droid wear step (sim/tick.js `stepDroidUpkeep`,
 // docs/event-log.md §17) writes `droids_spent` when deployed droids wear out to zero and are destroyed. The craft maintenance step
 // (sim/craft-maintenance.js `stepCraftMaintenance`, docs/event-log.md §18) writes `maintenance_pool_dry` the first tick
-// in a cycle the guild's pool cannot pay for a flying craft. The storyteller / rival / disaster writers are future work (§5).
+// in a cycle the guild's pool cannot pay for a flying craft, and `craft_reached_zero` the tick a craft's condition first hits
+// 0 in flight; deep maintenance (sim/deep-maintenance.js, docs/event-log.md §19) writes `deep_maintenance_entered` and
+// `deep_maintenance_finished`. The storyteller / rival / disaster writers are future work (§5).
 // Renegotiation ACCEPT writes nothing — an accept is a re-lock, not a discrete loss.
 
 // --- The type vocabulary (docs/event-log.md §2, §10, §11, §12, §13, §14, §15, §16) ----
@@ -70,11 +72,18 @@ const SALVAGE_WINDOW_REMINDER = 'salvage_window_reminder';
 const DROIDS_SPENT = 'droids_spent';
 // the craft maintenance pool could not pay for a flying craft — at most one a guild per cycle (docs/event-log.md §18)
 const MAINTENANCE_POOL_DRY = 'maintenance_pool_dry';
+// a craft's condition reached 0% in flight — once per crossing (docs/event-log.md §19)
+const CRAFT_REACHED_ZERO = 'craft_reached_zero';
+// a craft went into deep maintenance: into a bay with a ready tick, or into an Outpost's maintenance queue (§19)
+const DEEP_MAINTENANCE_ENTERED = 'deep_maintenance_entered';
+// a craft finished deep maintenance: it is idle at 100% at its maintenance point (§19)
+const DEEP_MAINTENANCE_FINISHED = 'deep_maintenance_finished';
 
 const EVENT_TYPES = Object.freeze([
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
-  SALVAGE_WINDOW_REMINDER, DROIDS_SPENT, MAINTENANCE_POOL_DRY,
+  SALVAGE_WINDOW_REMINDER, DROIDS_SPENT, MAINTENANCE_POOL_DRY, CRAFT_REACHED_ZERO, DEEP_MAINTENANCE_ENTERED,
+  DEEP_MAINTENANCE_FINISHED,
 ]);
 const EVENT_TYPE_SET = new Set(EVENT_TYPES);
 
@@ -163,6 +172,7 @@ module.exports = {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
   SALVAGE_WINDOW_REMINDER, DROIDS_SPENT, MAINTENANCE_POOL_DRY,
+  CRAFT_REACHED_ZERO, DEEP_MAINTENANCE_ENTERED, DEEP_MAINTENANCE_FINISHED,
   EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,

@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const {
   LICENCE_LAPSED, VENTURE_CLOSED, DEPLOY_FAILED, DELIVERY_SPACE_WARNING, DELIVERY_TURNED_BACK,
   OUTPOST_PACKED, SCAN_COMPLETE, SCAN_VOIDED, SYSTEM_LOST, ASSETS_INHERITED, ASSETS_SWEPT, SALVAGE_WINDOW_LAPSED,
-  SALVAGE_WINDOW_REMINDER, DROIDS_SPENT, MAINTENANCE_POOL_DRY,
+  SALVAGE_WINDOW_REMINDER, DROIDS_SPENT, MAINTENANCE_POOL_DRY, CRAFT_REACHED_ZERO, DEEP_MAINTENANCE_ENTERED, DEEP_MAINTENANCE_FINISHED,
   EVENT_TYPES, isEventType,
   RETENTION_UNREAD_TICKS, RETENTION_READ_TICKS, isEventLive,
   recordEvent, liveEvents, cloneEventPayload,
@@ -38,9 +38,10 @@ function baseState(guildExtra = {}) {
 
 // ─── the vocabulary ──────────────────────────────────────────────────────────────
 
-test('the type vocabulary is exactly the fifteen notice types', () => {
+test('the type vocabulary is exactly the eighteen notice types', () => {
   assert.deepEqual([...EVENT_TYPES].sort(), [
-    'assets_inherited', 'assets_swept', 'delivery_space_warning', 'delivery_turned_back', 'deploy_failed',
+    'assets_inherited', 'assets_swept', 'craft_reached_zero', 'deep_maintenance_entered', 'deep_maintenance_finished',
+    'delivery_space_warning', 'delivery_turned_back', 'deploy_failed',
     'droids_spent', 'licence_lapsed', 'maintenance_pool_dry', 'outpost_packed', 'salvage_window_lapsed', 'salvage_window_reminder', 'scan_complete',
     'scan_voided', 'system_lost', 'venture_closed',
   ]);
@@ -77,6 +78,11 @@ test('the type vocabulary is exactly the fifteen notice types', () => {
   // The fifteenth, written when the craft maintenance pool cannot pay for a flying craft (docs/event-log.md §18).
   assert.equal(MAINTENANCE_POOL_DRY, 'maintenance_pool_dry');
   assert.ok(isEventType('maintenance_pool_dry'));
+  // The sixteenth to eighteenth, written by craft wear reaching 0% and by deep maintenance (docs/event-log.md §19).
+  assert.equal(CRAFT_REACHED_ZERO, 'craft_reached_zero');
+  assert.equal(DEEP_MAINTENANCE_ENTERED, 'deep_maintenance_entered');
+  assert.equal(DEEP_MAINTENANCE_FINISHED, 'deep_maintenance_finished');
+  assert.ok(isEventType('craft_reached_zero') && isEventType('deep_maintenance_entered') && isEventType('deep_maintenance_finished'));
   assert.ok(isEventType('licence_lapsed') && isEventType('venture_closed') && isEventType('deploy_failed'));
   assert.ok(isEventType('delivery_space_warning') && isEventType('delivery_turned_back'));
   assert.ok(!isEventType('rival_bought_in') && !isEventType(undefined));

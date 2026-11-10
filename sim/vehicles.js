@@ -44,7 +44,10 @@ const BUILDABLE_VEHICLE_KINDS = Object.freeze([LIGHT_TRANSPORT, MEDIUM_TRANSPORT
 // a slot runs to completion", §4) while a parked/queued craft stays plain `idle` and dispatches freely.
 // `checkVehicleIntegrity` asserts membership; the shape-by-status rule treats `loading` like `idle`
 // (a resolving location, no trip) since a docked craft sits at the Outpost's hex.
-const VEHICLE_STATUSES = Object.freeze(['idle', 'inTransit', 'loading']);
+// `maintenance` (maintenance slice 4, docs/maintenance.md §4) is the fourth: a craft in DEEP MAINTENANCE at a
+// maintenance point — in a bay with a ready tick, or waiting in an Outpost's maintenance queue. It is not `idle`,
+// so every action that needs an idle craft refuses it, and with it every action on its hold (§4.2).
+const VEHICLE_STATUSES = Object.freeze(['idle', 'inTransit', 'loading', 'maintenance']);
 
 // The per-class stat table — every value read VERBATIM from docs/phase-1-tuning.md
 // §"Guild transports" (18-09-26, all `[FIRST-CUT]`); NONE invented here (§18 /

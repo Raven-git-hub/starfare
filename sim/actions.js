@@ -28,11 +28,14 @@ const {
 } = require('./droids.js');
 const { setCraftMaintenanceBudget, topUpCraftMaintenancePool } = require('./craft-maintenance.js');
 const {
+  stopForMaintenance, afterAction, earlyRefusal, startEarly, zeroConditionRouteRefusal, atOutpost, abortDeepMaintenance,
+} = require('./deep-maintenance.js');
+const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
 const {
   outpostId, nextOutpostSerial, outpostDockTurnaround, OUTPOST_DEPLOY_RANGE, DEPLOY_RETREAT_HEXES,
-  DEPLOY_FAILED_REASONS, outpostFreeSpace, consignmentSummary,
+  DEPLOY_FAILED_REASONS, outpostFreeSpace, consignmentSummary, ownedOutpostAt, isDockedAt,
 } = require('./outposts.js');
 const {
   deepScanArrayId, nextDeepScanArraySerial, SCAN_TICKS, SCAN_LEVELS, CENTRE_KIND,
@@ -256,6 +259,10 @@ function advanceRoute(state, guild, craft, thisTick) {
     finishLap(state, guild, craft, thisTick); // WN was just resolved — the lap boundary
     return;
   }
+  // RULE 1 (maintenance slice 4, docs/maintenance.md §4.3): a craft at 0% never departs from a maintenance point.
+  // This stop's actions have already run (the arrival's instant action, or the Outpost turnaround that called this),
+  // so if the craft is at 0% and this is a point of its guild, its lane ends 'maintenance' and it goes in here.
+  if (stopForMaintenance(state, guild, craft, thisTick)) return;
   const trip = buildSingleLegTrip(craft, route.waypoints[nextCursor].anchor, thisTick);
   if (!trip) {
     endLane(craft, 'target-gone', thisTick); // anchor gone — the lane ENDS, idle where it paused (§11.6)
@@ -293,6 +300,10 @@ function finishLap(state, guild, craft, thisTick) {
     delete craft.route; // a lane stopped after this run, or the N-th lap just finished — idle at WN
     return;
   }
+  // RULE 1 at the lap boundary (maintenance slice 4): the lane would go round again — now, or after a per-cycle
+  // hold — but a craft at 0% at a maintenance point does not depart: the lane ends 'maintenance' and it goes in.
+  // (A run that is over, above, simply ends idle here; the sweep then sends a 0% craft in, with no lane to flag.)
+  if (stopForMaintenance(state, guild, craft, thisTick)) return;
   if (route.cadence === 'perCycle') {
     // A PER-CYCLE lane paces itself to one lap per fuel cycle (§11.10): rather than start the next lap
     // back to back, it holds at WN as a `waiting` lane. The fuel-cycle boundary already re-attempts
@@ -707,6 +718,11 @@ function quoteDispatch(state, { guildId, vehicleId, waypoints }) {
   // The quote never sees actions, so the "act in place needs an action" rule is the dispatch validate's.
   const route = dispatchRoute(craft, waypoints, { skipZeroLengthFirstLeg: true });
   if (!route.ok) return route;
+  // THE 0% RULE (maintenance slice 4, docs/maintenance.md §4.5) — the same gate both dispatches run. Its refusal
+  // carries a machine-readable `code` and the offending `waypointIndex` beside the prose `reason`, so the route
+  // builder can stop offering stops after the first maintenance point without reading the words.
+  const zeroStop = zeroConditionRouteRefusal(state, guildId, craft, waypoints);
+  if (zeroStop) return { ok: false, reason: zeroStop.reason, code: zeroStop.code, waypointIndex: zeroStop.waypointIndex };
 
   // Per-leg ticks + fuel from the §2.2 formula (isToll false this slice — no toll infra); totalTicks is
   // Σ per-leg ticks, exactly the contiguous schedule dispatch freezes (leg 0 departs now, legs abut).
@@ -1739,6 +1755,15 @@ function createTopUpCraftMaintenancePoolAction({ guildId, amount }) {
   return { type: 'topUpCraftMaintenancePool', guildId, amount };
 }
 
+// startDeepMaintenance: send an idle craft below 20% condition into deep maintenance NOW, at the maintenance point it
+// stands at (maintenance slice 4; docs/maintenance.md §4.6). Shape is exactly `{ guildId, vehicleId }`. A craft at 0%
+// needs no request — it goes in by itself (the sweep).
+function createStartDeepMaintenanceAction({ guildId, vehicleId: vId }) {
+  if (guildId === undefined) throw new Error('createStartDeepMaintenanceAction: guildId is required');
+  if (vId === undefined) throw new Error('createStartDeepMaintenanceAction: vehicleId is required');
+  return { type: 'startDeepMaintenance', guildId, vehicleId: vId };
+}
+
 // cancelSyndicateCommission: withdraw a Syndicate commission that HAS NOT STARTED building
 // (docs/asset-purchase.md §"Cancelling a queued commission", RULED 26-09-26) — a queued entry, or a
 // head whose countdown has not begun. Addressed by the stable per-guild `commissionId` stamped at
@@ -1976,17 +2001,8 @@ function ownedOutpostAtCraft(state, guildId, craft) {
   return ownedOutpostAt(state, guildId, craft.location);
 }
 
-// ownedOutpostAt(state, guildId, anchor) -> the guild's own Outpost standing on `anchor`'s hex, or null
-// — the anchor form of ownedOutpostAtCraft above (which asks it about the craft's location), so a route
-// can ask the same question of a waypoint it has not reached yet.
-function ownedOutpostAt(state, guildId, anchor) {
-  const r = resolveVehicleLocation(anchor);
-  if (!r) return null;
-  const { q, r: rr } = r.coords;
-  return (state.outposts || []).find(
-    (o) => o.ownerGuildId === guildId && o.coords.q === q && o.coords.r === rr,
-  ) || null;
-}
+// ownedOutpostAt(state, guildId, anchor) — the anchor form of ownedOutpostAtCraft above, so a route can ask the same
+// question of a waypoint it has not reached yet. It lives in sim/outposts.js (maintenance slice 4), imported above.
 
 // craftParkedAt(state, outpost) -> the craft PARKED on `outpost`'s hex, in the guild's vehicle order: the
 // owner's craft whose resolved location is that hex — the same hex-coincidence ownedOutpostAtCraft asks, so
@@ -2668,14 +2684,7 @@ function repeatStateFor(repeat) {
   return { mode: repeat.mode, lapsDone: 0, ...cadence };
 }
 
-// isDockedAt(outpost, vehicleId) -> true when the craft already holds a manifest at this Outpost —
-// either waiting in its `queue` or serving a `slot`. The one-manifest-per-craft guard: a craft already
-// queued/loading here cannot stack a second transfer (design.md §4 — I refuse rather than replace, so
-// a pending manifest is never silently overwritten).
-function isDockedAt(outpost, vehicleId) {
-  return (outpost.queue || []).some((e) => e.vehicleId === vehicleId)
-    || (outpost.slots || []).some((e) => e.vehicleId === vehicleId);
-}
+// isDockedAt(outpost, vehicleId) — the one-manifest-per-craft guard (design.md §4); it lives in sim/outposts.js.
 
 // cancelQueuedManifest(state, vehicleId) — drop the craft's pending Outpost manifest, if it has one
 // (design.md §4 "a parked or queued craft is cancelled by being re-dispatched away — that drops its
@@ -4173,6 +4182,15 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'startDeepMaintenance') {
+    // docs/maintenance.md §4.6 — THE ONE gate (sim/deep-maintenance.js earlyRefusal), the same one the snapshot's
+    // `earlyMaintenanceAllowed` flag reads: idle, not dock-queued, no lane, at one of its guild's maintenance points,
+    // strictly below 20%, and — at an Outpost — a free bay (an early request never queues).
+    const refusal = earlyRefusal(state, action.guildId, action.vehicleId);
+    if (refusal) return { valid: false, reason: refusal };
+    return { valid: true };
+  }
+
   if (action.type === 'cancelSyndicateCommission') {
     // Cancel an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
     // commission"). REFUSE, never clamp — the dockyard cancelCommission's gate order.
@@ -4567,6 +4585,12 @@ function validateAction(state, action) {
     if (queued) {
       return { valid: false, reason: `vehicle ${JSON.stringify(queued.vehicleId)} is queued to dock at Outpost ${oid} — let its transfer run, or re-dispatch it to cancel; an Outpost packs up only when nothing is docked` };
     }
+    // Nothing in its maintenance bays or queue (maintenance slice 4, docs/maintenance.md §4.8): a craft in deep
+    // maintenance has nowhere to go, and its hold is locked.
+    const maintained = atOutpost(state, guild, outpost).map((v) => v.id).sort()[0];
+    if (maintained) {
+      return { valid: false, reason: `vehicle ${JSON.stringify(maintained)} is in deep maintenance (in a bay or queued) at Outpost ${oid} — wait for it to finish; an Outpost packs up only when no craft is in its maintenance bays or queue` };
+    }
 
     // RULE 2 — EXACTLY ONE CRAFT PARKED ON THE HEX, AND IT IS AN EMPTY HEAVY. The kit goes into that craft,
     // so the engine never has to pick among several (craftParkedAt: own craft only, by hex coincidence).
@@ -4630,6 +4654,9 @@ function validateAction(state, action) {
     if (!route.ok) {
       return { valid: false, reason: route.reason };
     }
+    // THE 0% RULE (docs/maintenance.md §4.5): a craft at 0% may fly, but not through a maintenance point.
+    const zeroStop = zeroConditionRouteRefusal(state, action.guildId, craft, action.waypoints);
+    if (zeroStop) return { valid: false, reason: zeroStop.reason };
     // The FUEL gate — the SAME combined-availability gate the buy uses (hoard + contraband), refuse
     // whole (§4: no partial dispatch, no stranding). The credit figure is display-only; units gate.
     const available = guild.fuelHoard + (guild.deuteriumFuel || 0);
@@ -5193,6 +5220,9 @@ function validateAction(state, action) {
     if (!route.ok) {
       return { valid: false, reason: route.reason };
     }
+    // THE 0% RULE (docs/maintenance.md §4.5): refused whole if any stop before the last is a maintenance point.
+    const zeroStop = zeroConditionRouteRefusal(state, action.guildId, craft, action.waypoints.map((wp) => wp.anchor));
+    if (zeroStop) return { valid: false, reason: zeroStop.reason };
     // ACT IN PLACE (§11.9): the route's only stop is the craft's own berth, so there is no leg — the whole
     // run is that stop's action, done where the craft stands. Without an action it would do nothing at
     // all, so it is refused. This check lives here, not in dispatchRoute, because only here can we see
@@ -5324,7 +5354,21 @@ function validateAction(state, action) {
 
 // Applies ONE already-validated action. Never mutates `state` — returns a
 // new state. Callers MUST validate first; this does not re-check.
+//
+// After the action, deep maintenance settles (maintenance slice 4, sim/deep-maintenance.js `afterAction`): a freed
+// Outpost bay takes its queue head, and any idle craft at 0% now standing at one of its guild's maintenance points
+// goes in. Many actions can bring that about — a plant makes a system held, a deploy puts an Outpost under a craft,
+// a spawn or a cancel puts a 0% craft at a point, an operator removal frees a bay — so it runs after EVERY action
+// rather than from a list that could miss one; it does nothing when no craft is at 0% and nothing is queued. The
+// invariants are checked after each action (sim/server.js), so this leaves no window where they could see an idle
+// 0% craft at its own point, or a free bay beside a queue. The tick is the action's (`next.tick`).
 function applyAction(state, action) {
+  const next = applyActionBody(state, action);
+  afterAction(next, next.tick);
+  return next;
+}
+
+function applyActionBody(state, action) {
   const next = structuredClone(state);
   if (action.type === 'paySyndicateFee') {
     const guild = findGuild(next, action.guildId);
@@ -6329,6 +6373,15 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'startDeepMaintenance') {
+    // docs/maintenance.md §4.6: the craft goes into a bay now; its ready tick is this tick + the missing share of its
+    // class's full time, rounded up. No credit, good or fuel moves — deep maintenance is time only (§5).
+    const guild = findGuild(next, action.guildId);
+    const craft = guild.vehicles.find((v) => v.id === action.vehicleId);
+    startEarly(next, guild, craft, next.tick);
+    return next;
+  }
+
   if (action.type === 'cancelSyndicateCommission') {
     // Withdraw an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
     // commission"). Validate proved the entry exists, is this guild's, and has not started.
@@ -6553,6 +6606,10 @@ function applyAction(state, action) {
       // dock completion it waits for dies with this Outpost.
       if (craft.route) endLane(craft, 'target-gone', next.tick);
     }
+    // ABORT deep maintenance here (maintenance slice 4, docs/maintenance.md §4.8): each craft in a bay or the queue
+    // becomes idle in space at the Outpost's hex — where it already stands — condition UNCHANGED, no lane (it had
+    // none). Read BEFORE the row goes, while the craft are still "at" this Outpost.
+    for (const craft of atOutpost(next, guild, outpost)) abortDeepMaintenance(craft, next.tick);
 
     // DESTROY the row (and with it the stockpile — the stored goods leave the galaxy, the accounted
     // goods sink, §4/§15.4) and the dock state (queue/slots). Omit-when-empty: a galaxy back to zero
@@ -7083,6 +7140,7 @@ module.exports = {
   createSetDroidComponentReserveAction,
   createSetCraftMaintenanceBudgetAction,
   createTopUpCraftMaintenancePoolAction,
+  createStartDeepMaintenanceAction,
   createBuyDroidBatchAction,
   createCancelSyndicateCommissionAction,
   createAddOrderLineAction,
