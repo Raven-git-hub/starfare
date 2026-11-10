@@ -118,6 +118,7 @@ function createGuild({
   droids = [],
   droidSerial = 0,
   droidComponentReserve = {},
+  craftMaintenance = null,
   events = [],
   eventSeq = 0,
   exploration = null,
@@ -448,6 +449,13 @@ function createGuild({
     // alias into engine state. OMITTED when empty, so a guild that sets none serializes as before.
     ...(droidComponentReserve && Object.keys(droidComponentReserve).length
       ? { droidComponentReserve: { ...droidComponentReserve } } : {}),
+    // craftMaintenance (maintenance slice 3; docs/maintenance.md §3): the guild's craft maintenance POOL record —
+    // `{ budget?, pool?, spentThisCycle?, spentLastCycle?, ranDryThisCycle? }`, every key omitted at its default
+    // (sim/craft-maintenance.js, its one writer). The pool is the guild's credits held aside (invariant 2 counts it).
+    // Copied so a caller's object can never alias into engine state. OMITTED when empty, so a guild that never
+    // touches maintenance serializes as before.
+    ...(craftMaintenance && Object.keys(craftMaintenance).length
+      ? { craftMaintenance: { ...craftMaintenance } } : {}),
     // exploration: the guild's EXPLORATION RECORD (docs/exploration-model.md §3/§7, roadmap 2.5) —
     // `{ [planetId]: { tick, nodes: { [nodeId]: tick }, slots: { [slotId]: tick } } }`, the static
     // geography it has LEARNED, learn-once / known-forever. Ids only: the archetype and node types stay
@@ -1004,7 +1012,9 @@ function createVehicle({
     ...(cargo && Object.keys(cargo).length ? { cargo: { ...cargo } } : {}),
     // carryingAssetId — the machine aboard, OMITTED when there is none (see the note above).
     ...(carryingAssetId === undefined ? {} : { carryingAssetId }),
-    // maintenanceCondition — INERT this slice (sim/vehicles.js / assets.js own the scale).
+    // maintenanceCondition — LIVE since maintenance slice 3: a fraction (1 = new) that wears only while the craft
+    // flies, in the whole wear units of sim/craft-maintenance.js (CRAFT_WEAR_SCALE). Like `trip` / `route`, the
+    // drain's `maintenanceCovered: true` flag is never assembled here — the per-tick step writes it.
     maintenanceCondition,
     status,
     // §15.2: "every mutation records its tick." null until something (a

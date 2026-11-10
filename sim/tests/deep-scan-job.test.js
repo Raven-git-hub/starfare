@@ -370,18 +370,19 @@ test('createState carries a handed-in job, as a copy — never an alias', () => 
 // IDLE_ARRAY_VIEWS_RULING_11. The state and god's-eye pins did not move (no rival licensed venture here, so the
 // removed register step never wrote anything; and the god's-eye lens carries no record).
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const IDLE_ARRAY_ON_MAIN = {
   deployed: {
     state: '4e2d006b07d9aecde8617a1e23325d0cc6a8deae823932eb494e59bbe4265b7d',
-    godsEye: '79d5edd65d21ee30e7ab19e06978858acfb1b658ff0c4012cbde2fd4be22ebe4',
-    [A]: 'e8f63ed3ed769d972d17406a47b517081b0679b14595f706f870c0e94cc87fbb',
-    [B]: 'c21166150e8a98b149919352f64f9cec142c852d2f529fbf706b6217bd25f7a2',
+    godsEye: 'ebeb77354279bbbce41cf9806387e8f670a7016d33146310cad45d8e979a9715',
+    [A]: '0cb9db3950c9e22f001ba8be8929ff6bc00571ced8069f4dac70270963b5fab8',
+    [B]: '095d0fdf24c02d554cacd98b20cbe332e9321cd86aca718bbc83a22c20a550ce',
   },
   ticked: {
     state: 'be08506563553dd7ea22aafecd2b552e2299ac483244eebd975c516885af2fef',
-    godsEye: '4f76a6882a195df8e4254981402fb9f00045606fb72ecba1645942fe575c9c69',
-    [A]: '7ad9de8739f5dc3ce2da5cf84c73017b80482e044b61154f20c8b25b8260a8f7',
-    [B]: '049930e8c9382243133e578004b5e231758902f685abca3d28116cda7431573e',
+    godsEye: '93f502851572f53004301351dfb8b54301ae32a85b4af937452c0ed3889efff6',
+    [A]: 'f171e6513fd836e2ac60d374f5e95d95ce17a5cc59745f0aa46dc3bc843aa376',
+    [B]: 'c8813916ce29ae1f5292daaff60674ec8dd0bd3cbd5aa423268057aa07c1b46a',
   },
 };
 
@@ -389,14 +390,15 @@ const IDLE_ARRAY_ON_MAIN = {
 // ⤳ 09-10-26 (the settlement-surface slice): no longer the full views either — each `known` entry now
 // carries `slots` — but kept as the strip-and-prove: strip the slots and the view still hashes to these.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const IDLE_ARRAY_VIEWS_RULING_11 = {
   deployed: {
-    [A]: 'cd6dbd8ef33862cf1cc6d18ac376e907015de304631a53b3278fc2b097a4f5b6',
-    [B]: 'b0511dc4b86521226c148a413aa445c54bb070ebec123abb09fa42a8af131006',
+    [A]: '385f297ecf4e468e3c2164ec957aabad9e8141125f21195877f8fd7090581704',
+    [B]: '3c4e1c20ddebef9393a37297dc1d071c27998f1033f495a314917bb87fa7147a',
   },
   ticked: {
-    [A]: 'a59e93f8e0f166f427e15dc433ffabf5fe6bedbc7d022cda7b0b6a704f490897',
-    [B]: 'c56475f13cd4ac396bca6c213c527e8e75a738770937d750ea61dae0eea5587d',
+    [A]: '280e1eb15751c816313dcd958b6e24f425ecd93531b1d8959a242710acbba8b6',
+    [B]: 'f198c81b051c6620e71e6c971092eef4794aeae2327c4dee9c75b97fd928feba',
   },
 };
 
@@ -406,30 +408,32 @@ const IDLE_ARRAY_VIEWS_RULING_11 = {
 // gone — but kept as the put-back-and-prove: put the block back (from the board + the view's own claims) and
 // the view still hashes to these. The state pins are still the full state (the slice moved no state).
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const IDLE_ARRAY_WITH_SLOTS = {
   deployed: {
     state: 'aa6fe11d5605368ce2014b54db5806a6227e45822c2b2d94b82f19a362e78462',
-    [A]: '2d2c07b2c9b84c9d24773e01245feef3858dcec4d6f5dad038375b8a30d36cda',
-    [B]: '2c22d3df091932f143866e104b8fbb1fcbc0c2b4d5e76037df431509bc120d5a',
+    [A]: '8e4a504678ed716d2ca1deac4ae19e61dedd28697db3981e4b124d17a7370e64',
+    [B]: 'ee3c8f461d0d8c8a9e732764175a1396b646ad575064275558214374baeef62e',
   },
   ticked: {
     state: '2221f17fbe16c2adfa119a64ca86921382fa6afb1ececa43ab39a556d3c817a0',
-    [A]: 'fd4aa75d89bb1250b39d92aa6305b01f95f180d4d2bffefdb42047ae61e6e992',
-    [B]: 'fbf483a3b0b6753fbd01ae3ff155f84d0bdbe396e58e2785695fe7ec586341ca',
+    [A]: 'e9489dca802ffeb4c8aad541f7a59b9e6c27022f602e86168bad3f109ab30d44',
+    [B]: 'd8915a4357f2352dd53aad422de7559acf5a7067603aa4e2af245f0b5c1920fd',
   },
 };
 
 // The full per-guild views after the L0-board slice (ruling 12 slice 2). Recorded on main at 348e0fc — BEFORE
 // the slice — by deleting `geography.systems` from each IDLE_ARRAY_WITH_SLOTS view and hashing the rest.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const IDLE_ARRAY_SLIM = {
   deployed: {
-    [A]: '473d2b6dc20b589ba903545b575509a38eb1d64df37f600d76127266742c0dae',
-    [B]: '6e0f461d181051b0844efd2aa51423ac4fef37b33946294a87be54750373181f',
+    [A]: '75a6caea3ccf4eeb5ce88406ad3e6759efee14ea60f3d0d1adb0e9f1fcad1bf0',
+    [B]: '4d76b84402789f9df26e942fb7a3e2c7038561f80126f2df39e5734c4da9f293',
   },
   ticked: {
-    [A]: '990669023bbe6cab791afde44dd0cac0288702311fb8d022573256e472dced07',
-    [B]: 'abdb4128b2b93f41afcfefa840b1a5ea2a307610edd6af6f60f9c3e19e5a3f03',
+    [A]: '80ff8795d0c16cfccd9792091a5ee9916c22729880c75f252390ee9918df1f61',
+    [B]: '933f3eec5a4d4bb9ecaae23f8ada599faaf42e5b354a68a2365afa7b33b21177',
   },
 };
 

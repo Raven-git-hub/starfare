@@ -153,33 +153,34 @@ function digest(s, strip) {
 
 // The digests `main` gave at 1c28fe4 for these galaxies, computed by requiring dark-array-script.js there (it uses
 // nothing this slice added). `main` publishes no `dark` key, so for it there was nothing to take out.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const ON_MAIN = {
   'outpost, standing': {
     tick: 0,
     state: 'b48c215f5d98335988fc2fd19c85d35771a645c13dd51c21e974b27be3533435',
-    god: '33e2c3573f6fdd9a177d1c548b637dc1e821d79d61a8f12ba6f0b51aafcdfc7b',
-    g1: 'fda927de600362483ed324cc8ad22bbadcaf963a9718d0959e962e3c5f65e0a2',
+    god: 'f31ce83c526667e9276a55c0aa62995779aeb75d8ceb209ebb349bae0366e1a4',
+    g1: 'd138fdf72d9a685046d21890ffd5401970b903471902931713aedf637d690ff3',
     g2: 'ab19da9b6c6182bb0719e847b54bdc76cd9a7bd9b415e0525f68055a27f90326',
   },
   'reach, re-planted': {
     tick: 450,
-    state: '6e9d04a121a95d46620f674920209da1f71fc78b9fbbd5dd94395ffe2420c48a',
-    god: '183e1c3f3f1512f0adca5876bf933288ec448dbe8fecc58a41319027db273cf2',
-    g1: '4a6ddf9882fc8f1a4cb414a2e23027bf7b2a9ed21b27c5dc73e9d3da11efa840',
-    g2: '0e17558ff053d493fd0a2b20e5c1617d79c32fab67aa107bba9c653ad112b087',
+    state: 'dab7e5d8ba6ca3c27eccd539d45e20a3829aa69b091fab573fac2a60c67ae9a7',
+    god: 'f5a3f82bf6936cf7d7e3cad47e1c7f3738aef855e9e173a5a5350dbf254ed35f',
+    g1: 'ecf90a01bd5213cdb99d14fd80cc79be1b7b87d17f2965b1aceb0dee0365d3ce',
+    g2: '5dfe48194413aa527ac58d32859e2ce843bed888b06c6a3efcb59af4106a86f8',
   },
   'reach, abandoned': {
     tick: 450,
-    state: '0225f6b37f829d02bf92e4265a202bd47e60dab664e0b71020831430df834cbb',
-    god: '3d0f06c70b966bab041a13838a4f51d541218d76d7468da4e504c30a29928776',
-    g1: '0272e512755555b1ef72aab04ed9a97c43a88ad7a14bda7a1c3eb8bad10050bd',
-    g2: 'b4ba3e9dcff2f8cce5de459ded7bea2397c3c6c4922328f16b0afb62ecab519c',
+    state: '6387319eec659cf44b8a71743a0b71f42a214bfab440bf190374eb850bdd8a22',
+    god: '15eb51998fdee2e5a88a66d98765e56f890847226e1d5d395528ea439c3bf0ae',
+    g1: '8298ca39ab55f1f363754a575ebe24f2f5902c5cec6d75d40789a07d5a607ca3',
+    g2: '60f3959a3e7909e24d465423ebc9462a0e10e6f8880c098b97a347d46447bef7',
   },
   'outpost, removed': {
     tick: 0,
     state: 'ea0e680ad950d829e0815c28cbf28757030eb758a6132814e96c730daa29f7f9',
-    god: '6d50236748cae7d3b5c37a8f4068363eb3b1b0acff338ca5745a97bff4e1a229',
-    g1: 'e6fa48823f5f56d7eca6900b39b3af44524d1e81b9717bce57aa8f2a9e635235',
+    god: 'd0a4ceef0b9c69e6b762a1c5e751d0b05b03c0e58282be26f604f830e43b1fc0',
+    g1: 'bba7b1b7b9546c22238412a7f31d919941f9b5833e474b3f308ffe8649273350',
     g2: 'ecc9e53f287ed5cfe429855d2d2950784e9a87e2e9f3501d4eea1acd7fd30faf',
   },
 };

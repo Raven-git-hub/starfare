@@ -306,8 +306,10 @@ test('snapshot: the in-flight batch row names its kind and count, to its owner o
 // RECORDED AT c613414 (the branch base, before this slice's code existed) by running droid-batch-noop-script.js there.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
 const NO_BATCH_STATE_C613414 = '931f12bd3f8d9ab990537162d00d9da6e6d4a7d2166365e43c826483ca42d84c';
-const NO_BATCH_SNAPSHOT_C613414 = '1a6b98d5df52f96beeec1a722944c8fb7c160ac2ed6a631f1059ceac71612761';
-const NO_BATCH_VIEW_C613414 = '107534e02006cb5864e4c56ac6c7e38a14ba2e5b6fcd1f970ae61a7e8dcace77';
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
+const NO_BATCH_SNAPSHOT_C613414 = '818676a1ba5e573c7e64df82ff077d7ee8ca77becb2f02ef1d1bffcf0d791859';
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
+const NO_BATCH_VIEW_C613414 = 'f9189384fab3bab45ef459c1e9b805f3a20370ba5655b6bfc5038a8235b21dcd';
 
 test('no-op: a galaxy that never buys a droid batch is byte-identical to c613414; its snapshot moved only by droidBatchQuote', () => {
   const s = noBatchScript();

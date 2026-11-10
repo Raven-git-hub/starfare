@@ -291,33 +291,34 @@ test('the last tick before the lapse reads 1m left; on the deadline\'s tick the 
 //     countdown appended to its stranded rows' line: strip " · <time> left" from it and it is the no-window IDLE.
 // On main, which never reads the window, the two views draw the same bytes, so this test passes there too.
 const COUNTDOWN = / · (?:\d+d \d\dh|\d+h \d\dm|\d+m) left(?=<\/span>)/g;
+// RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
 const AS_ON_MAIN = [
   { name: 'salvage, held (g1)', state: () => W.held, guild: 'g1',
-    pin: 'f82f5e5ba1952b76e20c7fcb6666f12502787a80aff16536d6af68b96e87432f' },
+    pin: '25817f37808735086e55e519adc4bbaacebe2165c79932ab63c5f674b6401631' },
   { name: 'salvage, stranded (g1)', state: () => W.stranded, guild: 'g1',
-    pin: 'c7fe1db37740ebe241be2224a76d6c09e905c5138e5196a30f7bc3c7e848b66d' },
+    pin: '2b07a2b861ca78378e86b67f2ad65986a5630cbeb27ed7aa0c26a3c54d305721' },
   { name: 'salvage, stranded (g2)', state: () => W.stranded, guild: 'g2',
     pin: '071ce5098c1dd116c8d1da228bd9b04334a42c4f6a09fd4a20ba56840793a70c' },
   { name: 'salvage, fleet (g1)', state: () => W.fleet, guild: 'g1',
-    pin: 'f7dfa96242307043a0419d6a0647f14636aae971c45379193ec697365efac486' },
+    pin: '31e1b85e24a59edace9c0d4e3a5ae980fd42d756f0f9b32599cf75f0cbf57883' },
   { name: 'salvage, loaded (g1)', state: () => W.loaded, guild: 'g1',
-    pin: '6758f774fff6dc117648e01d18b5902702632765bdb2c24bbdffa3d0e1449e9a' },
+    pin: '9aee5daf08e0c0ac6f1d1795f5f80881053159a168f8b1770e55d6557efc19eb' },
   { name: 'salvage, inFlight (g1)', state: () => W.inFlight, guild: 'g1',
     pin: 'cfb1f51508a5e3a1616e4c46a3ca8c20acb0e365569cf9b007f6ce3e1b2914ad' },
   { name: 'salvage, home (g1)', state: () => W.home, guild: 'g1',
-    pin: '81c41b072e0ebc60cbdc3e7690d6d566bd1b893eb9ef020f3dd11096c7779940' },
+    pin: '74abcc93a1107c510a9dd4a58dbc8275d8c9a0c4ddce0bbaf11c5897ab71c9d0' },
   { name: 'salvage, unloaded (g1)', state: () => W.unloaded, guild: 'g1',
-    pin: '4cec4d52144d607b2c97ef04ee56deddcf98238d7e1a5aa2b6e0142b49699a48' },
+    pin: '14ea60e0f22e587152b0b76c58f2ef8de9c70921c5d421585eecabaf9e87bd0b' },
   { name: 'salvage, returned (g1)', state: () => W.returned, guild: 'g1',
-    pin: 'a82b9624cc00485c157cc9b3447c08305083d4e742681f5e0dab94610f234a27' },
+    pin: 'd4517eae0eef2f92cb02cf52009cb99d994782b838addf66a51e487ae68bb665' },
   { name: 'sweep, fallow (g1)', state: () => FALLOW.s, guild: 'g1',
-    pin: '5b19a0f1cb472f520c36ebb0a62e895d1957ce80c9fca540040d7f70bac92f35' },
+    pin: '7bb69bfa94d915f661c9198850c7a47a72b2eb37b038bba3c7d539583bfe824c' },
   { name: 'last tick, evicted (g1)', state: () => LAST.evicted, guild: 'g1',
-    pin: '191cfff17ef3057fcb1db76b2d159d2578b79dd843edd61f0941bbcd080ed023' },
+    pin: 'e7989addda221cc8da7453091c66fd68048e06766492312a7354823a2c21fb73' },
   { name: 'last tick, before (g1)', state: () => LAST.before, guild: 'g1',
-    pin: '191cfff17ef3057fcb1db76b2d159d2578b79dd843edd61f0941bbcd080ed023' },
+    pin: 'e7989addda221cc8da7453091c66fd68048e06766492312a7354823a2c21fb73' },
   { name: 'last tick, after (g1)', state: () => LAST.after, guild: 'g1',
-    pin: '893100628de2b02f7ee3c908c594a73cf3acacbdc97b1373787c5cf30f5324f4' },
+    pin: '6e653d5a73a50f0624a2959ffaa5ee1bc5f3e7ed99311b70212230223e7d9bcb' },
 ];
 
 test('GUARD: without the window every Operations host renders as main rendered it; with it, only the countdown is new', () => {

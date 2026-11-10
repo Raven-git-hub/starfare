@@ -5714,7 +5714,7 @@ boundary so the later hex-map swap doesn't touch it.
     (Production and Consumption) share the fix. AS-BUILT in `production-console-model.md` (the sparkline note).
     **No engine change; no game number** — the constant governs pixels only, so no checklist entry. Sim
     2,768 → **2,774** (6 in `console-sparkline-span.test.js`), tools **100** (unchanged).
-- **2.6 (maintenance) — Droids retuned + spacecraft wear and deep maintenance (`docs/maintenance.md`).** RULED 09-11-26 (the maintenance design pass); 🔶 **in progress — slices 1–2 of 6 built.** Two streams and only two: **droids** (`droid_components`, weekly, per system, destroyed at 0 — built, retuned: one upkeep rate, guild life ×4) and **spacecraft** (wear only in flight; a guild-wide credit pool funded per cycle and drained per tick; at 0% free, time-only deep maintenance at a held system or own Outpost). **Miners and factories never wear** — their condition field is removed. A solo facet: no rival needed. Not the storyteller's stricken state or droid catastrophic failure (2.7). Slices, one PR each (`maintenance.md` §11): **(1)** droid retune + reserve setter · **(2)** remove asset condition · **(3)** craft wear + the pool · **(4)** deep maintenance · **(5)** the Maintenance tab · **(6)** the Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit. **Exit:** a craft flown to 0% stops at its first listed maintenance point and comes back at 100% after its time; an unfunded fleet wears twice as fast as a funded one; every number from `phase-1-tuning.md` §"Maintenance"; GP-neutral, credit-conserving, no-op byte-identical where nothing flies.
+- **2.6 (maintenance) — Droids retuned + spacecraft wear and deep maintenance (`docs/maintenance.md`).** RULED 09-11-26 (the maintenance design pass); 🔶 **in progress — slices 1–3 of 6 built.** Two streams and only two: **droids** (`droid_components`, weekly, per system, destroyed at 0 — built, retuned: one upkeep rate, guild life ×4) and **spacecraft** (wear only in flight; a guild-wide credit pool funded per cycle and drained per tick; at 0% free, time-only deep maintenance at a held system or own Outpost). **Miners and factories never wear** — their condition field is removed. A solo facet: no rival needed. Not the storyteller's stricken state or droid catastrophic failure (2.7). Slices, one PR each (`maintenance.md` §11): **(1)** droid retune + reserve setter · **(2)** remove asset condition · **(3)** craft wear + the pool · **(4)** deep maintenance · **(5)** the Maintenance tab · **(6)** the Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit. **Exit:** a craft flown to 0% stops at its first listed maintenance point and comes back at 100% after its time; an unfunded fleet wears twice as fast as a funded one; every number from `phase-1-tuning.md` §"Maintenance"; GP-neutral, credit-conserving, no-op byte-identical where nothing flies.
   - **Slice 1 — the droid retune + the reserve setter. BUILT 09-11-26** (engine + snapshot; no client). **No new
     number** — all from `phase-1-tuning.md` §"Maintenance". (a) **One upkeep rate:** `DROID_UPKEEP_PER_WEEK` is now
     a single constant, **1** `droid_components` per droid-week for both sources (the Syndicate's 2 is gone);
@@ -5751,6 +5751,37 @@ boundary so the later hex-map swap doesn't touch it.
     droids untouched (the starter heavy is still 0.5). Sim 2,785 → **2,797** (11 in
     `maintenance-asset-condition.test.js`, 1 client check in `deploy-picker-scope-client.test.js`); tools **100**
     (unchanged). **Next:** slice 3, craft wear + the pool.
+  - **Slice 3 — craft wear + the maintenance pool. BUILT 10-11-26** (engine + snapshot; no client). **No new number** —
+    all from `phase-1-tuning.md` §"Maintenance". New file **`sim/craft-maintenance.js`** (`sim/droids.js` untouched),
+    hooked once per guild at the head of tick step 5 (`stepVehicleArrivals`). (a) **Wear:** a craft wears only on a tick
+    it is `inTransit`, at light 6 / 3, medium 8 / 4, heavy 12 / 6, spycraft 48 / 24 units a tick (unmaintained /
+    maintained) of `CRAFT_WEAR_SCALE` = **483,840** — the LCM of the eight lives, computed at load behind a whole-rate
+    tripwire. **The pin:** a leg departing d and arriving a owns ticks d+1 … a (the wear runs before that tick's
+    landing), so a flight of L ticks wears exactly L — single leg, multi-leg and an Outpost-dock pause test-pinned.
+    Clamped at 0; no re-stamp; nothing else on the craft changes. (b) **The pool:** `guild.craftMaintenance = { budget?,
+    pool?, spentThisCycle?, spentLastCycle?, ranDryThisCycle? }`, all omit-when-0; per tick the flying craft, fewest units
+    first then id, are covered at 1 / 2 / 5 / 10 credits while the pool lasts (skip-and-continue), the credits to the
+    Syndicate ledger; a craft at 0% is excluded (RULED 10-11-26); no pro-rating (RULED). At the commitment-cycle boundary
+    the drain runs first, then the roll, then the refill of `max(0, min(budget, credits))` (RULED). Invariant 2 counts the
+    pools; `checkCraftMaintenance` pins the shape. (c) **Actions:** `setCraftMaintenanceBudget { guildId, budget }` and
+    `topUpCraftMaintenancePool { guildId, amount }` (1 … credits), refused loudly; no withdrawal; the journal line is the
+    tick record. (d) **Readout** (owner only): the guild row's `craftMaintenance { pool, budget, ceiling, spentLastCycle,
+    nextRefillTick }` and each vehicle row's `craftMaintenance { flightTicksLeftMaintained, flightTicksLeftUnmaintained,
+    covered? }`. (e) **Notice:** `maintenance_pool_dry` (`event-log.md` §18), at most once per guild per cycle, only for a
+    guild funding maintenance. **Deliberate re-pins:** every golden whose script flies a craft moved, because craft now
+    wear (unfunded): **189 pins in 19 test files**, each with a note at the golden. The proof was mechanical, two prongs:
+    (1) the whole suite on main (bb1a9c5) and on the branch, every sha256 logged raw and with every vehicle
+    `maintenanceCondition` and the added `craftMaintenance` / `maintenanceCovered` keys deleted — **20,708 digests, 329
+    of which moved raw**; every file logs exactly main's count, and every stripped digest on the branch is main's, line
+    for line, bar the four client files that hash rendered HTML (prong 2) and `galaxy-lifecycle` (it differs between two runs
+    of main itself — wall clock — and holds no pin); (2) **main's own test suite, run against the branch's engine
+    with the wear switched off and the added keys hidden from its hashes, passes 2,795 of 2,797** — the two that fail
+    are exactly the two non-hash expectations this slice changes on purpose (below) — which also covers the four client
+    GUARDs that hash rendered HTML (the craft rows' condition %, the only thing that moved there). The no-op
+    (an idle craft, no pool, across a cycle boundary) is byte-identical to main, pinned. Two non-hash expectations
+    updated: the vocabulary test counts fifteen types, and `vehicles.test.js`'s snapshot row gains the readout. Sim 2,797
+    → **2,829** (32 in `craft-maintenance.test.js`); tools **100** (unchanged). Checklist: "Maintenance slice 3 calls"
+    below. **Next:** slice 4, deep maintenance.
 - **2.7 — Lightweight bots + a first storyteller nudge.** Rule-based economic opponents that use the
   levers above (claim, build, toll, invest) enough to create tension, plus enough of a storyteller to
   lean on whoever's grown comfortable. *Full bot tiers, disposition, pirates and the narrative layer
@@ -5901,6 +5932,20 @@ repaired planet becomes; node richness/yield; `Planet.stats` fate (#33).
   **(6) Upkeep before builds.** At a week boundary a system's upkeep draws before that tick's dockyard step, so
   maintenance wins a contested `droid_components` stock against a droid build starting the same tick (§10's
   "self-build eats maintenance supply"). Deterministic; confirm the priority.
+- **Maintenance slice 3 calls (10-11-26, craft wear + the pool, `docs/maintenance.md` §2–§3) — built the plainest
+  way, flagged rather than ruled.** **(1) Who is told the pool "ran dry".** `maintenance_pool_dry` fires only for a
+  guild *funding* maintenance — a budget above 0, or a pool that held credits this cycle. A guild with budget 0 and an
+  empty pool (every guild, by default — and every bot) is unmaintained by choice and is never told; without the gate,
+  every guild flying a craft would get a daily notice it never asked for (and every flying golden would move by events,
+  not just condition). Confirm the gate. **(2) The notice's name, payload and once-per-cycle flag** —
+  `maintenance_pool_dry { pool, vehicleIds, nextRefillTick }`, the flag stored as `craftMaintenance.ranDryThisCycle`.
+  **(3) The covered flag before a craft's first flight tick** — a craft dispatched between ticks reads `covered: false`
+  until its first flight tick is drained (the flag describes the last tick actually charged). **(4) Where in the tick the
+  refill reads credits** — at the head of step 5, so after step 1's licence fee and before step 6's baseline
+  allocation on a boundary tick. **(5) The cycle is `state.windowN`** — the commitment cycle (1,440), so the ceiling is
+  Σ rate × `windowN`; a test galaxy with a short `windowN` refills on its short cycle. Deterministic either way;
+  confirm. **(6) A guild in debt** (credits below 0) refills nothing and cannot top up (1 … credits). As the doc's
+  "credits never go negative" reads; noted so it is visible.
 - **Maintenance slice 1 calls (09-11-26, the droid retune + the reserve setter, `docs/maintenance.md` §1) — built
   the plainest way, flagged rather than ruled.** *(⤳ (1) and (2) RULED 10-11-26; (2) BUILT 10-11-26 in maintenance
   slice 2. CLOSED.)* ~~**(1) The reserve's tick stamp.** §15.2 says every mutation records

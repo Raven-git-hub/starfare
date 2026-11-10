@@ -26,6 +26,7 @@ const {
   DROID, DROID_SOURCES, SYNDICATE_DROID_TARIFF, SYNDICATE_DROID_BATCHES, mintDroid,
   isDroidIdle, unassign, assignDroidRefusal, assignDroidTo, setDroidComponentReserve,
 } = require('./droids.js');
+const { setCraftMaintenanceBudget, topUpCraftMaintenancePool } = require('./craft-maintenance.js');
 const {
   isVehicleClass, vehicleSpec, vehicleId, nextVehicleSerial, resolveVehicleLocation, HEAVY_TRANSPORT,
 } = require('./vehicles.js');
@@ -1718,6 +1719,24 @@ function createSetDroidComponentReserveAction({ guildId, systemId, reserve }) {
   if (systemId === undefined) throw new Error('createSetDroidComponentReserveAction: systemId is required');
   if (reserve === undefined) throw new Error('createSetDroidComponentReserveAction: reserve is required');
   return { type: 'setDroidComponentReserve', guildId, systemId, reserve };
+}
+
+// setCraftMaintenanceBudget: set the guild's craft maintenance BUDGET — the whole credits moved from its credits into
+// its maintenance pool at each cycle boundary (maintenance slice 3; docs/maintenance.md §3). Shape is exactly
+// `{ guildId, budget }`, `budget` a whole number ≥ 0; 0 clears it back to the default (maintenance is opt-in).
+function createSetCraftMaintenanceBudgetAction({ guildId, budget }) {
+  if (guildId === undefined) throw new Error('createSetCraftMaintenanceBudgetAction: guildId is required');
+  if (budget === undefined) throw new Error('createSetCraftMaintenanceBudgetAction: budget is required');
+  return { type: 'setCraftMaintenanceBudget', guildId, budget };
+}
+
+// topUpCraftMaintenancePool: move `amount` credits from the guild's credits into its craft maintenance pool AT ONCE
+// (maintenance slice 3; docs/maintenance.md §3). Shape is exactly `{ guildId, amount }`, `amount` a whole number
+// 1 … the guild's credits. There is no withdrawal (ruled): once in the pool, credits leave only by paying for upkeep.
+function createTopUpCraftMaintenancePoolAction({ guildId, amount }) {
+  if (guildId === undefined) throw new Error('createTopUpCraftMaintenancePoolAction: guildId is required');
+  if (amount === undefined) throw new Error('createTopUpCraftMaintenancePoolAction: amount is required');
+  return { type: 'topUpCraftMaintenancePool', guildId, amount };
 }
 
 // cancelSyndicateCommission: withdraw a Syndicate commission that HAS NOT STARTED building
@@ -4123,6 +4142,37 @@ function validateAction(state, action) {
     return { valid: true };
   }
 
+  if (action.type === 'setCraftMaintenanceBudget') {
+    // Set the craft maintenance budget (maintenance slice 3; docs/maintenance.md §3). REFUSE, never clamp: no
+    // guild; a budget that is not a whole number ≥ 0 (credits are integers, §15.2 — 2.5, -1, "3", NaN refused).
+    // A budget above the guild's credits is legal: the refill takes what is there (§9).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (!Number.isSafeInteger(action.budget) || action.budget < 0) {
+      return { valid: false, reason: `budget must be a whole number of credits ≥ 0, got ${JSON.stringify(action.budget)}` };
+    }
+    return { valid: true };
+  }
+
+  if (action.type === 'topUpCraftMaintenancePool') {
+    // Top up the craft maintenance pool (maintenance slice 3; docs/maintenance.md §3). REFUSE, never clamp: no
+    // guild; an amount that is not a whole number ≥ 1; an amount larger than the guild's credits (credits are
+    // never driven negative by a top-up — so a guild at or below 0 credits cannot top up at all).
+    const guild = findGuild(state, action.guildId);
+    if (!guild) {
+      return { valid: false, reason: `no guild with id ${JSON.stringify(action.guildId)}` };
+    }
+    if (!Number.isSafeInteger(action.amount) || action.amount < 1) {
+      return { valid: false, reason: `amount must be a whole number of credits ≥ 1, got ${JSON.stringify(action.amount)}` };
+    }
+    if (action.amount > guild.credits) {
+      return { valid: false, reason: `guild ${guild.id} has ${guild.credits} credits — it cannot put ${action.amount} into its maintenance pool` };
+    }
+    return { valid: true };
+  }
+
   if (action.type === 'cancelSyndicateCommission') {
     // Cancel an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
     // commission"). REFUSE, never clamp — the dockyard cancelCommission's gate order.
@@ -6265,6 +6315,20 @@ function applyAction(state, action) {
     return next;
   }
 
+  if (action.type === 'setCraftMaintenanceBudget' || action.type === 'topUpCraftMaintenancePool') {
+    // Write through sim/craft-maintenance.js, the one writer of the record's shape (zeros omitted, an empty
+    // record omitted). The budget moves no credit now — it is read at the next cycle boundary's refill. The
+    // top-up moves `amount` from the guild's credits into its pool at once: both are the guild's own money, so
+    // the Syndicate ledger and the expected credit total do not move (invariant 2 counts the pool).
+    //
+    // THE TICK (§15.2): RULED 10-11-26 for guild-level settings — the record has no row to stamp, so the
+    // write-ahead journal line `{ tick, action }` is this mutation's record of its tick, as setDroidComponentReserve.
+    const guild = findGuild(next, action.guildId);
+    if (action.type === 'setCraftMaintenanceBudget') setCraftMaintenanceBudget(guild, action.budget);
+    else topUpCraftMaintenancePool(guild, action.amount);
+    return next;
+  }
+
   if (action.type === 'cancelSyndicateCommission') {
     // Withdraw an UNSTARTED Syndicate commission (docs/asset-purchase.md §"Cancelling a queued
     // commission"). Validate proved the entry exists, is this guild's, and has not started.
@@ -7017,6 +7081,8 @@ module.exports = {
   createUnassignDroidAction,
   createSetAutoReplaceAction,
   createSetDroidComponentReserveAction,
+  createSetCraftMaintenanceBudgetAction,
+  createTopUpCraftMaintenancePoolAction,
   createBuyDroidBatchAction,
   createCancelSyndicateCommissionAction,
   createAddOrderLineAction,

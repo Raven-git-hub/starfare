@@ -346,15 +346,16 @@ test('SIGNATURE: arraysSignature carries each array\'s id, job and dark flag, an
 // hashed and pinned. So a dark row is the only thing this slice changes; the test after this one proves which bytes
 // it changes. It touches nothing the slice added, so it passes on main's game.html too.
 // (The map hash repeats across the reach states: with the dark keys out, the same three arrays draw the same way.)
+// RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
 const AS_ON_MAIN = [
   { name: 'reach, before the abandon (g1)', state: () => EVICTED.before, guild: 'g1',
-    hub: 'db924698110e27a956d4b0d44807a59e98619a519f0b46bc41b66358bb167458',
+    hub: '91c89820414c7a891b9f9572765c48453984c2faa12ac13db5230ea8dc9a1840',
     map: 'cbec0d8cf4b74835d5250054c1d2f6a7bcf52c86c434cdf636e1c31312ad03d4' },
   { name: 'reach, before the abandon (g2)', state: () => EVICTED.before, guild: 'g2',
     hub: '700ec0791f447918a455e8261699edf7616dc7504b885376066f8bf3aec7de70',
     map: '5b269ad6d74ca7f369f4efeeb900858718e7f8cc99a19a41c08ec343193f8282' },
   { name: 'reach, abandoned (g1)', state: () => EVICTED.s, guild: 'g1',
-    hub: '47a79434899b9cf2400d170d70c206e490d420c202e2d3c1d72d18871afaaaf3',
+    hub: '65ff080e7fbcbd00869bf690aeb660468d86406ca81925fb8f06bf551b0f0168',
     map: 'cbec0d8cf4b74835d5250054c1d2f6a7bcf52c86c434cdf636e1c31312ad03d4' },
   { name: 'reach, abandoned (g2)', state: () => EVICTED.s, guild: 'g2',
     hub: '654fe14af9b8313d7a456bfe0a9c2b2536e537b21d5215c3b01368f759a1f305',
@@ -366,7 +367,7 @@ const AS_ON_MAIN = [
     hub: 'f4104d64ad1ecf9cbbcfe9a209e597c0d811b93d7dbf576e9d890747603f9e7f',
     map: '5d8352ea22d3786316666efe66e0f566bb2e6262c610304753ab25485c1b78d5' },
   { name: 'reach, re-planted (g1)', state: () => REWOKEN.s, guild: 'g1',
-    hub: '47a79434899b9cf2400d170d70c206e490d420c202e2d3c1d72d18871afaaaf3',
+    hub: '65ff080e7fbcbd00869bf690aeb660468d86406ca81925fb8f06bf551b0f0168',
     map: 'cbec0d8cf4b74835d5250054c1d2f6a7bcf52c86c434cdf636e1c31312ad03d4' },
   { name: 'reach, re-planted (g2)', state: () => REWOKEN.s, guild: 'g2',
     hub: '654fe14af9b8313d7a456bfe0a9c2b2536e537b21d5215c3b01368f759a1f305',

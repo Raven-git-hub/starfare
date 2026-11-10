@@ -400,11 +400,12 @@ test('THE SNAPSHOT: `stranded` rides on the guild\'s own asset rows (and the god
 // produces and never abandons. The state hash and all three views must not move by a byte — `stranded` is
 // omit-when-absent, and claims / stockpiles / prefectures are touched only by an abandon.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const GOLDEN_NO_ABANDON = {
   tick: 490,
-  state: '444de751eb464a0ff9ab6590d71e9f15448b904ea1460c1c2112829fd63e8b6f',
-  god: 'e7124149d48617e77ce8a2453e3e6e21a532f2c8840db2093f979a028c1238b0',
-  own: '8593c237aec1d86d5473d0475972e3c6d50f427d8758f344f89f278018592dc2',
+  state: '010a777766f130fc389de9721a3df2de1767025cad5c916b36a367d8bcc48864',
+  god: '0c708a25c034431402bb157108806d2ceaa544e7b168fea07bb1fae435b7cfc8',
+  own: '83c2d03fda1e3c83e6d74114dd506b78f76fb023a7e3976d4d7b53554b30ca6c',
   rival: 'bf6252d4c2b0197b0c01e95c2f43bfc1896be794107aaea9c542803e01b5ffc6',
 };
 

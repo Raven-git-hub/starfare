@@ -340,20 +340,21 @@ test('THE TRIPWIRE BITES — the void\'s stamp is a tick in the array\'s life; a
 
 // The hashes `main` gave at 291df19 for reachGalaxy() — on one tick, and after 760 more (the scans complete and the
 // lanes fly several laps) — with no abandon: computed by running tests/eviction-reach-script.js on that commit.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const GOLDEN_NO_ABANDON = {
   launched: {
     tick: 450,
-    state: '45ac292d67a046f4486f792c938a6f1ed7543d0cc9584ebf6a4b80d7512fbd68',
-    god: 'e7b98e7076edf85c1ed4377270454f41396ca6b3c0a5b5462c9d808eb89ad1d6',
-    own: '0c38478e0d6c6470f5f07b565bc4e734b73b4252f6d6fab524d1eef83b37371a',
-    rival: 'f45b9e4e0c476bb762feb7321c9607cd7f17db1c371f6039e4a9554ef01ffbee',
+    state: 'a1f9e82e5695b082834de2386319d1aa455c3bbf56224e7b489187d85fc0838d',
+    god: 'bcbc1a814a6a1fae1dce988e5e68807a5ee3dc45092d044cb018a9c615a234f1',
+    own: '33bbd852a2994dcd656b2bdee79010038456bec9143095ef45c904d8a1e3e84a',
+    rival: '1f2dfe81aaa0b48e24cde7920fb50b1c358595cc992c214bd81ac65665e752b2',
   },
   ticked: {
     tick: 1210,
-    state: '364b286bc3b03adceb3c7aa1b06904ce299e384d66eaba8998d4e25fcdfea1d1',
-    god: '604de8f1f0c7dcc0b979ebbd1bad2d85c2cc91c2962c3cc73150e710408af65d',
-    own: '286b4797e1fb2c4d470eda61489e2ee73f0902c6138c15a6e344a1b39fcfa73d',
-    rival: '4f5b0f8ddb964ddcfacae5670bc8141025f48806396e0878c0061b29b2787fa8',
+    state: '0ec9f402ade186dbc6e84322ae4acecb01e5c0d660446f3933750adcdf64229c',
+    god: 'caa7facbed33f1c15b87fd9c92102188b5478a4715e6b11e39c5116d12612cd9',
+    own: '3234484d9c8b1c4a02087463786b959ad05c7b1a6ce9234bec13e964a64f3f0a',
+    rival: '1698a8558108dbdbbc8636b40217930b88eb438808f26484057debfeb8f3e9b8',
   },
 };
 

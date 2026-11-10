@@ -285,19 +285,20 @@ test('TRIPWIRE — a droid of g1 standing in a system the rival now holds halts'
 
 // Recorded at 1cfea14 (the branch base) by running droid-loss-noop-script.js there.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const NOOP_PINS = {
   heldLanding: {
     tick: 1000,
     state: '8dfd3299dc71e7624774c1f791cf0c07a50fa3df158853a6cf18e455a5ed89dc',
-    god: '8f8d5de4afd021c435f731c76fc1a17144da3e8db410661f4e4b650697990086',
-    g1: '0305659e639714d9cc3e59d40b8fcbf93a2de9ab7bee98dfb86e8b975d5101a4',
+    god: '7dd0057d172bc1e59307e3cc05207e48c6d94572284505b89aab22d9defd7c7a',
+    g1: '004b0c556e2ef0fed81d2973f968c8fc4033e94cd112039ad0f6dcfe639e76ba',
     g2: '680565675a86425c1b73559529740cc532318820d96cc0259ee86edccf8947b5',
   },
   droidlessLoss: {
     tick: 480,
-    state: 'd7f19735db6bab85ada7df2084b8a4a03fd0d9e1dbd0a75ba86b2e4a5fe457be',
-    god: '3623004088b8fa33927474d7d375fb51173d3653a665ff1c01f8cedd603edcac',
-    g1: 'fad56d6f6e2c2546536f5f2167467e18b2eef9b4f2dfa8aeb7a58364f7d69382',
+    state: '470189429b370d5dfb69af57ccf040ac8422f8efc49c063d85efc96dd9e284f3',
+    god: 'cd032ea1f3fd6331f704c1ba2e02d33b33ae578937e005f94b737f3f119ca65f',
+    g1: '15c7d8df1a32377071d6079ea85de9034724d2d1a5037f903fe5dd78bf715f9f',
     g2: 'c5ea4c37497e63d0efd476852c8c35656dd4afd60a10853cd071888ba91028d6',
   },
 };

@@ -50,6 +50,7 @@ const {
   DROID, DROID_WEEK_TICKS, DROID_COMPONENTS, deployedDroidsIn, droidComponentReserveFor,
   isDroidMaintained, weeklyUpkeepFor, SYNDICATE_DROID_TARIFF, SYNDICATE_DROID_BATCHES,
 } = require('./droids.js');
+const { craftMaintenanceReadout, vehicleMaintenanceReadout } = require('./craft-maintenance.js');
 const { BUILDABLE_VEHICLE_KINDS, vehicleSpec, resolveVehicleLocation, vehicleCoords } = require('./vehicles.js');
 const { outpostDockTurnaround, OUTPOST_DEPLOY_RANGE } = require('./outposts.js');
 const { copyScanJob, isArrayAttached } = require('./deep-scan-arrays.js');
@@ -1137,6 +1138,11 @@ function snapshotVehicleRow(v, fuelPrice, dockStatus) {
     // so the client can later say "deploy failed — hex taken / out of range; craft pulled back". A fresh
     // copy; cleared by the craft's next dispatch. Omit-when-absent.
     ...(v.deployFailed ? { deployFailed: { ...v.deployFailed } } : {}),
+    // craftMaintenance (maintenance slice 3; docs/maintenance.md §3): ticks of flight left to 0% at the maintained
+    // and the unmaintained rate, and — only while flying — whether the pool covered it on its most recent flight
+    // tick. Engine-derived (sim/craft-maintenance.js); the client computes none of it. On the owner's row only — a
+    // rival's guild row carries no vehicles (sim/fog.js RIVAL_GUILD_FIELDS).
+    craftMaintenance: vehicleMaintenanceReadout(v),
   };
   if (v.status === 'inTransit' && v.trip) {
     let totalUnits = 0;
@@ -1705,6 +1711,10 @@ function buildGodsEyeSnapshot(state) {
       // droidUpkeep (droid engine slice 5; docs/droids.md §5): per system holding a DEPLOYED droid, what the
       // client's maintenance panel will show — derived on read, nothing stored. Own row only (fogged).
       ...droidUpkeepField(state, g),
+      // craftMaintenance (maintenance slice 3; docs/maintenance.md §3): the guild's craft maintenance pool readout —
+      // { pool, budget, ceiling, spentLastCycle, nextRefillTick }, every number engine-derived. PRESENT ONLY when the
+      // guild has a craft or a pool record, so a craft-less snapshot is byte-identical. Own row only (fogged).
+      ...craftMaintenanceField(state, g),
       // savedRoutes: the guild's SAVED ROUTES (transport-model.md §11.9) — what the client's "Load Route"
       // list reads (slice 2b). Each row is `{ id, name, waypoints: [{ anchor, action? }] }`, FRESH-copied
       // (copyRouteWaypoint copies each anchor and manifest line) so a consumer mutating the snapshot can
@@ -2462,6 +2472,13 @@ function droidUpkeepField(state, guild) {
     };
   }
   return { droidUpkeep: out };
+}
+
+// craftMaintenanceField(state, guild) -> `{ craftMaintenance: readout }`, or `{}` for a guild with no craft and no
+// pool record (sim/craft-maintenance.js craftMaintenanceReadout).
+function craftMaintenanceField(state, guild) {
+  const readout = craftMaintenanceReadout(state, guild);
+  return readout ? { craftMaintenance: readout } : {};
 }
 
 // buildSnapshot(state, guildId?) — THE ONE ENTRY POINT, two lenses (docs/exploration-model.md §7,

@@ -471,25 +471,26 @@ const stripCarry = (view) => {
   }
   return view;
 };
+// RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
 const AS_ON_MAIN = [
   { name: 'reach, before the loss (g1)', state: () => REACH.pre, guild: 'g1', changed: [],
-    pin: 'd5ecb075c3bc34c77696919bf18fd9e33c2f3c86e1801b4a8ed9608e04da1c9b' },
+    pin: 'a426694ac0554d55fce32911c91ae1c524aedaccb133770ada308ffa424a7f05' },
   { name: 'reach, before the loss (g2)', state: () => REACH.pre, guild: 'g2', changed: [],
     pin: '19704479ecde91a085bc111f97af914cd10ef932b4c6c021cbd653452d405ddd' },
   { name: 'reach, lost (g1)', state: () => REACH.lost, guild: 'g1', changed: ['ops-lane-notices'],
-    pin: 'f6055924fba86e56c5ee6a5e1f89d3b517299bf825b6cd7c3ea5b4c0a3748e0b' },
+    pin: 'fbb8fb087438bc77d475be64f7a048a77c73ec0abe3d9fbaac388ae74d0ff0b6' },
   { name: 'reach, lost (g2)', state: () => REACH.lost, guild: 'g2', changed: ['ops-lane-notices'],
     pin: 'c5d78942a99313d349420785bd0c3564c1e6fb749f44ce7fe95a13406cf45e31' },
   { name: 'in place, held (g1)', state: () => IN_PLACE.held, guild: 'g1', changed: [],
-    pin: '241569ee28d2650e0a475ea63d6dc1edffd622ff2bd34eab842fa1832b6cc549' },
+    pin: '663e453c4ac6c8280cbf9cce173ede95e6f4803557833365a4212c8ff21c4df6' },
   { name: 'in place, stranded (g1)', state: () => IN_PLACE.stranded, guild: 'g1', changed: ['ops-idle-list'],
-    pin: 'cc653ff8f7a7f31e77e370c76bdd894a0d8b82c744b3ea2db7a814aeb92622a2' },
+    pin: 'e2a10649935dd877916986603801cac14463ba1a6351877d23b453bece5d72ff' },
   { name: 'in place, loaded (g1)', state: () => IN_PLACE.loaded, guild: 'g1', changed: ['ops-idle-list'],
-    pin: '4994e4e0750ee75cf6dc4baf9b053045e27772ff9b68f3494b2b27f8f8e3a820' },
+    pin: '0c81dad17a8f847f6fe9471e552771c3d57f823fab1c683299a8724dd7c67eaa' },
   { name: 'sweep, fallow (g1)', state: () => SWEPT.fallow, guild: 'g1', changed: ['ops-idle-list'],
-    pin: 'cc653ff8f7a7f31e77e370c76bdd894a0d8b82c744b3ea2db7a814aeb92622a2' },
+    pin: 'e2a10649935dd877916986603801cac14463ba1a6351877d23b453bece5d72ff' },
   { name: 'sweep, swept (g1)', state: () => SWEPT.s, guild: 'g1', changed: [],
-    pin: '893100628de2b02f7ee3c908c594a73cf3acacbdc97b1373787c5cf30f5324f4' },
+    pin: '6e653d5a73a50f0624a2959ffaa5ee1bc5f3e7ed99311b70212230223e7d9bcb' },
   { name: 'sweep, swept (g2)', state: () => SWEPT.s, guild: 'g2', changed: [],
     pin: 'e29d82d4f5c5d0336e46551bba82898cf74d5f759ce3e0a1a6084b59481715d7' },
 ];

@@ -53,7 +53,7 @@ is gone (§2).
 
 ## 2. The two types & the four writers
 
-The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine and client halves BUILT; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine and client halves BUILT; a twelfth, `salvage_window_lapsed`, is written when a lost system's salvage window runs out on assets still stranded there — §16, engine half BUILT; and a thirteenth, `salvage_window_reminder`, is written at each window boundary to the owner of an open salvage window that still holds something of its own — §16, engine half BUILT):
+The type vocabulary this slice writes is exactly two, in `sim/events.js` (a third, `deploy_failed`, is written by the 2.2 deploy pipeline's retreat — §10, engine and client halves BUILT; a fourth and fifth, `delivery_space_warning` and `delivery_turned_back`, are written by a Syndicate BUY to an Outpost — §11, engine and client halves BUILT; a sixth, `outpost_packed`, is written by an Outpost reclaim — §12, engine and client halves BUILT; a seventh and eighth, `scan_complete` and `scan_voided`, are written by a Deep Scan Array finishing its job — §13, engine and client halves BUILT; a ninth, `system_lost`, is written by an eviction when a Prefecture is destroyed — §14, engine and client halves BUILT; a tenth and eleventh, `assets_inherited` and `assets_swept`, are written by the sweep when a claim takes another guild's stranded machines — §15, engine and client halves BUILT; a twelfth, `salvage_window_lapsed`, is written when a lost system's salvage window runs out on assets still stranded there — §16, engine half BUILT; and a thirteenth, `salvage_window_reminder`, is written at each window boundary to the owner of an open salvage window that still holds something of its own — §16, engine half BUILT; a fourteenth, `droids_spent`, is written when deployed droids wear out — §17, engine half BUILT; and a fifteenth, `maintenance_pool_dry`, is written the first tick in a cycle a guild's craft maintenance pool cannot pay for a flying craft — §18, engine half BUILT):
 
 - **`licence_lapsed`** — an ordinary licence lapsed back to unlicensed.
 - **`venture_closed`** — a venture was removed.
@@ -1079,3 +1079,37 @@ treats a type it does not know as a licence lapse (the gap every engine-first no
 golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts fourteen types; the
 notice itself is pinned by `sim/tests/droid-decay.test.js`.
 
+## 18. The `maintenance_pool_dry` notice — the craft maintenance pool could not pay (2.6 maintenance slice 3, 10-11-26)
+
+**What it records.** On a tick, the guild's craft maintenance **pool could not pay** for at least one of its craft
+flying that tick that is still **above 0%** (`docs/maintenance.md` §3) — so that craft wore at the fast, unmaintained
+rate. It is the first moment of a dry spell, a discrete fact that cannot be re-derived later (the pool may be refilled
+or topped up by the time the player looks), so it is an EVENT (§0). ONE writer: `stepCraftMaintenance`
+(`sim/craft-maintenance.js`), run per guild at the head of tick step 5 (`stepVehicleArrivals`, `design.md` §15.6);
+the notice's `tick` is the tick the drain could not pay on. Passive and informational — no action-item. Born unread.
+
+**Who gets it, and how often.** The owning guild only, **at most once per guild per cycle** (the 1,440-tick commitment
+cycle the pool refills on): the first such tick in a cycle writes it and sets `craftMaintenance.ranDryThisCycle`; the
+flag clears at the cycle boundary, after that tick's drain, so a pool still dry in the next cycle is reported once more.
+
+**Only a guild that is funding maintenance** — a budget above 0, or a pool that held credits at some point in this
+cycle (`pool > 0` or `spentThisCycle > 0` at the start of the drain). A guild with budget 0 and an empty pool has not
+opted in (`maintenance.md` §3 "Opt-in"): its craft are simply unmaintained, and it is never told its pool "ran dry".
+A craft **at 0%** is not in the drain at all (RULED 10-11-26), so it never triggers the notice.
+
+**The payload, self-contained:**
+- `pool` — whole credits left in the pool after the tick's drain (the reason it could not pay: less than a rate);
+- `vehicleIds` — the craft above 0% left uncovered that tick, sorted;
+- `nextRefillTick` — the tick the next cycle refill lands on.
+(The type string, the payload names and the funding gate are on the roadmap decision checklist, "Maintenance slice 3
+calls".)
+
+**The surface — today.** No new snapshot field for the notice: `guilds[].events` carries the row, `attention.notices`
+counts it while unread, and the per-guild view shows a guild only its own (fogged from rivals). **Not built: the client**
+— the inbox row and its voice wait for maintenance slice 5 (the Maintenance tab); no tripwire requires client wording
+for every type, so none was added. Until then the live client's renderer treats an unknown type as it treats every
+engine-first notice.
+
+**A NO-OP elsewhere.** A guild that never funds maintenance writes no such notice, so every log, snapshot and golden
+whose craft fly unfunded is unchanged by it. The vocabulary test (`sim/tests/events.test.js`) now counts fifteen types;
+the notice itself is pinned by `sim/tests/craft-maintenance.test.js` (section J).

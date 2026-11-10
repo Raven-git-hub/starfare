@@ -362,19 +362,20 @@ test('THE SNAPSHOT + FOG: g2 sees the inherited machines as ordinary idle rows; 
 // state and every view must not move by a byte — the sweep adds no field to any existing record, and on these paths
 // it finds nothing to do.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const GOLDEN_NEVER_SWEEPS = {
   ownReclaim: {
     tick: 500,
-    state: 'bbd1e0d4ab8490ae2bbc471774efb83b4fc9b9f7ac30be741fac6c05cce4e2e1',
-    god: '2f449cf974cc8a4941af7392b23eac455fb5542f234233367ca83458e3c9045a',
-    g1: '4c7018b0b95cdc6197b275e8fb233ac02610eef5b22503799d5fb8255c6c5384',
+    state: '625357851a1276bc2c8ccfc1d4a059bf0fcee139a86e498e79731a68f3afba13',
+    god: '17ba5d03c25f1c0cba458175336a13e02453894dc4b452fd104e26df84f7a9ca',
+    g1: 'e019f90bdaf1b90a20382fe0ac93e3716701d5585228958cc09311f578aed62e',
     g2: 'caba472b6d43f307756ec6a37330058de1719b4bfc2e154efc3008b741b8c776',
   },
   emptyFallowClaim: {
     tick: 470,
-    state: 'd6c49fdf31ca979369408ad6a8c473ad5cc4d35a1f18966a7ac55b93f0b64c3e',
-    god: 'a18f7f5371609e9e21c0e79b700b7121f6874a99960d38ad9c7e8203aeea4c46',
-    g1: 'b00bd072af0b66b5c2dd7669459a7aaa7060334bf69590e0158fb30191c26f4c',
+    state: '8b435a61dd818297aed873f6fcb1d1dad7d70466152cbed5a54e24fd7a6123a2',
+    god: '0a009c9777881908c40aa8b5400da58591d1773f8da54abf74e950baed8a14df',
+    g1: '1e84a2f20e08fcf831d0c4cf6a9da2f8f9504f03d3e453476b71828c7052d396',
     g2: '8ad2b3019763491620ab19fa49f73c7f48d201f4cd36f24075285f1ed68ce455',
   },
 };
