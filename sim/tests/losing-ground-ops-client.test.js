@@ -56,6 +56,9 @@ function cut(src, re, what) {
   return m;
 }
 const kitKindsSrc = cut(html, /<script id="kit-kinds">([\s\S]*?)<\/script>/, 'the kit-kinds script')[1];
+// Maintenance slice 6: the Operations craft cards format a craft's condition through the page's shared helpers
+// (window.__fmtCondition), so every sandbox that runs the Operations script loads them first, as the page does.
+const sharedMaintSrc = cut(html, /<script id="craft-maintenance-shared">([\s\S]*?)<\/script>/, 'the craft-maintenance shared helpers')[1];
 // ⤳ losing ground client slice 4: a stranded machine's IDLE row asks the deploy popup's carrier list
 // (window.__carriersFor) whether to offer Salvage, so the hub runs beside that popup's script, as on the page.
 const deployWireSrc = cut(html, /<script id="deploy-kit-wire">([\s\S]*?)<\/script>/, 'the deploy popup script')[1];
@@ -182,7 +185,7 @@ function opsPage(snapshot, guildId, src = opsSrc) {
       __landmarkNameAt: landmarkNameAt,
     },
   };
-  vm.runInNewContext(kitKindsSrc + src, sandbox);
+  vm.runInNewContext(sharedMaintSrc + kitKindsSrc + src, sandbox);
   vm.runInNewContext(deployWireSrc, sandbox);
   return {
     page: sandbox,
@@ -209,7 +212,7 @@ function noticePage(snapshot, guildId) {
       __refreshNow: () => Promise.resolve(),
     },
   };
-  vm.runInNewContext(kitKindsSrc + guildHelpersSrc + prettyGoodSrc + noticeSrc, sandbox);
+  vm.runInNewContext(sharedMaintSrc + kitKindsSrc + guildHelpersSrc + prettyGoodSrc + noticeSrc, sandbox);
   const paragraphs = () => [...sandbox.document.getElementById('noticeBody').innerHTML.matchAll(/<p>([^<]*)<\/p>/g)].map((m) => unescape(m[1]));
   return { page: sandbox, paragraphs };
 }
@@ -472,25 +475,26 @@ const stripCarry = (view) => {
   return view;
 };
 // RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 6): a transport card's condition % now ROUNDS DOWN (the one shared display rule, window.__fmtCondition, RULED 10-11-26), so a worn craft can read one percent lower. With the page's formatter put back to main's Math.round, the branch renders main's (88f1536) exact bytes for every pin here — the rounding is the only change.
 const AS_ON_MAIN = [
   { name: 'reach, before the loss (g1)', state: () => REACH.pre, guild: 'g1', changed: [],
-    pin: 'a426694ac0554d55fce32911c91ae1c524aedaccb133770ada308ffa424a7f05' },
+    pin: 'fbd9684472a629791328492313e1c3968a0700e886895ab8b9aa858c44e6ecc9' },
   { name: 'reach, before the loss (g2)', state: () => REACH.pre, guild: 'g2', changed: [],
     pin: '19704479ecde91a085bc111f97af914cd10ef932b4c6c021cbd653452d405ddd' },
   { name: 'reach, lost (g1)', state: () => REACH.lost, guild: 'g1', changed: ['ops-lane-notices'],
-    pin: 'fbb8fb087438bc77d475be64f7a048a77c73ec0abe3d9fbaac388ae74d0ff0b6' },
+    pin: '4fe94c0e4c3d62840ad6e3a579056250634548ae4e71b84e1b5e067ed298b3bc' },
   { name: 'reach, lost (g2)', state: () => REACH.lost, guild: 'g2', changed: ['ops-lane-notices'],
     pin: 'c5d78942a99313d349420785bd0c3564c1e6fb749f44ce7fe95a13406cf45e31' },
   { name: 'in place, held (g1)', state: () => IN_PLACE.held, guild: 'g1', changed: [],
-    pin: '663e453c4ac6c8280cbf9cce173ede95e6f4803557833365a4212c8ff21c4df6' },
+    pin: 'ffc26dbbeb0fe9fa6b6d7b47d199195c4d2d900a3ddaac12fa6faa9381c5b5c0' },
   { name: 'in place, stranded (g1)', state: () => IN_PLACE.stranded, guild: 'g1', changed: ['ops-idle-list'],
-    pin: 'e2a10649935dd877916986603801cac14463ba1a6351877d23b453bece5d72ff' },
+    pin: 'b9dc7c60925f81b06318b20299921e90bdd14b1a82126e91857354a775d8e704' },
   { name: 'in place, loaded (g1)', state: () => IN_PLACE.loaded, guild: 'g1', changed: ['ops-idle-list'],
-    pin: '0c81dad17a8f847f6fe9471e552771c3d57f823fab1c683299a8724dd7c67eaa' },
+    pin: '57730c79a0ae7fdaa5c3c5bb744fc6cb6f8f20297ef185958691dff0b3c215ac' },
   { name: 'sweep, fallow (g1)', state: () => SWEPT.fallow, guild: 'g1', changed: ['ops-idle-list'],
-    pin: 'e2a10649935dd877916986603801cac14463ba1a6351877d23b453bece5d72ff' },
+    pin: 'b9dc7c60925f81b06318b20299921e90bdd14b1a82126e91857354a775d8e704' },
   { name: 'sweep, swept (g1)', state: () => SWEPT.s, guild: 'g1', changed: [],
-    pin: '6e653d5a73a50f0624a2959ffaa5ee1bc5f3e7ed99311b70212230223e7d9bcb' },
+    pin: '553935b062ff4f3df888c00392ba42af3bd2b0f8c7fdbbb5a28a176a16f07f36' },
   { name: 'sweep, swept (g2)', state: () => SWEPT.s, guild: 'g2', changed: [],
     pin: 'e29d82d4f5c5d0336e46551bba82898cf74d5f759ce3e0a1a6084b59481715d7' },
 ];

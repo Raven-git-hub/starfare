@@ -47,6 +47,9 @@ function cut(re, what) {
 const maybe = (re) => (html.match(re) || [''])[0];
 
 const kitKindsSrc = cut(/<script id="kit-kinds">([\s\S]*?)<\/script>/, 'the kit-kinds script')[1];
+// Maintenance slice 6: the Operations craft cards format a craft's condition through the page's shared helpers
+// (window.__fmtCondition), so every sandbox that runs the Operations script loads them first, as the page does.
+const sharedMaintSrc = cut(/<script id="craft-maintenance-shared">([\s\S]*?)<\/script>/, 'the craft-maintenance shared helpers')[1];
 // The Operations hub's whole script, without its IIFE wrapper, so its own functions land at the sandbox's top level.
 const opsSrc = cut(/<script id="operations-tab-wire">\n\(function\(\)\{\n([\s\S]*?)\n\}\)\(\);\n<\/script>/, 'the Operations script')[1];
 // The galaxy map's array passes: the colours, the array's name, this slice's look, the marker pass and the tag pass.
@@ -130,7 +133,7 @@ function opsPage(snapshot, guildId) {
       __landmarkNameAt: landmarkNameAt,
     },
   };
-  vm.runInNewContext(kitKindsSrc + opsSrc, sandbox);
+  vm.runInNewContext(sharedMaintSrc + kitKindsSrc + opsSrc, sandbox);
   sandbox.window.__opsOpen();
   return {
     page: sandbox,
@@ -191,7 +194,7 @@ function detailPage(guildId, sig = sigSrc) {
   let refreshes = 0;
   const sandbox = { window: { __refreshDetail: () => { refreshes += 1; } }, GAME: { guildId }, LIVE: {} };
   vm.createContext(sandbox);
-  vm.runInContext(kitKindsSrc + groundKitsSrc + arraysSigSrc
+  vm.runInContext(sharedMaintSrc + kitKindsSrc + groundKitsSrc + arraysSigSrc
     + 'function poll(snap){ var me = (snap.guilds || []).filter(function(g){ return g.id === GAME.guildId; })[0] || null;'
     + assetsReadSrc + claimsReadSrc + knownReadSrc + arraysReadSrc + occupancyReadSrc + sig + '}', sandbox);
   return { poll: (view) => sandbox.poll(view), refreshes: () => refreshes, sig: () => sandbox.LIVE.siteSig };
@@ -347,15 +350,16 @@ test('SIGNATURE: arraysSignature carries each array\'s id, job and dark flag, an
 // it changes. It touches nothing the slice added, so it passes on main's game.html too.
 // (The map hash repeats across the reach states: with the dark keys out, the same three arrays draw the same way.)
 // RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 6): a transport card's condition % now ROUNDS DOWN (the one shared display rule, window.__fmtCondition, RULED 10-11-26), so a worn craft can read one percent lower. With the page's formatter put back to main's Math.round, the branch renders main's (88f1536) exact bytes for every pin here — the rounding is the only change.
 const AS_ON_MAIN = [
   { name: 'reach, before the abandon (g1)', state: () => EVICTED.before, guild: 'g1',
-    hub: '91c89820414c7a891b9f9572765c48453984c2faa12ac13db5230ea8dc9a1840',
+    hub: '86792ab5121550d6c77eee86cf15dc5e846b8cf020e34260e74d14b778b6b68e',
     map: 'cbec0d8cf4b74835d5250054c1d2f6a7bcf52c86c434cdf636e1c31312ad03d4' },
   { name: 'reach, before the abandon (g2)', state: () => EVICTED.before, guild: 'g2',
     hub: '700ec0791f447918a455e8261699edf7616dc7504b885376066f8bf3aec7de70',
     map: '5b269ad6d74ca7f369f4efeeb900858718e7f8cc99a19a41c08ec343193f8282' },
   { name: 'reach, abandoned (g1)', state: () => EVICTED.s, guild: 'g1',
-    hub: '65ff080e7fbcbd00869bf690aeb660468d86406ca81925fb8f06bf551b0f0168',
+    hub: 'df27c5483234e08fe187ddb0ff78ae7cce3f545ffdc996ae1dcdd8fbe8e31b4d',
     map: 'cbec0d8cf4b74835d5250054c1d2f6a7bcf52c86c434cdf636e1c31312ad03d4' },
   { name: 'reach, abandoned (g2)', state: () => EVICTED.s, guild: 'g2',
     hub: '654fe14af9b8313d7a456bfe0a9c2b2536e537b21d5215c3b01368f759a1f305',
@@ -367,7 +371,7 @@ const AS_ON_MAIN = [
     hub: 'f4104d64ad1ecf9cbbcfe9a209e597c0d811b93d7dbf576e9d890747603f9e7f',
     map: '5d8352ea22d3786316666efe66e0f566bb2e6262c610304753ab25485c1b78d5' },
   { name: 'reach, re-planted (g1)', state: () => REWOKEN.s, guild: 'g1',
-    hub: '65ff080e7fbcbd00869bf690aeb660468d86406ca81925fb8f06bf551b0f0168',
+    hub: 'df27c5483234e08fe187ddb0ff78ae7cce3f545ffdc996ae1dcdd8fbe8e31b4d',
     map: 'cbec0d8cf4b74835d5250054c1d2f6a7bcf52c86c434cdf636e1c31312ad03d4' },
   { name: 'reach, re-planted (g2)', state: () => REWOKEN.s, guild: 'g2',
     hub: '654fe14af9b8313d7a456bfe0a9c2b2536e537b21d5215c3b01368f759a1f305',

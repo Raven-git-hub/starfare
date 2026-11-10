@@ -410,7 +410,9 @@ test('NO ASSET CONDITION — both pickers list a machine as "<kind> · <id>", wi
   }
   // Craft condition is a different thing and stays (it goes live in maintenance slice 3): the Dispatch popup's
   // Maint line and the transport card both still render the vehicle's maintenanceCondition as a percent.
-  assert.ok(html.includes("$('dpMaint').textContent = maint + '%';"), 'the Dispatch popup still shows craft condition');
-  assert.equal((html.match(/var maint = Math\.round\(\(typeof v\.maintenanceCondition === 'number' \? v\.maintenanceCondition : 0\) \* 100\);/g) || []).length, 2,
-    'both craft displays still read v.maintenanceCondition');
+  // RE-PINNED, maintenance slice 6: the only change is that both now format it through the one shared display rule
+  // (window.__fmtCondition — rounded down, "<1%" just above 0, RULED 10-11-26) instead of each rounding it in place.
+  assert.ok(html.includes("$('dpMaint').textContent = window.__fmtCondition(v.maintenanceCondition);"), 'the Dispatch popup still shows craft condition');
+  assert.equal((html.match(/var maint = window\.__fmtCondition\(v\.maintenanceCondition\);/g) || []).length, 1,
+    'the transport card still reads v.maintenanceCondition');
 });

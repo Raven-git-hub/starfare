@@ -194,6 +194,9 @@ function finaliser(plan, claims) {
     },
     PLAN: plan, PLAYER_GUILD: { ownedSystemIds: ['sys_home'] }, systemToGuild: new Map(Object.entries(claims)),
     anyDeadLeg: () => false, deployTarget: () => null, copyWaypoint: (wp) => ({ ...wp }),
+    // Maintenance slice 6: canFinalise also holds a 0% craft's route past its maintenance stop. These heavies are not at
+    // 0%, so the planner asks no quote and the stop is -1 — the same answer routeZeroStop gives them on the page.
+    routeZeroStop: () => -1,
     exitPlanning() {},
   };
   const src = ['finalisePlanning', 'canFinalise', 'isKitPlan', 'kitWaypoints'].map((name) => fn(html, name)).join('');

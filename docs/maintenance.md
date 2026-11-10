@@ -505,17 +505,80 @@ figure comes from:*
 *The notices' words and the `maintenance` lane-end reason are recorded where those notices are (`docs/event-log.md`
 §17–§19, "the client half") and in `docs/transport-model.md` §11.6.)*
 
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 6, the tab's half.** Two changes to the row, both RULED 10-11-26 on the slice-5
+checklist. **(1) The button** — each craft row gains a last column, **Deep maintenance**, a button replacing slice 5's
+"Early deep maintenance available" text. It is §7.2's button by the same shared rule (`window.__deepMaintButton`):
+enabled only when the row's `earlyMaintenanceAllowed` is true, otherwise disabled with a short display-only reason under it
+("Already in deep maintenance", "Already queued for a maintenance bay", or "Only below 20%, idle, at a system you hold or
+your own Outpost with a free bay" — one fixed sentence; the client never works out which condition fails). A press posts
+`startDeepMaintenance { guildId, vehicleId }`; a refusal shows "Refused: <the engine's reason>" under the button until the
+tick moves on; an accepted press asks for the next snapshot and the row changes only when it arrives. **(2) Condition** —
+drawn through the one shared display rule (§7.5's note): rounded **down** to a whole percent, "<1%" for anything above 0
+and below 1%, "0%" only for exactly 0.)*
+
 **7.2 The craft's Dispatch popup** — its disabled **Maintenance** button becomes the early deep
 maintenance action (§4.6), enabled only when the snapshot says it is allowed.
+
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 6** (client only; `client/game.html`; no engine, snapshot or fog change; no
+new number).* *The pre-plan button `#dpMaintBtn` now reads **Deep maintenance**. The rule it shares with the tab row lives
+in one new block, `<script id="craft-maintenance-shared">`: `window.__deepMaintButton(v)` → `{ allowed, why }` —
+`allowed` is the vehicle row's `craftMaintenance.earlyMaintenanceAllowed`, nothing else; `why` is display only (above).
+Disabled, the button carries the reason as its title and as a quiet line under the manifest ("Deep maintenance: …").
+A press posts `startDeepMaintenance { guildId, vehicleId }` through `window.__startDeepMaintenance` (`POST /action`). Refused:
+"Refused: <the engine's reason>" under the manifest. Accepted: the popup asks the shell for the next snapshot and redraws
+its head and buttons from the craft's NEW row — the button then reads disabled, "Already in deep maintenance". The head's
+Maintenance figure uses the shared condition rule.)*
 
 **7.3 The Outpost screen** — its parked **Maintenance Hangar** becomes the 5 slots (who is in each,
 ready in …) and the queue.
 
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 6.** The parked box is now `#omHangar`, drawn by `renderHangar(row)` in the Outpost
+manager on open and on every poll, from the Outpost row's `maintenance` readout only: one line per bay (`bays` of them),
+each **empty** or the craft in it (class · #NN, from its vehicle row) over "ready in …" (the bay's published `eta`,
+formatted as time); then **Queue** — the craft in the published order ("Next", "Queue 02", …), or "No craft waiting for a
+bay." The bay numbers are list positions — the engine does not name bays — so a craft's number can move up when one
+before it leaves. A rival's Outpost row carries no `maintenance` (owner only, `sim/fog.js`): the box says "Only the owner
+sees this Outpost's bays." and draws no bays. The Outpost screen draws no craft condition.)*
+
 **7.4 The route builder** — for a craft at 0%, it stops offering waypoints after the first
 maintenance point, reading the dispatch quote (§4.5).
 
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 6.** The client never works out which stops are maintenance points; it reads the
+engine's quote (`window.__fetchQuote` → `POST /vehicle/quote`) and its refusal `{ code: 'zero-condition-maintenance-stop',
+waypointIndex }` (`window.__zeroStopIndex`; the plain words are `window.__zeroStopWords`). **The map planner**, for a craft
+whose published `maintenanceCondition` is exactly 0 (an idle craft does not wear, so it cannot change while planned): (a)
+when a hex is proposed after at least one stop, it asks the quote for the route **plus** that hex; while the answer is out
+the chip's Add / Confirm are disabled ("Checking the route…"); if the quote names an earlier stop as the end, they stay
+disabled and the chip says "This craft is at 0%, so it goes into deep maintenance at stop N (name) — the route must end
+there." (b) For the route as it stands (2+ stops — e.g. a loaded lane, or a reorder), it asks the quote too: the stop the
+quote names is flagged "at 0% the craft goes into deep maintenance here — end the route here", every stop after it "past
+the maintenance stop — remove this stop", and **Finalise is held**. Each list of stops is asked once (`PLAN.zeroQuotes`).
+**The Dispatch popup's Finalise view** reads its own quote the same way: the plain sentence in place of the engine's raw
+one, the same two row flags, and Dispatch held (as for any refused quote). The deploy map's target row shows the plain
+sentence too. **A craft above 0% asks nothing new** — its builder is exactly as before; if it reaches 0% mid-route, §4.3
+applies at run time.)*
+
 **7.5 Operations** — drops the miner / factory condition % (and the deploy picker's); craft cards
 keep condition and gain the deep-maintenance state.
+
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 6.** (The miner / factory % went in slice 2.) **IDLE TRANSPORTS now also lists a
+craft in deep maintenance** (status `maintenance`, in a bay or queued) — before, it listed idle craft only, so such a
+craft was drawn nowhere in Operations. Its card groups and is named by the published `deepMaintenance.point` (an Outpost
+by name, not the bare hex it stands on — slice 5's rule for the tab), and gains a line: **"In deep maintenance at <point>
+— ready in …"** (`readyTick` − the snapshot's `tick`, as time) or **"Queued for a bay at <point> (position N)"**
+(`queuePosition`). Its hold is locked, so it shows no Dock; Dispatch stays (the popup then shows why Deep maintenance is
+disabled). A group's count reads "N idle · M in maintenance" when any are. The card's redraw signature carries the
+condition as drawn and the deep-maintenance line, so a countdown moves while the list is open.)*
+
+*(**⤳ RULED 10-11-26 and AS-BUILT — one display rule for craft condition** (slice-5 question 2). Rounding to the nearest
+percent misled at the two edges that matter: 0.4% read "0%" though the craft is not at 0% (and will not stop for
+maintenance); 19.6% read "20%" though early maintenance is allowed. So every place a craft's condition is drawn uses
+**one** formatter, `window.__fmtCondition` (`<script id="craft-maintenance-shared">`): **round down** to a whole percent;
+**"<1%"** for any condition above 0 and below 1%; **"0%"** means exactly 0. (A float guard: `0.29 × 100` is
+`28.999…` in JavaScript, so the answer is checked against the whole percents either side, compared as fractions — 0.29
+reads 29%.) The surfaces: the Maintenance tab's craft rows, the Dispatch popup's head, Operations' craft cards (and their
+redraw signature). The Outpost screen draws no craft condition. Display only; a droid's condition (Venture Management) is
+not a craft's and is unchanged.)*
 
 ---
 
@@ -616,3 +679,7 @@ droid reserve default 0 (unchanged). Derived, not tuned: `DROID_WEAR_SCALE` 161,
    *(⤳ **BUILT 10-11-26** — §7.1's AS-BUILT note; with it, MESSAGES' words for the four maintenance notices and
    `droids_spent` (`docs/event-log.md` §17–§19), and the `maintenance` lane-end reason in words.)*
 6. **The Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit** (client).
+   *(⤳ **BUILT 10-11-26** — §7.1's slice-6 note and §7.2–§7.5's AS-BUILT notes: the Deep maintenance button on the Dispatch
+   popup and on each Maintenance-tab row, the Outpost Maintenance Hangar, the route builder's 0% stop, Operations' craft
+   cards in deep maintenance, and one display rule for craft condition. Client only. **With it, maintenance (roadmap 2.6)
+   is complete.**)*

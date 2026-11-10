@@ -44,6 +44,9 @@ function cut(src, re, what) {
 const kitKindsSrc = cut(html, /<script id="kit-kinds">([\s\S]*?)<\/script>/, 'the kit-kinds script')[1];
 const deployWireSrc = cut(html, /<script id="deploy-kit-wire">([\s\S]*?)<\/script>/, 'the deploy popup script')[1];
 const opsScript = cut(html, /<script id="operations-tab-wire">([\s\S]*?)<\/script>/, 'the Operations script')[1];
+// Slice 6: the tab and Operations format condition, and the tab draws its Deep maintenance button, through the page's
+// shared helpers — so the sandbox loads them first, as the page does.
+const sharedMaintSrc = cut(html, /<script id="craft-maintenance-shared">([\s\S]*?)<\/script>/, 'the craft-maintenance shared helpers')[1];
 // The Maintenance tab's script without its IIFE wrapper, so its state `M` and its functions (onSend) can be reached.
 const maintSrc = cut(html, /<script id="maintenance-tab-wire">\n\(function\(\)\{\n([\s\S]*?)\n\}\)\(\);\n<\/script>/, 'the Maintenance script')[1];
 // The shell's tab switching: hideOverlayPanels, openTab and closeTab, as the page has them.
@@ -130,7 +133,7 @@ function tabPage(snapshot, { guildId = 'g1', send } = {}) {
   };
   sandbox.window.openTab = null;
   vm.createContext(sandbox);
-  vm.runInContext(bridgesSrc + kitKindsSrc + opsScript, sandbox);
+  vm.runInContext(bridgesSrc + sharedMaintSrc + kitKindsSrc + opsScript, sandbox);
   vm.runInContext(deployWireSrc, sandbox);
   vm.runInContext(maintSrc + shellTabsSrc, sandbox);
   return {
@@ -150,7 +153,7 @@ function tabPage(snapshot, { guildId = 'g1', send } = {}) {
 
 // ---- reading what is drawn --------------------------------------------------------------------------------------
 
-const COLS = ['craft', 'where', 'condition', 'state', 'flightLeft'];
+const COLS = ['craft', 'where', 'condition', 'state', 'flightLeft', 'deep'];   // 'deep': slice 6's Deep maintenance column
 const text = (cell) => unescape(cell.replace(/<\/span><span[^>]*>/g, ' + ').replace(/<[^>]*>/g, ''));
 // drawn(page) -> every figure on the tab, keyed by where it stands: 'fig:<label>' (the pool's figures),
 // '<craftId>:<column>' (a craft row's cells), '<systemId>:<label>' (a droid block's rows).
@@ -247,14 +250,18 @@ test('fleet: one row per craft, each with its own state — covered, uncovered, 
   const home = sysName(F.H);
   const dest = `En route to Deep Space (${F.D.q}, ${F.D.r})`;
   const cm = (id) => rows[id].craftMaintenance;
-  // Flying, covered: maintained, and its flight time at the maintained rate.
+  // Flying, covered: maintained, and its flight time at the maintained rate. RE-PINNED, slice 6: it has flown one tick,
+  // so it is a hair under 100% — slice 5 rounded that to "100%", the one display rule (rounded down) reads "99%".
   assert.equal(cm(FLEET.slow).covered, true, 'premise');
+  assert.ok(rows[FLEET.slow].maintenanceCondition < 1 && rows[FLEET.slow].maintenanceCondition > 0.99, 'premise: just under 100%');
   assert.deepEqual([d[`${FLEET.slow}:craft`], d[`${FLEET.slow}:where`], d[`${FLEET.slow}:condition`], d[`${FLEET.slow}:state`], d[`${FLEET.slow}:flightLeft`]],
-    ['Light Transport #09', dest, '100%', 'Maintained', `${eta(cm(FLEET.slow).flightTicksLeftMaintained)} (maintained)`]);
-  // Flying, uncovered: wearing fast, at the unmaintained rate.
+    ['Light Transport #09', dest, '99%', 'Maintained', `${eta(cm(FLEET.slow).flightTicksLeftMaintained)} (maintained)`]);
+  // Flying, uncovered: wearing fast, at the unmaintained rate. RE-PINNED, slice 6: it left at 50% and has flown a tick,
+  // so it is a hair under — slice 5 rounded that to "50%", rounded down it reads "49%".
   assert.equal(cm(FLEET.worn).covered, false, 'premise');
+  assert.ok(rows[FLEET.worn].maintenanceCondition < 0.5 && rows[FLEET.worn].maintenanceCondition > 0.49, 'premise: just under 50%');
   assert.deepEqual([d[`${FLEET.worn}:where`], d[`${FLEET.worn}:condition`], d[`${FLEET.worn}:state`], d[`${FLEET.worn}:flightLeft`]],
-    [dest, '50%', 'Wearing fast — not covered', `${eta(cm(FLEET.worn).flightTicksLeftUnmaintained)} (unmaintained)`]);
+    [dest, '49%', 'Wearing fast — not covered', `${eta(cm(FLEET.worn).flightTicksLeftUnmaintained)} (unmaintained)`]);
   // Idle: no wear, both rates.
   assert.deepEqual([d[`${FLEET.idle}:where`], d[`${FLEET.idle}:state`], d[`${FLEET.idle}:flightLeft`]],
     [home, 'Not flying — no wear', `${eta(80_640)} maintained · ${eta(40_320)} unmaintained`]);
@@ -266,13 +273,15 @@ test('fleet: one row per craft, each with its own state — covered, uncovered, 
   // Queued: its position.
   assert.equal(d[`${FLEET.queued}:state`], 'Queued for a maintenance bay (position 1)');
   assert.equal(d[`${FLEET.queued}:where`], outpostName(F.OUTPOST));
-  // Idle at 10% at HOME: early maintenance available, as plain text — no button (slice 6).
+  // Idle at 10% at HOME: early maintenance allowed. RE-PINNED, slice 6 (RULED 10-11-26): slice 5's plain text "Early deep
+  // maintenance available" is now the row's enabled Deep maintenance button (sim/tests/maintenance-slice6-client.test.js
+  // covers the button); the state cell reads as any idle craft's.
   assert.equal(cm(FLEET.low).earlyMaintenanceAllowed, true, 'premise');
-  assert.equal(d[`${FLEET.low}:state`], 'Not flying — no wear + Early deep maintenance available');
+  assert.equal(d[`${FLEET.low}:state`], 'Not flying — no wear');
   assert.equal(d[`${FLEET.low}:condition`], '10%');
-  assert.equal(p.fleet().includes('<button class="mt-btn" type="button" data-mt-send="early'), false);
+  assert.equal(d[`${FLEET.low}:deep`], 'Deep maintenance');
   assert.equal(Object.keys(rows).filter((id) => cm(id).earlyMaintenanceAllowed).length, 1, 'only that one');
-  assert.equal(p.fleet().split('Early deep maintenance available').length - 1, 1);
+  assert.equal(p.fleet().split('Early deep maintenance available').length - 1, 0, 'slice 5\'s text is gone');
 });
 
 // ---- 3. Droids --------------------------------------------------------------------------------------------------
@@ -417,7 +426,8 @@ test('no arithmetic: change one snapshot field and exactly the figure that reads
     ['readyTick', fleetSnap, (s) => { v(s, FLEET.bays[0]).craftMaintenance.deepMaintenance.readyTick += 5; }, [`${FLEET.bays[0]}:state`]],
     ['queuePosition', fleetSnap, (s) => { v(s, FLEET.queued).craftMaintenance.deepMaintenance.queuePosition = 4; }, [`${FLEET.queued}:state`]],
     ['deepMaintenance.point', fleetSnap, (s) => { v(s, FLEET.bays[0]).craftMaintenance.deepMaintenance.point = { kind: 'system', systemId: F.H }; }, [`${FLEET.bays[0]}:where`]],
-    ['earlyMaintenanceAllowed', fleetSnap, (s) => { v(s, FLEET.low).craftMaintenance.earlyMaintenanceAllowed = false; }, [`${FLEET.low}:state`]],
+    // RE-PINNED, slice 6: the flag now drives the Deep maintenance column (the button), not the state text.
+    ['earlyMaintenanceAllowed', fleetSnap, (s) => { v(s, FLEET.low).craftMaintenance.earlyMaintenanceAllowed = false; }, [`${FLEET.low}:deep`]],
     ['location', fleetSnap, (s) => { v(s, FLEET.idle).location = { landmarkKind: 'system', landmarkId: DROIDS.second }; }, [`${FLEET.idle}:where`]],
     ['class', fleetSnap, (s) => { v(s, FLEET.idle)['class'] = 'spycraft'; }, [`${FLEET.idle}:craft`]],
     ['tick', fleetSnap, (s) => { s.tick += 1; }, ['fig:Next refill', ...FLEET.bays.map((id) => `${id}:state`)]],

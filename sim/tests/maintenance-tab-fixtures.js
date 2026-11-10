@@ -148,4 +148,51 @@ function notices() {
   return { entered, finished, cut, laned, early };
 }
 
-module.exports = { fleet, droids, notices, X, D, OH, OUTPOST, H, AT_H };
+// ---- slice 6 (docs/maintenance.md §7.2–§7.5) ----------------------------------------------------------------------
+
+// buttons() — fleet()'s galaxy plus the craft the Deep maintenance button and the route builder are proved on:
+//   low   — fleet's medium at 10%, idle at HOME: below 20% at a system g1 holds, so early maintenance is allowed;
+//   at20  — a medium at exactly 20%, idle at HOME: refused (only strictly below 20%);
+//   away  — a medium at 10%, idle on a bare hex: refused (not at a maintenance point);
+//   full  — a medium at 10%, idle at the Outpost whose 5 bays are full: refused (an early request never queues);
+//   zero  — a light at 0%, idle on a bare hex (not a point, so the sweep leaves it idle): its routes are limited;
+//   above — a light at 50%, idle on the same hex: its routes are not.
+function buttons() {
+  const f = fleet();
+  let { s } = f;
+  let at20; let away; let full; let zero; let above;
+  ({ s, id: at20 } = spawn(s, MEDIUM_TRANSPORT, AT_H, 0.2));
+  ({ s, id: away } = spawn(s, MEDIUM_TRANSPORT, X, 0.1));
+  ({ s, id: full } = spawn(s, MEDIUM_TRANSPORT, OH, 0.1));
+  ({ s, id: zero } = spawn(s, LIGHT_TRANSPORT, X, 0));
+  ({ s, id: above } = spawn(s, LIGHT_TRANSPORT, X, 0.5));
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  return { s, low: f.low, at20, away, full, zero, above, bays: f.bays, queued: f.queued };
+}
+
+// hangar() — an Outpost with its 5 bays full and THREE craft queued, the bays holding two classes so their ready times
+// differ. Two waves, all at 0%: three lights and two heavies take the five bays (the heavies, slower, arrive later and
+// need twice as long), then three more lights arrive and queue. `empty` is the same galaxy's Outpost before any craft
+// arrives, for the Hangar's empty states.
+function hangar() {
+  let s = K.kitGalaxy({ credits: 100_000, fuelHoard: 10_000_000 });
+  s = accept(s, createSpawnOutpostAction({ guildId: 'g1', anchorSystemId: H, coords: { ...OH } }));
+  const empty = s;
+  const wave = (classes) => {
+    const ids = [];
+    for (const cls of classes) {
+      let id;
+      ({ s, id } = spawn(s, cls, X, 0));
+      ids.push(id);
+    }
+    for (const id of ids) s = fly(s, id, [{ ...OH }]);
+    s = runUntil(s, (x) => ids.every((id) => craftOf(x, id).status === 'maintenance'));
+    return ids;
+  };
+  const inBays = wave([LIGHT_TRANSPORT, LIGHT_TRANSPORT, LIGHT_TRANSPORT, HEAVY_TRANSPORT, HEAVY_TRANSPORT]);
+  const queued = wave([LIGHT_TRANSPORT, LIGHT_TRANSPORT, LIGHT_TRANSPORT]);
+  assert.deepEqual(checkInvariants(s, s.tick), []);
+  return { s, empty, inBays, queued };
+}
+
+module.exports = { fleet, droids, notices, buttons, hangar, X, D, OH, OUTPOST, H, AT_H };
