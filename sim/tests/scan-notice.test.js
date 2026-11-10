@@ -217,30 +217,31 @@ test('scanTargetName: a system\'s name, a planet\'s designation, the raw id when
 // (JSON.stringify(buildSnapshot(state[, guildId]))). On main no scan writes a notice, so A's log was empty at
 // every step. If a pin moves, the slice changed more than the notice: find out why before re-pinning.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const SCAN_STEPS_ON_MAIN = {
   l1Done: {
     state: 'a27839cb0dff004a4a0f07870477792c25160cf60a1d2d09ae5bdd51c4b119a5',
-    godsEye: '4fd445f4360e3701de9a38ed3f2b69ceabdefec7472dd7e14f05e2f94434adf7',
-    [A]: '576243e76b75b46a8753020f1bb56c2528bb4fa668f3064fe67facb481b001c9',
-    [B]: '18ee3209e575aefcf8cc3e3101b3d064db7bd1165a8e61e1d0ade838061be015',
+    godsEye: '5042e1ac7d3308bc0b4181812c657fb5e88e7d3031ce2f41352c1def8b64df9c',
+    [A]: '8d5ee6869a13f3907f206cdf088116faa32f22fc4d9ea9593734b4b6eb4add84',
+    [B]: 'd6c0ccf94354434bd075f66e5bd2dacad31ad4d63ac6496c564a79bd9d8e8651',
   },
   l2Done: {
     state: 'a707d826cc3b831c6db6827193c9e15f430739b49de96c3aa8d24d8086c9edc8',
-    godsEye: '2f94d8ab5cd68c7c1f3b482d91ba9e4ea445acf7929e692be4cb436bdd6ecb0f',
-    [A]: '8e9a63b07521dea3bba9de7210911c53fd368a651e2a6c862b7792c1beb3facb',
-    [B]: '7fff8af6e08c4c96705af31931015122a9c6cfc68144e4a952f72ff93938a6d9',
+    godsEye: '81c657dde628531e9419250eb4ee6ba5d3db53c8125eddaef7e3d8607d269e5f',
+    [A]: '0e9ec314a1f625e4a8d1f9ec3d32aeb411eb4682b89f5ab18c02e48f59905705',
+    [B]: '3e3341ac5165226d86d2bf7acef5a0c64b5aee11ebd536e5a5e3c0155c35513c',
   },
   repeatDone: {
     state: '65b8d08a4f8ef0a2c1624b6f0b3ef86575653e539e57805645c685e625c05b53',
-    godsEye: '2c2fc1ecdf99dc4c5388f23586dc47af95e532ea852d5b46eaab926de359f585',
-    [A]: '2650237653418562392b9818ae997d28d34db26638ec25821f7ad35bd2749cf5',
-    [B]: '59d02fe63ad1dad633bd8ad6556bab7a41cae6249db6057fcefab5c743f538ba',
+    godsEye: 'edc0e907241d1bd4a25c19a663833ac560615b86e66ed59b05077b5a90bbdd4e',
+    [A]: 'b1b4b4d3bb93eba050e339f337ef86c76d12963a8ce4d0ffce949bb909e7118b',
+    [B]: 'bc3fe1fe3ad923ccdd6eda87f3d0d3eebdf454beeede6180ce0bcc04e7b8a109',
   },
   voided: {
     state: '09bc619b7cb7e922129cdb384a72e271e7b7b809b5bb4ff378ce4ea352062c1a',
-    godsEye: '7524bbe1991318605258b18a8ffcc942041c54c96ef863cde2834866d340d609',
-    [A]: 'eb08076ed25d6cd166fb7eca750d6643453ee9961ac393857b9fc01cf8a7d6bb',
-    [B]: 'cfc208ce59d8dbc4c0d34eb43b8058762afe80bd5bd4661078f3cbcfa9aee699',
+    godsEye: '21d3211d09165d24aa60ea7c5add8929529663be34c52b9de9ab3f45c77c16a3',
+    [A]: 'b179a9260af059ed1a613ab603c8fb210d1da904cff95cc22151d0870d25027e',
+    [B]: '949a98a649773e72d16b007a5b51899b87736e808b53a9a66e4a5ca042ed86fd',
   },
 };
 // How many scan notices each step should have written to A's log, in order.

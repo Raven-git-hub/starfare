@@ -225,7 +225,7 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
   assert.equal(v.id, 'vehicle_g1_mediumTransport_01', 'a fresh stable id from the per-guild mint serial');
   assert.deepEqual(v.location, { landmarkKind: 'system', landmarkId: DEST }, 'minted at the destination system landmark');
   assert.equal(v.status, 'idle', 'minted idle — nothing moves it this slice');
-  assert.equal(v.maintenanceCondition, 1, 'new = full (inert)');
+  assert.equal(v.maintenanceCondition, 1, 'new = full (a Syndicate delivery is not the craft flying — no wear)');
   assert.equal(v.speed, VEHICLE_SPECS[MEDIUM_TRANSPORT].speed);
   assert.equal(v.capacity, VEHICLE_SPECS[MEDIUM_TRANSPORT].capacity);
   assert.equal(v.fuelCostToRun, VEHICLE_SPECS[MEDIUM_TRANSPORT].fuelCostToRun);
@@ -240,6 +240,8 @@ test('buy end-to-end: found → buy → build → deliver → an idle transport 
     cargo: {}, // 2.2 cargo slice 1: the row surfaces the hold as a stable {} (empty here — a minted craft carries none)
     // 2.2 read-only Outpost Manager: the hold space figures — capacity (per-class cap) + used (0, empty).
     capacity: VEHICLE_SPECS[MEDIUM_TRANSPORT].capacity, used: 0,
+    // maintenance slice 3: the engine-derived flight ticks left to 0% — a new medium, its two lives (no `covered`: idle).
+    craftMaintenance: { flightTicksLeftMaintained: 120_960, flightTicksLeftUnmaintained: 60_480 },
   }]);
   assert.deepEqual(checkInvariants(s, s.tick), []);
 });

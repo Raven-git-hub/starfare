@@ -153,18 +153,53 @@ function checkFuelConservation(state) {
 }
 
 // Invariant 2 — conservation of credits.
+// The craft maintenance pool (maintenance slice 3, docs/maintenance.md §3) is the guild's own money held aside,
+// so it counts: credits → pool is internal to the guild, pool → ledger the one sanctioned transfer.
 function checkCreditConservation(state) {
   const guildCredits = state.guilds.reduce((sum, g) => sum + g.credits, 0);
-  const actual = guildCredits + state.syndicate.ledger;
+  const maintenancePools = state.guilds.reduce((sum, g) => sum + ((g.craftMaintenance && g.craftMaintenance.pool) || 0), 0);
+  const actual = guildCredits + maintenancePools + state.syndicate.ledger;
   const expected = state.audit.expectedCreditTotal;
   if (actual !== expected) {
     return [{
       rule: 'conservation-of-credits (invariant 2)',
       where: 'global',
-      detail: { guildCredits, syndicateLedger: state.syndicate.ledger, actual, expected },
+      detail: { guildCredits, maintenancePools, syndicateLedger: state.syndicate.ledger, actual, expected },
     }];
   }
   return [];
+}
+
+// The craft maintenance record and flag (maintenance slice 3, sim/craft-maintenance.js). Each number is a whole
+// credit count > 0 (a 0 is omitted, so a stored 0 is a broken writer); the flag is `true` or absent; no other
+// key; an empty object is never stored. A vehicle's `maintenanceCovered` is `true` or absent.
+const CRAFT_MAINTENANCE_KEYS = new Set(['budget', 'pool', 'spentThisCycle', 'spentLastCycle', 'ranDryThisCycle']);
+function checkCraftMaintenance(state) {
+  const out = [];
+  for (const g of state.guilds || []) {
+    for (const v of g.vehicles || []) {
+      if (v.maintenanceCovered !== undefined && v.maintenanceCovered !== true) {
+        out.push({ rule: 'vehicle-maintenance-covered-is-true-or-absent', where: `guild:${g.id}.vehicle:${v.id}.maintenanceCovered`, detail: { value: v.maintenanceCovered } });
+      }
+    }
+    const rec = g.craftMaintenance;
+    if (rec === undefined) continue;
+    const where = `guild:${g.id}.craftMaintenance`;
+    if (!rec || typeof rec !== 'object' || Array.isArray(rec) || Object.keys(rec).length === 0) {
+      out.push({ rule: 'craft-maintenance-is-a-non-empty-object', where, detail: { value: rec } });
+      continue;
+    }
+    for (const [key, value] of Object.entries(rec)) {
+      if (!CRAFT_MAINTENANCE_KEYS.has(key)) {
+        out.push({ rule: 'craft-maintenance-known-key', where: `${where}.${key}`, detail: { value } });
+      } else if (key === 'ranDryThisCycle') {
+        if (value !== true) out.push({ rule: 'craft-maintenance-flag-is-true-or-absent', where: `${where}.${key}`, detail: { value } });
+      } else if (!Number.isSafeInteger(value) || value < 1) {
+        out.push({ rule: 'craft-maintenance-whole-credits-above-0-or-absent (§15.2)', where: `${where}.${key}`, detail: { value } });
+      }
+    }
+  }
+  return out;
 }
 
 // Checks one numeric field for the §15.2 conventions and (optionally) invariant
@@ -3215,6 +3250,7 @@ function checkInvariants(state, tick) {
   const violations = [
     ...checkFuelConservation(state),
     ...checkCreditConservation(state),
+    ...checkCraftMaintenance(state),
     ...checkNonNegativityAndIntegrality(state),
     ...checkBatchCarry(state),
     ...checkTimedProduction(state),

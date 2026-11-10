@@ -465,9 +465,10 @@ test('THE LANE, next door, on a galaxy created before the spacing repair: once a
 // Recorded on main at 8795070 — BEFORE this slice — by running this file's `galaxy()` (and the same galaxy with one
 // array deployed by hand on the first free hex of home's ring, in hexesAt's scan order) and hashing its state
 // (hashState) and its god's-eye lens (JSON.stringify(buildSnapshot(state))). No array stands on a centre in either.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const ON_MAIN = {
   bare: { state: 'ce63fb71820a7fafdf526755af7225c31d967e065e80ed26af35f74eee574827', godsEye: 'e6fb8c089957c780526c019296fcdea0537d6ec18e3a7d021872e94e9ba5fe0b' },
-  ringArray: { state: '21d18199f10a83310c07574670791c1edd28946af660370c96981d496174b46d', godsEye: 'ba5a3ff509573b20730a3c9f889cbb2cffe6d0322fc3450643b24adfe806b317' },
+  ringArray: { state: '21d18199f10a83310c07574670791c1edd28946af660370c96981d496174b46d', godsEye: 'f708c8d09a2246cb472ad5c03897b4e2c73032bcf9d26fad652ea98c2074ee96' },
 };
 
 // withoutHeldCentres(snapshot) -> the lens with each guild's held centres taken back out of its deepScan lane —

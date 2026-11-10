@@ -551,10 +551,11 @@ test('DETERMINISM: two runs are byte-identical; save → restore is byte-identic
 // and retreat, and the range / landmark / occupied refusals of both triggers. If one of these moves, the
 // generalisation changed the outpost path: find out why before re-pinning.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const OUTPOST_PATH_ON_MAIN = {
-  manualDeploy: { state: 'a5e7858f06b631ce37b63d24eddf9ec5c697e94a34e246b647e60e78f76b32ef', godsEye: 'aa4e05c6c5ca63a4a9819bb051d3a2d9052c357d50e746ed7e81c5c8b52cbae3' },
-  arrivalDeploy: { state: '47ff6f567ca596e98e165dc7d4d2f23add262918f9410df620164c20adbb330e', godsEye: '136fe1438e47430d7f6d7cb92ca86edef5e66fa89fe6b99643b23237cd6c918b' },
-  arrivalRetreat: { state: '0e6cef52bcfe23aae2a37ab3f25d090010090d334032307885941fbdfbd71073', godsEye: '875ad0e56cc1ba4fd8ce46fac9cb471c790d17c4997ccd5af88b39c39052f0ca' },
+  manualDeploy: { state: '45d0dece337a53eb33498bff6e29f6fffae15279d4f45fc34c425722f9b40b21', godsEye: '3c4b312d67e94a52a61b17b29becb4a33fa6dd2150aa8dfdc7242bdc1ea90c6d' },
+  arrivalDeploy: { state: '500d853b9b504c4d462a188cf4358d854f65d529eac06fd47282db914911117b', godsEye: '87f29df9abbf6b9f527fbf81ef5be142c78068d367212ada80a0e1851535d946' },
+  arrivalRetreat: { state: '9b1613d9494509f8933a8d38421da887d023a125ad05e4fcb989f4a3eee43862', godsEye: '7fa8169a93adaf8dfd9e5cc68a826c036fb916675e2308e6bed293357d98f029' },
   reasons: '73debece18be90a63c6876e2b67908ee3de8c72b86fce6f20b4a744cc4dd2df8',
 };
 // ⤳ 09-10-26 (roadmap 2.5, the settlement-surface engine slice): founding now records the home system's
@@ -563,10 +564,11 @@ const OUTPOST_PATH_ON_MAIN = {
 // that the slots are the only thing that moved; the full states are re-pinned here. The god's-eye pins and
 // the refusals did not move (the lens carries no record).
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const OUTPOST_PATH_STATE_WITH_SLOTS = {
-  manualDeploy: 'bbf58f5388e9cc77bd40f4028b06933a96b46dd4b8bc92303ba67f2a16187d66',
-  arrivalDeploy: '71adfc2fd20575549c83d279892bae4ff16fb83d12828b8fbc3052020110f5dc',
-  arrivalRetreat: '6b0cb478c5498069e07a4caffb37061ac687997bae26cf1a21b09c054b5aa7a4',
+  manualDeploy: 'bc6cd6e635b03044d7fc48f4664e64a65d127615ed625605a3824f8b9ca13edb',
+  arrivalDeploy: '8d8cee9c572744739700d8f41684358fc4639f8d746e2437238bedf2ecd31e85',
+  arrivalRetreat: '77faa4138085ee65e9d441ec4073bb0f2c438ecb0d0eca7dcb8e977fe2cbc55a',
 };
 
 test('THE OUTPOST PATH IS BYTE-IDENTICAL to main before the array: same placements, anchors, retreat and refusals', () => {

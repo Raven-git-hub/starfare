@@ -441,11 +441,12 @@ test('systemId MOVES ONLY THROUGH THE FERRY — the engine writes `.systemId =` 
 // exactly that field and must reproduce them byte for byte, and pins the field itself beside them. The rival's view
 // is unstripped — the window is fogged from it, so it never moved.)
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const GOLDEN_NO_SALVAGE = {
   tick: 930,
-  state: 'edaa823e527ebe78d283eb75cd7b29b6857b4ac4325eaa8ffd8af27a313573d2',
-  god: 'eb48ce360f6081ba2ff3f675af1bdb9442c873dfd131f8534261bf23f10c48b7',
-  own: '558c0e885dfb39f615c2367bbcfb8bd21854a24ffd636c56fb999047a62e8f0c',
+  state: 'c3c27c8232aa1ea51a37dfc813073847342d385a17affd24c1e86037482f86dc',
+  god: 'b26a5b57bbd1e0300562c021e61198f2a213088dead5d8cd889f6cfce8114bd2',
+  own: 'f0137457142d02087e0b5cde29164b0f91353ab1f36a7d46d415c27b9d631857',
   rival: '6a31a2179b6d2d4ca7a36a2e702190bcbcd7651701af2ec19e8619773461bf79',
 };
 

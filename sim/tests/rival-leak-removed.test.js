@@ -86,105 +86,112 @@ const guildOf = (s, id) => s.guilds.find((g) => g.id === id);
 // that commit and hashing each step: the state (hashState), the state with `withoutRivalFacts` applied, the
 // god's-eye lens, and each guild's view with `withoutRivalGround` applied (JSON.stringify(buildSnapshot)).
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const ON_MAIN = {
   founded: {
     state: '801034143340e86024112907f6cdc564cb62bb4c80dbf3ea0997405725313b1b',
     strippedState: '801034143340e86024112907f6cdc564cb62bb4c80dbf3ea0997405725313b1b',
-    godsEye: '75f849ea0b3810119115d88da6fc150e2a1551c02d432a8b1f23056a4b858a59',
+    godsEye: '72110db1e1e7e3f314dd0facc25c99d18549eb0a2d07daedf7ce20f35c661490',
     strippedView: {
-      [A]: 'e561fe21ff30e8760e4a0079bdf1af8074e9df3b72e8e53bdd58ebe1d1385695',
-      [B]: 'f45b54f04849c8acc1ab6bce7ceccebcacf5a901436f5059d9c772cfb943f4b5',
+      [A]: '500af5f3da7b6f24753651273ff307b5d7853fdee4cb25a041f8c24072617137',
+      [B]: '745c3cfe694878ece1e7acaedf75fd74814f29eacdf4c7c1cfc8121e1e0ce9ab',
     },
   },
   licensed: {
     state: '09101b2fed9ba81bed401dc63fedab56a85ceeb5b98ca0bc40d754f7f9f37ae9',
     strippedState: '36b022e8ca6b35d7e60dc47409e721039c7e586b9913cbb80351b1dab31ed2c7',
-    godsEye: '1be7a9d5fbc89282c798523b6b705a65967c5cac57d79579f4d9fec35dc38318',
+    godsEye: '302f2c230c92021eea81f736264de127e24b99a15fef627f08e01bbf27799385',
     strippedView: {
-      [A]: 'b650462f2b0eede4bae51c1bb63638864f25ccedd1752f126ccf3dadde33b0c0',
-      [B]: '2fc6c0983896126226c502ebb4dbe349ee2283d1138ccd6e6d7a46a369b08922',
+      [A]: 'b8b355476c1b3ddcb7d199ed2fb9bbeaf1d686e1add90253416a973d096fb356',
+      [B]: 'ea58724896d21e43cb02a50bc81363548a1bcacaa7c99ba8965ccb8f0c5f3659',
     },
   },
   closed: {
     state: '4f9cd1f2e4e6c6c502d66d7d2d85961f37a5decd080dbfbc3f5be07e5a324825',
     strippedState: '0eaa0ec3f85d163ce088c0972cf18a8483ae732f72653fffd26eeefe5027093f',
-    godsEye: '5482140dbad11263201d5c580a30f1e4ff665bcba6744f463746deef32f6db2d',
+    godsEye: '9d2c977a1f6ba5cd18afb9c0549c0cddf7e07f9ed05b233bafe659df42dab601',
     strippedView: {
-      [A]: 'a8a8e9de3dc91cfd97ff4f9a3b7f08149a1ff1bb12cd3d3ab0eacecbb29aa3b6',
-      [B]: 'f369a2e1a230455af2fc20bf52ab43f718fa727647ba47baa2b5aba105a3f01a',
+      [A]: 'd690dfa1879b84cda023939e7791c0f106a8fd94e95b37c20614150a8ad0bda1',
+      [B]: '855e47f581beaeceb59d01e1f0606335b2b818bd56364debf65953b2cdf74f22',
     },
   },
 };
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const SOLO_ON_MAIN = {
   state: '14c1d81dbc60b84c7faa38cd22329f8db680745999f89a24ce9107c91c986d71',
-  godsEye: 'cadc6b7f0349d79267141fee5840d4263398e9357e834bdad9ba56bb9963d8c9',
-  view: 'f49991770dd2fb2ddc7763655fa3f0a959ab3b0bcb2dba439bad444575f93869',
+  godsEye: '7d1c8b87fd80400ac053dc58cb188564a248f1aaf6437e24ceda4a1c2f1b66f8',
+  view: '8ec906ab8e7e31b8c739797dcc50c00639e784a8e1f072c511d3a7e094d7350d',
 };
 
 // The full per-guild views after the cleanup, recorded 08-10-26. Each shows the rival's home at full L2.
 // ⤳ 09-10-26: now the views with `known`'s slots stripped (the full views are WITH_SLOTS, below).
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const VIEWS_AFTER = {
   founded: {
-    [A]: '00008894c6dc1d80ba8b3007842995513a96ce0298ecb5dcb30ff02068b75067',
-    [B]: '2782713356a224817ccbffde1696b2ef9733a66f03f2c2cecb85c1e603dd2ed8',
+    [A]: '361a096f7481c2db4b11f7f60d341a1d8b3892b3b769bda71f2aa6d20b734b61',
+    [B]: 'bb8f44a1d09560c84464d97ed2abe8b234af4bb42842cd97c0c616588eb49bc3',
   },
   licensed: {
-    [A]: '77d93464a3638fcdf826f48ea518fe2cdeb2445a5d22d98dddf5b9e228b062c4',
-    [B]: 'c044f2a02f8dbf489ed073da926b03a89b67cf3f52dd30525a1d68f55a2e62d3',
+    [A]: '07bdc3b1de1e964d40aff7b4693f1f8a65e9a69659ca0eaf00450078ed1f0d68',
+    [B]: '52299bb42a4910adf33a36f47da5087ae16d2aa82dc75c5600c3f66b3268c27f',
   },
   closed: {
-    [A]: '44a45bd2586f9fb2af253607e48fc2b39fe8380688ca477bf3c60417a1f87624',
-    [B]: 'c14fcd1e600ba86fa9d9b1d9da3947b3cdbcc48e5a2dbfe9ca2c3dbac29d94d3',
+    [A]: '2f6b787749f20e4b3c2c031333c2fb31a08ff9669279379fde75b20216d080cc',
+    [B]: 'e714957817dd93200edacbd4d7daf24467aa8066d10c04d644bde1635667dcbb',
   },
 };
 
 // After the settlement-surface slice, recorded 09-10-26: the full states and per-guild views of the same steps.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const WITH_SLOTS = {
   founded: {
     state: 'd49df18eb6c2e7c7f85bd179d5053457d0ad5b97f2a17c99ddbea1419e9f3de8',
-    [A]: '1f588134a8cc470f66bb730287992acbcd6603230b8739e8b9df3442e65f57ae',
-    [B]: '4e33535859211e4043d3350808d8194543e2964b09582e82192a527de8fe6120',
+    [A]: '62d6b5fc5fdeed55530d1e31cf0df4e0aaba2fef955b809053ab7aefa71fa174',
+    [B]: '614a3be89b2c42f5dac22885fe7c8f02e02f3c4308db169b786991c2d70ecbfc',
   },
   licensed: {
     state: '5610106e1a36f363f17d8d0b10d97e61772e3e1ef506318560a1748cee4c08f7',
-    [A]: '473dbfc9d58f6b6352cc1d9e23f01aef4f623e9c146bcedbe57efbfc2e11412c',
-    [B]: '7293f994fa5d94247570ee84178ffc414cdf729d8958e3e54cd80f7263f46912',
+    [A]: '2bac5bc05a4485b39e82c8dc54b22f6e214f1839b027f14b740432f7c4cae5b5',
+    [B]: 'addeb8581f1731d588b299c163b740250c013e6867c713de38a3dcc7550012d6',
   },
   closed: {
     state: '0a9bc688d77686403f0fa37331cf1e7bff5b18d24b5404e860841440953eb7ab',
-    [A]: '224f86710506481fa1d99c69bfeb92fc73b5976d83dab11f03c9037a518cdfb1',
-    [B]: 'b262f149fa239944b640a9983b251b3df83cc305ce5b60f49679bcd39df1bf68',
+    [A]: '422903e2d8286781596dcad7af41993d0bb240d7f95965a550fb1f1aa2a97fde',
+    [B]: 'f19843492ecb873df019a364c05b3e00ef751e881ee943ccbe9e771018af339c',
   },
 };
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const SOLO_WITH_SLOTS = {
   state: '49c6a794f7df6a47c6e29c9ee674abe7485f42a68400be8c33edf10b3e1fbe95',
-  view: '4cb933e9c52f1078c98fe6903511b9a9063d4308464873642a17037fde13b1d8',
+  view: 'c149a2789a148e21ad8ef8bb42b4efde6183087adcaf4bdd11948ce6d9ccbc9d',
 };
 
 // After the L0-board slice: the per-guild views of the same steps, with no `geography.systems`. Recorded on
 // main at 348e0fc — BEFORE the slice — by deleting `geography.systems` from each view above (WITH_SLOTS,
 // SOLO_WITH_SLOTS) and hashing the rest; the slim view must hash to exactly that. The states did not move.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const SLIM = {
   founded: {
-    [A]: '62e3da3d6cf9249cb5f293f350d8b24d280df4274bae26740726240e00dbe178',
-    [B]: '65471490d4eab3220f919181353be7dd236f7bcb9af65901d8ea91f52db2a920',
+    [A]: '5507cc47cd049543074e31f8b6115588389e0116be0bd394094039dbfcd1c844',
+    [B]: '9d0683ab5c8119180298f09c9cc4fa21684e8b903b3e6764f96508693abfd42c',
   },
   licensed: {
-    [A]: 'e3a8746707a04f66afd789925c756f48ce2bb04b90b58688c571b5cc9a0ae547',
-    [B]: 'b3e66d21c23310e1b36072c1f8c256f23afa9dd319538e88ab2f4d2e6b18be43',
+    [A]: 'ae537b61d4f1507b2616a02fc0a4676d71af4ab82e9657e68f4a4e405f46162b',
+    [B]: 'e4f003f1e590fd01d61ddb4006a6e13abadbf571a64dc875fd0d2c7ae7946840',
   },
   closed: {
-    [A]: '7de0fb70b8b670f14ddcf2d7e2351c4ad4af349631ad3efaf82438b8570ee28c',
-    [B]: '8db7c5f1ccf5a2e1be54384ed80a497bf547960c1597a4faa4e699fd9116f77a',
+    [A]: '46aa48b508e00c7960ba93d0167d7322fc4887310093f612c1f680a7711c866b',
+    [B]: 'fddddd5b1cbf38d0b975f744d8be518bfe852f5b9fe6bbce3515706df9883c02',
   },
 };
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
-const SOLO_SLIM = { view: '85339161b0054f4ec12bbfe0393ed27faded2bb65d67b845ec98771784e52bc6' };
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
+const SOLO_SLIM = { view: '1fed0d640616a8570f555923eef255b28d38822830152e74d2c536e084820063' };
 
 // legacyObservePublicRegister(state) — the REMOVED end-of-tick step, copied from main at 41fe84c
 // (sim/exploration.js `publicRegisterFacts` + `observePublicRegister`) for ONE purpose: rebuilding main's bytes

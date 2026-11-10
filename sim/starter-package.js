@@ -29,8 +29,9 @@ const STARTER_HUMAN_CREDITS = 8_000_000;
 // The starter heavy's maintenanceCondition. NOT from the 04-10-26 ruling, which says nothing about
 // condition. It is the figure docs/territory-model.md §7 already ruled for the founding heavy
 // ("starting maintenanceCondition 0.5 — inert until the maintenance slice"), and phase-1-tuning.md
-// §"Guild transports" repeats it. Condition is read by nothing yet except the client's % display,
-// so this is cosmetic for now. It is on the decision checklist to confirm.
+// §"Guild transports" repeats it; confirmed 09-11-26 (docs/maintenance.md §2). LIVE since maintenance slice 3:
+// the heavy wears while it flies (sim/craft-maintenance.js), so 0.5 is exactly half its life — 20,160 ticks of
+// unmaintained flight, 40,320 maintained.
 const STARTER_HEAVY_CONDITION = 0.5;
 
 // The free craft, IN MINT ORDER: 1 heavy transport, then 3 light transports. Minting in this fixed

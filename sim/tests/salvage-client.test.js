@@ -598,14 +598,15 @@ const AS_ON_MAIN = {
   'unloaded (g1)': [() => W.unloaded, 'g1'],
   'returned (g1)': [() => W.returned, 'g1'],
 };
+// RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
 const PINS = {
   'held (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': 'b17c5004050e1bbe', 'ops-tp-list': '0f5b383564800677',
+    'ops-idle-list': 'b17c5004050e1bbe', 'ops-tp-list': '06366f2a5df14e74',
   },
   'stranded (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': '0f5b383564800677',
+    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': '06366f2a5df14e74',
   },
   'stranded (g2)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
@@ -613,11 +614,11 @@ const PINS = {
   },
   'fleet (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '8eae89355076c922', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': '4f2b20bdf6cc31c6',
+    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': 'b427b77887a66b2f',
   },
   'loaded (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': 'e6039230e39dc033',
+    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': '2212fdfb13c2154e',
   },
   'inFlight (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '41c16a21e3bf0720', 'ops-deployed-list': '01b637646c7e1986',
@@ -629,15 +630,15 @@ const PINS = {
   },
   'home (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': 'febef596de266e08',
+    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': 'e154f18af8658682',
   },
   'unloaded (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': 'b6ab0c7f3815cbe0',
+    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': 'd9f41b91e9652e11',
   },
   'returned (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': '0f5b383564800677',
+    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': 'f43af3339993b045',
   },
 };
 

@@ -131,12 +131,13 @@ function ok(state, actions) {
 // bytes GET /snapshot serves). If one of these moves, the operator lens changed: that is never a
 // side effect of fog, so find out why before re-pinning.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const GODS_EYE_ON_MAIN = {
   zero: '0e20f585e9405efdf85afa882c9ad0a82163e1267ecadc2f2784d9d368d46f1b',
-  founded: '86479c4ecd4dec07be70fbe5af74f7e568a64b61468453cb952c1b3800140869',
-  rivalVentures: 'ad309408005774ab372191a2fcef04ec2a353f80a4dce9f0758ac03bc03e1885',
-  withShipments: '38d46d7f45c29a1bc1987e99dbcea6028183c5b12ebf4aea0f44508f7e129190',
-  afterClosure: '5b60f3c8cd88c6f987799605cbbf0d8a4e8478dda54304376d88b2764096778a',
+  founded: '5a131427b6e27745038b3c3dca35b9495bbfc588e1e7541fca92d8dca748c213',
+  rivalVentures: '5ce24f5d31c604bf60053bb8b1bcd3550a5d31c825b97bd2e76fceda499b1a54',
+  withShipments: '87a3828892a663f28285e99274627199dd53a887473ebc2d2da01e6a28c89ef0',
+  afterClosure: 'ef98993ecc4fef20051bb7e9cfb48216259ff7269fb901cb417318a70f2f6ed3',
 };
 
 // The script those hashes came from: a bot rival with a licensed and an unlicensed mine, two buys,

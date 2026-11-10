@@ -377,11 +377,12 @@ test('THE VIEW: the owner sees its reminders (with their calendar day, and count
 // Pinned from `main` at 479894f (before this slice), by the very build below: planted() run across the first midnight. A
 // galaxy that evicts nothing crosses a boundary without a byte of difference — state and every view.
 // RE-PINNED 10-11-26 (maintenance slice 2): main's (fbafbab) bytes for this script with every asset's maintenanceCondition deleted hash to exactly this — the field's removal is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 3): this script flies a craft, which now wears in flight. main's (bb1a9c5) bytes and these, each with every vehicle maintenanceCondition and the slice's added craftMaintenance / maintenanceCovered keys removed, hash identically — wear is the only change.
 const GOLDEN_NEVER_EVICTS = {
   tick: 1440,
-  state: 'ccf8c92925d197ee98b6b440783107e5baaba9cc9ff9ad39b525224b884018c1',
-  god: '3108b42620161d0bd729ef1492ab63617e43ae1b9e9e497643e5a257aaa0bed3',
-  g1: '0e484bb98c4b30181a6cb79f4361a96ee7f19538d3a3279646b97d6669619920',
+  state: '450ada34260b0182e5f10c57b63e88de6f6e511f4d3a8686da87673b59489e3a',
+  god: 'e00dbc279d90c0000a25aca95b9dd95d5417f132578277ea96216f1a4e5f6d67',
+  g1: 'dd87e32d9d90c866a6baed43ecf435ea3f7642e895c0505ec93333fbb60bee9c',
   g2: '47c253f75b7bb070a411a794a0a9e855c912bd99c32f4e97076f6c2453a8fe76',
 };
 

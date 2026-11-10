@@ -35,6 +35,7 @@ const {
   DROID, DROID_SOURCE_GUILD, DROID_SOURCE_SYNDICATE, SYNDICATE_DROID_BATCHES, DROID_WEEK_TICKS, mintDroid,
   decayDroidsIn, fundDroidUpkeep, refillAutoReplaceVacancies,
 } = require('./droids.js');
+const { stepCraftMaintenance } = require('./craft-maintenance.js');
 const { getSystem } = require('./seed.js');
 const { nearestWaystation, arrivalTickFor } = require('./transport.js');
 const { guildHolds } = require('./claims.js');
@@ -1467,7 +1468,15 @@ function stepArrivals(state, _actions) {
 // dispatch — so there is nothing to conserve here.
 function stepVehicleArrivals(state, _actions) {
   const thisTick = state.tick + 1;
+  // The craft maintenance cycle is the commitment cycle — the boundary stepBaselineAllocation tests.
+  const windowN = state.windowN == null ? DEFAULT_WINDOW_N : state.windowN;
+  const dayAnchorTick = state.dayAnchorTick == null ? 0 : state.dayAnchorTick;
+  const isCycleBoundary = isWindowBoundary(thisTick, windowN, dayAnchorTick);
   for (const guild of state.guilds || []) {
+    // CRAFT WEAR + THE MAINTENANCE POOL (maintenance slice 3; sim/craft-maintenance.js) — BEFORE this tick's
+    // landings, so a craft landing now is still flying and is charged for its arrival tick: a leg dispatched
+    // at d and arriving at a wears ticks d+1 … a, exactly its length (docs/maintenance.md §2 AS-BUILT).
+    stepCraftMaintenance(state, guild, thisTick, isCycleBoundary);
     // Collect the craft landing this tick, then land them in a FIXED id order (invariant 9). No total
     // depends on the order — each landing touches only its own craft — but it is pinned anyway, the
     // same discipline stepArrivals' deposit order follows.
