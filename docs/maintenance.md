@@ -9,7 +9,7 @@
 > Outposts. **Miners and factories never wear**, and their condition field is **removed**. Nothing
 > here moves GP, RP, the mean line or fuel.
 
-Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26; slice 2 (remove asset condition) BUILT 10-11-26; slice 3 (craft wear + the pool) BUILT 10-11-26; slice 4 (deep maintenance) BUILT 10-11-26; the client slices 5–6 not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
+Status: **RULED; slice 1 (the droid retune + the reserve setter) BUILT 09-11-26; slice 2 (remove asset condition) BUILT 10-11-26; slice 3 (craft wear + the pool) BUILT 10-11-26; slice 4 (deep maintenance) BUILT 10-11-26; slice 5 (the Maintenance tab + the notices' words) BUILT 10-11-26; client slice 6 not built.** Build order §11. Numbers `[FIRST-CUT]` in `docs/phase-1-tuning.md`
 §"Maintenance". This doc is the authority on the *mechanism*; phase-1-tuning is the authority on the
 *numbers*; `docs/droids.md` §5 stays the authority on the droid engine except where §1 below retunes it.
 
@@ -465,6 +465,46 @@ the published ready tick minus the snapshot tick — the existing countdown patt
   the reserve (editable, §1c); the weekly need; maintained vs wearing fast; runway in weeks; the next
   weekly upkeep. (The `droidUpkeep` readout already publishes most of this.)
 
+*(**⤳ AS-BUILT 10-11-26 — maintenance slice 5, the Maintenance tab (client only; `client/game.html`; no engine, snapshot
+or fog change; no new number).** A top-level **Maintenance** button sits right after Operations and opens `#tp-maint` in
+the Operations / Deuterium overlay pattern (`openTab('maintenance')`, `hideOverlayPanels`, `__maintOpen` /
+`__maintClosed` / `__maintRefresh` — drawn on open and on every poll while open, rewritten only when what it shows
+changes, so a field being typed in is not replaced under the cursor). The code is one block, `<script
+id="maintenance-tab-wire">`, plus its scoped CSS and markup; it reads **the player's own guild row only**. Where each
+figure comes from:*
+
+- ***Fleet — the pool** (the guild row's `craftMaintenance`): Pool ← `pool`; Budget ← `budget`; Ceiling ← `ceiling`;
+  Spent last cycle ← `spentLastCycle`; Next refill ← `nextRefillTick` − the snapshot's `tick`, formatted as time
+  (`__fmtETA`). Each is labelled ("every craft flying the whole cycle", "moved in at each refill", "what the pool actually
+  paid") so over- or under-funding reads off them. A guild with no craft and no pool record publishes no readout, so
+  every figure reads "—" (the controls still show: a pool may be funded before a craft flies).*
+- ***Fleet — one row per craft**, by id (`vehicles[]`): the class and the number its id ends on; where it is — Operations'
+  own words (`__craftWhere`, its `endedWhere`, now shared), "En route to …" while flying, and for a craft in deep
+  maintenance the published `deepMaintenance.point` (at an Outpost a craft stands on its bare hex, which Operations'
+  words read as "(q, r)"); condition ← `maintenanceCondition` as a whole percent (Operations' craft-card display); the
+  state ← "In deep maintenance — ready in …" (`deepMaintenance.readyTick` − `tick`), "Queued for a maintenance bay
+  (position N)" (`deepMaintenance.queuePosition`), "Maintained" (`covered: true`), "Wearing fast — not covered"
+  (`covered: false`), or "Not flying — no wear" (no `covered` key: not flying); "Early deep maintenance available" as
+  plain text when `earlyMaintenanceAllowed` (**the button is not built here** — §7.2, slice 6); flight time left to 0% ←
+  `flightTicksLeftMaintained` (covered) or `flightTicksLeftUnmaintained` (uncovered) at the rate it is flying at, both
+  when not flying, "—" while in maintenance. Empty: "Your guild has no craft."*
+- ***Droids — one block per system** in `droidUpkeep`, by system id: the name (`__systemName`); stock ← `stock`; reserve ←
+  `reserve`; weekly need ← `weeklyUpkeep`; maintained ← `maintained`; wearing fast ← `unmaintained`; runway ←
+  `runwayWeeks`; next weekly upkeep ← `nextUpkeepTick` − `tick`. Empty: "No system has a deployed droid."*
+- ***The controls.*** Budget per cycle → `setCraftMaintenanceBudget { guildId, budget }`; Top up the pool now →
+  `topUpCraftMaintenancePool { guildId, amount }`; per droid system, "Keep this many for building" →
+  `setDroidComponentReserve { guildId, systemId, reserve }` — each through `window.__sendAction` (`POST /action`). No
+  withdraw control (ruled). The only check is input hygiene — the field must hold a whole number; every other rule is the
+  engine's, and its refusal shows under the field ("Refused: …") until the tick moves on (Operations' rule). On success
+  the field clears and the shell fetches the next snapshot; the client changes no figure itself.*
+- ***Tests:*** `sim/tests/maintenance-tab-client.test.js` (17), on real snapshots (`sim/tests/maintenance-tab-fixtures.js`):
+  the tab opens from the bar and closes cleanly; every craft state drawn; the droid blocks; both empty states; the exact
+  action shapes, accepted by the real engine; a refusal's reason; a success unseen until the next snapshot; and, field by
+  field, that changing one snapshot field changes exactly the figure that reads it. Fog: a rival's rows are never drawn.*
+
+*The notices' words and the `maintenance` lane-end reason are recorded where those notices are (`docs/event-log.md`
+§17–§19, "the client half") and in `docs/transport-model.md` §11.6.)*
+
 **7.2 The craft's Dispatch popup** — its disabled **Maintenance** button becomes the early deep
 maintenance action (§4.6), enabled only when the snapshot says it is allowed.
 
@@ -573,4 +613,6 @@ droid reserve default 0 (unchanged). Derived, not tuned: `DROID_WEAR_SCALE` 161,
    was re-pinned: no golden's craft reaches 0%, so every state hash is main's, and every snapshot golden still matches
    its original pin with the two added keys stripped.)*
 5. **The Maintenance tab** (client).
+   *(⤳ **BUILT 10-11-26** — §7.1's AS-BUILT note; with it, MESSAGES' words for the four maintenance notices and
+   `droids_spent` (`docs/event-log.md` §17–§19), and the `maintenance` lane-end reason in words.)*
 6. **The Dispatch popup button, the Outpost Maintenance Hangar, the route-builder limit** (client).

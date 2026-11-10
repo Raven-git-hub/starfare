@@ -784,7 +784,8 @@ Two DISTINCT failure classes, separated by whether the target still EXISTS:
   stands (`sim/deep-maintenance.js` `stopForMaintenance`, called from `advanceRoute` / `finishLap`). A one-shot whose
   LAST stop is such a point simply finishes there and goes in, unflagged. The player re-dispatches after the ready
   tick. A dispatch of a 0% craft through a maintenance point before its last waypoint is refused whole (§4.5 there).
-  The client prints the raw reason until maintenance slice 5 words it.)*
+  The client prints the raw reason until maintenance slice 5 words it.)* *(⤳ 10-11-26, maintenance slice 5: it reads
+  "Light #02's lane stopped at Nyx — the craft went into deep maintenance." (draft copy), Operations' `LANE_END_WHY`.)*
 - **Fuel short — the lane WAITS** *(RULED 23-09-26)*. A lap is fuelled UP FRONT (§11.3); if the hoard
   cannot cover the next lap the lane does NOT drop — it WAITS at the safe berth, burns nothing, and
   RE-ATTEMPTS at each fuel-cycle boundary (where the hoard grows, §1.4) until it can afford the lap, then

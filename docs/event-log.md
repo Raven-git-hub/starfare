@@ -1073,7 +1073,8 @@ type string, the payload names and the one-per-system batching are on the roadma
 **The surface — today.** No new snapshot field for the notice: `guilds[].events` carries the row with its `whenDay`,
 `attention.notices` counts it while unread, and the per-guild view shows a guild only its own. **Not built: the
 client** — the inbox row, the card and its voice; until the droid client slice lands, the live client's notice renderer
-treats a type it does not know as a licence lapse (the gap every engine-first notice has had).
+treats a type it does not know as a licence lapse (the gap every engine-first notice has had). *(⤳ 10-11-26: the client
+half is BUILT with maintenance slice 5 — §19, "AS-BUILT — the client half".)*
 
 **A NO-OP elsewhere.** A galaxy where no deployed droid wears out writes no such notice, so every log, snapshot and
 golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts fourteen types; the
@@ -1108,7 +1109,7 @@ calls".)
 counts it while unread, and the per-guild view shows a guild only its own (fogged from rivals). **Not built: the client**
 — the inbox row and its voice wait for maintenance slice 5 (the Maintenance tab); no tripwire requires client wording
 for every type, so none was added. Until then the live client's renderer treats an unknown type as it treats every
-engine-first notice.
+engine-first notice. *(⤳ 10-11-26: the client half is BUILT — §19, "AS-BUILT — the client half".)*
 
 **A NO-OP elsewhere.** A guild that never funds maintenance writes no such notice, so every log, snapshot and golden
 whose craft fly unfunded is unchanged by it. The vocabulary test (`sim/tests/events.test.js`) now counts fifteen types;
@@ -1152,8 +1153,43 @@ slice 4 calls" (6).)
 **The surface — today.** No new snapshot field for the notices: `guilds[].events` carries the rows and
 `attention.notices` counts them while unread. **Not built: the client** — the inbox rows and their voice wait for
 maintenance slice 5; no tripwire requires client wording for every type, so none was added. Until then the live
-client's renderer treats an unknown type as it treats every engine-first notice.
+client's renderer treats an unknown type as it treats every engine-first notice. *(⤳ 10-11-26: BUILT — below.)*
 
 **A NO-OP elsewhere.** A galaxy where no craft reaches 0% and nobody starts deep maintenance writes none of them, so every
 log, snapshot and golden without one is unchanged. The vocabulary test (`sim/tests/events.test.js`) now counts eighteen
 types; the notices themselves are pinned by `sim/tests/deep-maintenance.test.js` (section J, and B / F / G).
+
+**AS-BUILT — the client half, all five maintenance notices (10-11-26; `client/game.html` only, NO `sim/` change; roadmap
+2.6 maintenance, slice 5).** §17's `droids_spent`, §18's `maintenance_pool_dry` and this section's three get their own
+words in MESSAGES — one block in the notice code (`isMaintenanceNotice`, `maintBody`, `maintFacts`), beside the salvage
+block. **Draft copy** (roadmap checklist, "Maintenance slice 5 calls"). No new number; every value is a payload field, the
+length of a payload list, or a payload tick less **the notice's own tick** (the salvage reminder's rule, §16: a logged
+moment keeps its own time), formatted by `__fmtETA`.
+- **The voice.** The four craft notices are the fleet lane, so they wear the Chief Pilot's card (eyebrow "Fleet —
+  Dispatch", `pilot.jpg`) in plain words; `droids_spent` is the Syndicate adviser's (a droid is not a craft). All five are
+  passive: Dismiss alone.
+- **Titles** (the row shows the same, the part after the dash in its muted `.who` span): "Maintenance pool dry — {N craft
+  uncovered}"; "Craft at 0% — {craft}"; "In deep maintenance — {craft}", or "Queued for maintenance — {craft}" for a
+  queued entry; "Maintenance finished — {craft}"; "Droids spent — {systemName}". A craft is named as the deploy notice
+  names one ("Heavy Transport · #01"); the pool-dry notice carries only ids, so its craft are named from the id.
+- **Bodies.** Pool dry: "The maintenance pool could not pay for every craft in flight, so {craft, …} is/are wearing at the
+  fast, unmaintained rate." / "The pool refills from your budget in {nextRefillTick − tick}. To cover them sooner, top it
+  up from the Maintenance tab." Reached 0%: "{craft} has worn down to 0%. It flies on, and goes into deep maintenance at
+  the first maintenance point it stops at — a system you hold, or one of your Outposts." Entered, in a bay: "{craft}
+  reached {point} at 0% and has gone into deep maintenance. It will be back at 100% in {readyTick − tick}." — or, `early`,
+  "… has gone into deep maintenance early at {point}, as you asked. …", or, `fromQueue`, "… has taken a free maintenance
+  bay at {point}. …"; queued: "{craft} reached {point} at 0%, but every maintenance bay there is taken. It is waiting in
+  the queue, position {queuePosition}, and cannot fly or unload until it has been through maintenance."; either shape,
+  `tripCutShort`: a second line, "It was on its way to {tripDestination}. The rest of that trip was dropped." Finished:
+  "{craft} is out of deep maintenance at {point}, back at 100% and ready to fly." Droids spent: "{N droid(s)} wore out at
+  {systemName} and was/were destroyed." / "A droid kept maintained from its system's droid components lasts longer. The
+  Maintenance tab shows each system's stock and runway."
+- **Names.** A `point` reads its system's or Outpost's name (`__systemName` / `__outpostName`); a `tripDestination`
+  reads as a landmark, or a bare hex by what stands on it, else "Deep Space (q, r)" — Operations' words for a hex.
+- **Facts**, ending on the day: pool dry — Pool left, Uncovered, Next refill, Ran dry; reached 0% — Craft, Reached 0%;
+  entered — Craft, At, Ready in *or* Queue position, Was heading to (cut short only), Entered; finished — Craft, At,
+  Finished; droids spent — System, Droids spent, Spent.
+- **Tripwires.** `sim/tests/maintenance-tab-client.test.js` opens each card on real engine output (a cut-short entry, a
+  lane's, an early one, a queued one at position 1, a finished one, a real pool-dry and a real `droids_spent`) and pins its
+  speaker, title, row, words, facts and buttons. Every notice the client already had words for is untouched: the
+  salvage-notice guard (`salvage-notice-client.test.js`) still passes against its `main` hashes.
