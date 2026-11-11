@@ -1408,6 +1408,7 @@ select.field{appearance:none; cursor:pointer;}
 #tp-ops .ops-tp-stat{display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 0 11px;}
 #tp-ops .ops-tp-stat .k{font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ops-ink4);}
 #tp-ops .ops-tp-stat .v{font-family:var(--ops-mono); font-size:13px; color:var(--ops-ink); font-variant-numeric:tabular-nums;}
+#tp-ops .ops-tp-deep .v{font-size:11px; text-align:right;}   /* maintenance slice 6: the deep-maintenance line is words, not a figure */
 /* Dispatch opens the Dispatch popup (2.2 spawn client). Its only action this slice is "Show on map";
    destination / route / the real dispatch are slice (b). DOCK (2.2 cargo, system entry point) sits
    beside it, styled the same, only for a craft idle at a system (see tpCraftHtml). The button row is a
@@ -2218,6 +2219,7 @@ select.field{appearance:none; cursor:pointer;}
 #dispatch-overlay .dp-route .tc-box .cell .lab, #deploy-overlay .dp-route .tc-box .cell .lab{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3)}
 #dispatch-overlay .dp-route .tc-box .cell .val, #deploy-overlay .dp-route .tc-box .cell .val{font-family:var(--mono); font-size:18px; color:var(--ink); font-variant-numeric:tabular-nums}
 #dispatch-overlay .dp-refuse, #deploy-overlay .dp-refuse{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--red); line-height:1.5}
+#dispatch-overlay .dp-hint{margin-top:12px; font-family:var(--mono); font-size:11px; color:var(--ink3); line-height:1.5}   /* slice 6: why Deep maintenance is disabled */
 /* automation 2b: Save Route — a name field + a Save button under the Planned Route, then the engine's
    answer (green saved / red refused). The field wears the popup's panel + line palette. */
 #dispatch-overlay .dp-save{margin-top:14px; display:flex; gap:12px}
@@ -2341,6 +2343,16 @@ select.field{appearance:none; cursor:pointer;}
 #outpost-overlay .om-square{border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; aspect-ratio:1/1}
 #outpost-overlay .om-square .sqhead{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); margin-bottom:10px}
 #outpost-overlay .om-square.parked .ph{font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink3); line-height:1.7}
+/* maintenance slice 6: the Maintenance Hangar — a list (bays, then the queue), so it reads top-down, not centred */
+#outpost-overlay .om-square.om-hangar{justify-content:flex-start; align-items:stretch; text-align:left; overflow:auto}
+#outpost-overlay .om-hangar .sqhead{text-align:center}
+#outpost-overlay .om-hangar .hg-sub{font-family:var(--mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); margin:8px 0 4px}
+#outpost-overlay .om-hangar .hg-row{display:flex; justify-content:space-between; gap:8px; font-size:11px; line-height:1.4; padding:3px 0; border-bottom:1px solid var(--line)}
+#outpost-overlay .om-hangar .hg-row .k{font-family:var(--mono); color:var(--ink3); white-space:nowrap}
+#outpost-overlay .om-hangar .hg-row .v{text-align:right}
+#outpost-overlay .om-hangar .hg-row .v .t{display:block; color:var(--ink3)}
+#outpost-overlay .om-hangar .hg-row.empty .v{color:var(--ink3)}
+#outpost-overlay .om-hangar .hg-none{font-family:var(--mono); font-size:11px; color:var(--ink3); padding:4px 0}
 /* the storage donut — the dockyard-tab shape: an SVG ring rotated −90° with a centre read-out. */
 #outpost-overlay .om-donutwrap{position:relative; width:138px; height:138px}
 #outpost-overlay .om-donutwrap svg{transform:rotate(-90deg)}
@@ -3861,14 +3873,12 @@ select.field{appearance:none; cursor:pointer;}
           <div class="om-list" id="omList"></div>
         </div>
       </div>
-      <!-- centre: storage donut + Maintenance Hangar (parked), then the tier tabs + resource grid -->
+      <!-- centre: storage donut + Maintenance Hangar (maintenance slice 6 — filled by renderHangar), then the tier
+           tabs + resource grid -->
       <div class="om-mid">
         <div class="om-squares">
           <div class="om-square" id="omStorage"></div>
-          <div class="om-square parked">
-            <div class="sqhead">Maintenance Hangar</div>
-            <div class="ph">No craft under<br>maintenance · Later</div>
-          </div>
+          <div class="om-square om-hangar" id="omHangar"></div>
         </div>
         <div class="om-tiersec">
           <div class="om-tiers" id="omTiers"></div>
@@ -4061,6 +4071,85 @@ select.field{appearance:none; cursor:pointer;}
     <div class="reel-art" style="background-image:url('assets/characters/spy.jpg')"></div>
   </div>
 </div>
+
+<!-- ===== CRAFT MAINTENANCE — the shared display helpers (roadmap 2.6 maintenance, slice 6; docs/maintenance.md §7) =====
+   Small helpers every surface that shows a craft's maintenance reads, so they all say the same thing:
+     window.__fmtCondition(c)        — a craft's condition as a percent (the one display rule, RULED 10-11-26);
+     window.__deepMaintButton(v)     — whether the Deep maintenance button is enabled for a craft, and why not;
+     window.__startDeepMaintenance(id) — the button's one action, posted as the engine takes it;
+     window.__zeroStopIndex(q) / window.__zeroStopWords(q, name) — the quote's 0% refusal, for the route builder.
+   Display only (§18): nothing here decides a rule. The engine decides; the snapshot and the quote say what it decided. -->
+<script id="craft-maintenance-shared">
+(function(){
+  "use strict";
+
+  // fmtCondition(c) -> a craft's published condition (a fraction, 0..1) as a whole percent, ROUNDED DOWN.
+  // Why down, not to the nearest: the two edges that matter would lie. 0.4% would read "0%" though the craft is not at
+  // 0% (and will not stop for maintenance); 19.6% would read "20%" though early maintenance is allowed. So: "0%" means
+  // exactly 0; anything above 0 but under 1% reads "<1%"; everything else is the whole percent below it.
+  function fmtCondition(c){
+    if(typeof c !== 'number' || !isFinite(c)) return '—';
+    if(c === 0) return '0%';
+    var pct = Math.floor(c * 100);
+    // c * 100 is a float product and can land a hair under a whole number (0.29 * 100 = 28.999999999999996).
+    // Check the answer against the percents either side, compared as fractions — k / 100 is the nearest float to that
+    // percent, just as the published condition is the nearest float to its own value — so 0.29 reads 29%, not 28%.
+    if((pct + 1) / 100 <= c) pct += 1;
+    if(pct / 100 > c) pct -= 1;
+    return pct < 1 ? '<1%' : pct + '%';
+  }
+
+  // deepMaintButton(v) -> { allowed, why } for a craft row from the snapshot. `allowed` is the engine's own answer
+  // (craftMaintenance.earlyMaintenanceAllowed — the same gate the action checks). `why` is a short, display-only
+  // reason for a disabled button; it re-derives nothing — which of the conditions fails is the engine's to say,
+  // and it says so if the player somehow sends it anyway. ("20%" mirrors sim/deep-maintenance.js
+  // EARLY_DEEP_MAINTENANCE_BELOW_PERCENT; sim/tests/maintenance-slice6-client.test.js pins it.)
+  function deepMaintButton(v){
+    var cm = (v && v.craftMaintenance) || {};
+    if(cm.earlyMaintenanceAllowed === true) return { allowed: true, why: '' };
+    if(cm.deepMaintenance && typeof cm.deepMaintenance.readyTick === 'number') return { allowed: false, why: 'Already in deep maintenance' };
+    if(cm.deepMaintenance) return { allowed: false, why: 'Already queued for a maintenance bay' };
+    return { allowed: false, why: 'Only below 20%, idle, at a system you hold or your own Outpost with a free bay' };
+  }
+
+  // startDeepMaintenance(vehicleId) -> the engine's answer to startDeepMaintenance { guildId, vehicleId }, posted
+  // through the shell's one action path. A network failure comes back refusal-shaped, so callers have one path.
+  async function startDeepMaintenance(vehicleId){
+    var player = window.__player ? window.__player() : null;
+    var action = { type: 'startDeepMaintenance', guildId: player && player.guildId, vehicleId: vehicleId };
+    try {
+      return await window.__sendAction(action);
+    } catch(err){
+      return { accepted: false, reason: 'the Syndicate could not be reached: ' + ((err && err.message) || err) };
+    }
+  }
+
+  // The machine-readable code on a quote refused by the 0% rule (docs/maintenance.md §4.5). MIRRORS
+  // sim/deep-maintenance.js ZERO_CONDITION_STOP_CODE (pinned by sim/tests/maintenance-slice6-client.test.js).
+  var ZERO_STOP_CODE = 'zero-condition-maintenance-stop';
+
+  // zeroStopIndex(q) -> the waypoint (0-based) a 0% craft's route must end at, when the engine's quote was refused for
+  // that reason; else -1. The client never works out which stops are maintenance points: the quote names the one.
+  function zeroStopIndex(q){
+    return (q && q.ok === false && q.code === ZERO_STOP_CODE && typeof q.waypointIndex === 'number') ? q.waypointIndex : -1;
+  }
+
+  // zeroStopWords(q, stopName) -> the engine's refusal in plain words (stop numbers count from 1, as the lists show
+  // them), or '' when the quote was not refused by the 0% rule.
+  function zeroStopWords(q, stopName){
+    var i = zeroStopIndex(q);
+    if(i < 0) return '';
+    return 'This craft is at 0%, so it goes into deep maintenance at stop ' + (i + 1)
+      + (stopName ? ' (' + stopName + ')' : '') + ' — the route must end there.';
+  }
+
+  window.__fmtCondition = fmtCondition;
+  window.__deepMaintButton = deepMaintButton;
+  window.__startDeepMaintenance = startDeepMaintenance;
+  window.__zeroStopIndex = zeroStopIndex;
+  window.__zeroStopWords = zeroStopWords;
+})();
+</script>
 
 <script id="kit-kinds">
 /* ============================================================================
@@ -4440,7 +4529,7 @@ select.field{appearance:none; cursor:pointer;}
     const seed = (waypoints || []).map(kitMode ? (wp) => ({ anchor: wp.anchor }) : copyWaypoint);
     PLAN = { vehicle: vehicle, origin: vehicle.location, waypoints: seed, candidate: null, candidateArmed: false, candidateAction: null, routeName: routeName || '', loop: !!loop,
              deploy: kit.deploy || null, unload: !!kit.unload, unloadKind: (kit.unload && kit.kind) || null,
-             fromInventory: !!kit.fromInventory, deployQuote: null };
+             fromInventory: !!kit.fromInventory, deployQuote: null, zeroQuotes: {} };
     closeLoadMenu();
     planActive = true;
     const c = resolveAnchor(vehicle.location);
@@ -4511,9 +4600,54 @@ select.field{appearance:none; cursor:pointer;}
   // row does.
   function canFinalise() {
     if (!PLAN || !PLAN.waypoints.length || anyDeadLeg(PLAN)) return false;
+    if (routeZeroStop() >= 0) return false;   // a 0% craft's route past its maintenance stop (slice 6, below)
     if (PLAN.deploy) return !!deployTarget();
     if (PLAN.unload) return !!unloadTarget();
     return true;
+  }
+
+  // ---------- 2.6 maintenance slice 6: THE 0% STOP in the route builder (docs/maintenance.md §4.5 / §7.4) ----------
+  // A craft at 0% may fly, but the engine refuses a route that passes one of its guild's maintenance points before the
+  // end: it would go into deep maintenance there. WHICH stops are maintenance points is the engine's to say — the client
+  // never works it out. So for a 0% craft the builder asks the engine's quote (window.__fetchQuote → POST /vehicle/quote)
+  // and reads its refusal: code 'zero-condition-maintenance-stop' with the waypointIndex the route must end at
+  // (window.__zeroStopIndex). It asks twice over: for the route as it stands (to flag the stop and hold Finalise), and
+  // for the route plus the proposed hex (so Add is refused before a stop past the maintenance point is placed). A craft
+  // above 0% asks nothing here, so its builder is exactly as before.
+
+  // atZero() — is the craft being planned at exactly 0%? Its published condition, as the plan was opened with it: an
+  // idle craft does not wear, so it cannot change while it is being planned.
+  function atZero() { return !!PLAN && !!PLAN.vehicle && PLAN.vehicle.maintenanceCondition === 0; }
+
+  // zeroQuote(anchors) -> the engine's quote for this list of stops, or undefined while it is being asked. Asked once
+  // per list (PLAN.zeroQuotes, keyed like routeKey); when the answer lands the list, chip and Finalise redraw from it.
+  // A late answer for a plan since closed is dropped.
+  function zeroQuote(anchors) {
+    const plan = PLAN;
+    const key = JSON.stringify(anchors);
+    if (Object.prototype.hasOwnProperty.call(plan.zeroQuotes, key)) return plan.zeroQuotes[key];
+    plan.zeroQuotes[key] = undefined;   // asked; the answer is on its way
+    window.__fetchQuote(plan.vehicle, anchors.map((a) => ({ anchor: a }))).then((q) => {
+      if (PLAN !== plan) return;
+      plan.zeroQuotes[key] = q;
+      refreshPlanState();
+      renderPlanChip();
+    });
+    return undefined;
+  }
+
+  // routeZeroStop() -> the stop (0-based) the current route must end at, per the engine; -1 when nothing is refused (or
+  // the craft is above 0%, or there is no stop before the last to refuse).
+  function routeZeroStop() {
+    if (!atZero() || PLAN.waypoints.length < 2) return -1;
+    return window.__zeroStopIndex(zeroQuote(PLAN.waypoints.map((wp) => wp.anchor)));
+  }
+
+  // candidateZeroQuote() -> the engine's quote for the route PLUS the proposed hex (undefined while asking), or null
+  // when there is nothing to ask (above 0%, no candidate, or no stop yet — a first stop is always the route's end).
+  function candidateZeroQuote() {
+    if (!atZero() || !PLAN.candidate || !PLAN.waypoints.length) return null;
+    return zeroQuote(PLAN.waypoints.map((wp) => wp.anchor).concat([PLAN.candidate]));
   }
 
   // isKitPlan() — is this plan one of the two KIT modes, the deploy map or unload mode? Their stops carry no
@@ -4566,9 +4700,13 @@ select.field{appearance:none; cursor:pointer;}
     // stop; an open one gets a return row after its last stop (below the rows).
     const looping = PLAN.loop && canRepeat(PLAN);
     const last = PLAN.waypoints.length - 1;
+    const zeroStop = routeZeroStop();   // slice 6: the stop a 0% craft's route must end at, or -1
     PLAN.waypoints.forEach((wp, i) => {
       const dead = deadLegAt(PLAN, i);
       const broken = brokenAt(PLAN, i);
+      const zeroWarn = zeroStop < 0 ? ''
+        : i === zeroStop ? 'at 0% the craft goes into deep maintenance here — end the route here'
+        : i > zeroStop ? 'past the maintenance stop — remove this stop' : '';
       // (2.2 deploy pipeline) On a KIT route the last stop is the kit's target: its lines come from deployRow
       // (the deploy map) or unloadRow (unload mode). The stops before it are plain turning points and read as
       // any other stop.
@@ -4582,13 +4720,14 @@ select.field{appearance:none; cursor:pointer;}
       const warn = dead ? 'zero-length leg — remove or reorder'
         : target && target.warn ? target.warn
         : broken ? brokenReason(PLAN)
+        : zeroWarn ? zeroWarn
         : idle ? IDLE_AT_BERTH_CUE : '';
       const ctl =
         '<button data-act="up" data-i="' + i + '" title="Move up"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
         '<button data-act="down" data-i="' + i + '" title="Move down"' + (i === PLAN.waypoints.length - 1 ? ' disabled' : '') + '>▼</button>' +
         '<button data-act="rm" data-i="' + i + '" title="Remove">✕</button>';
       box.appendChild(mkRow({
-        cls: dead ? 'deadleg' : (broken ? 'broken' : ''),
+        cls: dead ? 'deadleg' : (broken || zeroWarn ? 'broken' : ''),
         ix: String(i + 1),
         name: anchorLabel(wp.anchor),
         act: target ? target.act : actionSummary(wp.action),
@@ -4620,7 +4759,13 @@ select.field{appearance:none; cursor:pointer;}
     const btns = document.getElementById('planChipButtons');
     const hint = document.getElementById('planChipHint');
     if (!chip || !PLAN || !PLAN.candidate) { if (chip) chip.classList.remove('on'); return; }
-    const dead = candidateIsDeadLeg();
+    // `dead` refuses the candidate: a dead leg, or (slice 6) a 0% craft's route that must already have ended — the
+    // engine's quote for the route plus this hex names an earlier stop as the end — or that quote still on its way.
+    const zq = candidateZeroQuote();
+    const zi = zq ? window.__zeroStopIndex(zq) : -1;   // -1 for an ok quote, or one refused for another reason
+    const zeroWords = zi >= 0 ? window.__zeroStopWords(zq, anchorLabel(PLAN.waypoints[zi].anchor)) : '';
+    const asking = zq === undefined;
+    const dead = candidateIsDeadLeg() || !!zeroWords || asking;
     btns.innerHTML = '';
     // The Action button, built once and slotted in after the step's primary button (Add or Confirm).
     // Disabled on a dead leg like its siblings — a stop that can't be placed can't carry an action.
@@ -4654,7 +4799,8 @@ select.field{appearance:none; cursor:pointer;}
       if (actBtn) btns.appendChild(actBtn);
       btns.appendChild(no);
     }
-    showPlanChip(chip, hint, dead ? 'Same hex as the last point' : '');
+    showPlanChip(chip, hint, candidateIsDeadLeg() ? 'Same hex as the last point'
+      : zeroWords ? zeroWords : asking ? 'Checking the route…' : '');
   }
 
   // Show the chip with `hintText` under its buttons ('' for no hint) — the dead-leg refusal line.
@@ -4687,6 +4833,8 @@ select.field{appearance:none; cursor:pointer;}
   function confirmCandidate() {
     if (!PLAN || !PLAN.candidate) return;
     if (candidateIsDeadLeg()) return; // never build a dead leg (the skip on stop 1 is not one)
+    const zq = candidateZeroQuote();   // …nor (slice 6) a stop past a 0% craft's maintenance stop
+    if (zq === undefined || window.__zeroStopIndex(zq) >= 0) return;
     const wp = { anchor: PLAN.candidate };
     if (PLAN.candidateAction) wp.action = PLAN.candidateAction;
     PLAN.waypoints.push(wp);
@@ -4925,7 +5073,8 @@ select.field{appearance:none; cursor:pointer;}
     const ask = PLAN.deployQuote;
     const q = ask && ask.key === routeKey(PLAN.waypoints) ? ask.quote : null;
     if (!q) return { note: 'Quoting…', warn: '' };
-    if (!q.ok) return { note: '', warn: q.reason || 'This route cannot be dispatched.' };
+    // (slice 6) a 0% heavy's route refused by the 0% rule reads in plain words; its stop is flagged on its own row.
+    if (!q.ok) return { note: '', warn: window.__zeroStopWords(q, '') || q.reason || 'This route cannot be dispatched.' };
     const f = window.__quoteFigures(q);
     return { note: 'Time ' + f.time + ' · Cost ' + f.cost, warn: '' };
   }
@@ -12114,8 +12263,40 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // or for its cadence — even though its status is 'idle'. It is listed under IN TRANSIT with its lane
   // controls (myCraftOnLane), so it is left out here: one craft, one home. (Its Dispatch would drop the lane
   // and its Dock is refused while it runs one.)
+  // (Maintenance slice 6, docs/maintenance.md §7.5) A craft in DEEP MAINTENANCE — status 'maintenance', in a bay or
+  // queued for one — is listed here too: it is not flying, and its card is where it shows that state (tpDeepLine).
   function myIdleTransports(guild){
-    return ((guild && guild.vehicles) || []).filter(function(v){ return v.status === 'idle' && !v.route; });
+    return ((guild && guild.vehicles) || []).filter(function(v){
+      return (v.status === 'idle' && !v.route) || v.status === 'maintenance';
+    });
+  }
+
+  // ---- maintenance slice 6: a craft in deep maintenance on its card (docs/maintenance.md §7.5) ----
+  // tpPointGroup(v) -> the group a craft in deep maintenance belongs to, named by the maintenance point the snapshot
+  // publishes for it (craftMaintenance.deepMaintenance.point) — at an Outpost the craft stands on the Outpost's bare
+  // hex, which would otherwise read as Deep Space. null for any craft not in deep maintenance.
+  function tpPointGroup(v){
+    var dm = v && v.craftMaintenance && v.craftMaintenance.deepMaintenance;
+    var pt = dm && dm.point;
+    if(pt && pt.kind === 'system') return { key: 'system:' + pt.systemId, name: systemName(pt.systemId) };
+    if(pt && pt.kind === 'outpost') return { key: 'outpost:' + pt.outpostId, name: outpostName(pt.outpostId) };
+    return null;
+  }
+
+  // tpDeepLine(v) -> the card's deep-maintenance line, or '' for a craft not in it: "In deep maintenance at <point> —
+  // ready in …" (the published readyTick less the snapshot's tick, formatted as time) or "Queued for a bay at <point>
+  // (position N)" (the published queuePosition).
+  function tpDeepLine(v){
+    var dm = v && v.craftMaintenance && v.craftMaintenance.deepMaintenance;
+    if(!dm) return '';
+    var pg = tpPointGroup(v);
+    var at = pg ? ' at ' + pg.name : '';
+    var s = snap();
+    if(typeof dm.readyTick === 'number'){
+      var left = (s && typeof s.tick === 'number' && window.__fmtETA) ? window.__fmtETA(dm.readyTick - s.tick) : '—';
+      return 'In deep maintenance' + at + ' — ready in ' + left;
+    }
+    return 'Queued for a bay' + at + ' (position ' + dm.queuePosition + ')';
   }
 
   // A craft's `location` (+ `dockStatus`) → its GROUP descriptor `{ key, name }` (§15.4). A system
@@ -12128,6 +12309,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // collapse-state map. Pure read-time resolution — no game number (§18).
   function tpGroupOf(v){
     var loc = v && v.location;
+    var pg = tpPointGroup(v);   // slice 6: a craft in deep maintenance groups at its published point
+    if(pg) return pg;
     if(loc && loc.landmarkKind === 'system') return { key: 'system:' + loc.landmarkId, name: systemName(loc.landmarkId) };
     if(loc && loc.landmarkKind === 'outpost') return { key: 'outpost:' + loc.landmarkId, name: outpostName(loc.landmarkId) };
     // A craft parked / queued / loading at an outpost berths BY HEX-COINCIDENCE, so its `location`
@@ -12145,6 +12328,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   // still says where it sits. Presentation only, off the same resolvers.
   function tpCraftWhere(v){
     var loc = v && v.location;
+    var pg = tpPointGroup(v);   // slice 6: a craft in deep maintenance reads as its published point
+    if(pg) return pg.name;
     if(loc && loc.landmarkKind === 'system') return systemName(loc.landmarkId);
     if(loc && loc.landmarkKind === 'outpost') return outpostName(loc.landmarkId);
     // Same precedence as tpGroupOf: a docked craft's `location` is the outpost's bare hex, so read
@@ -12171,7 +12356,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
   function tpCraftHtml(v){
     var key = 'tp:' + v.id;
     var open = O.tpOpen[key] === true;
-    var maint = Math.round((typeof v.maintenanceCondition === 'number' ? v.maintenanceCondition : 0) * 100);
+    var maint = window.__fmtCondition(v.maintenanceCondition);   // the one shared display rule (slice 6)
+    var deep = tpDeepLine(v);
     var cargo = v.cargo || {};
     var goods = Object.keys(cargo).sort();
     var laden = v.carryingAssetId != null;
@@ -12189,7 +12375,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     // `location` is `{ landmarkKind:'system', ... }` only when it sits at a system (a parked-at-outpost
     // or adrift craft's location is a bare hex — its DOCK is the Outpost Manager, not here). A spycraft
     // has capacity 0 / no hold and the engine refuses its transfer, so it gets NO DOCK — Dispatch only.
-    var showDock = !!(v.location && v.location.landmarkKind === 'system') && v['class'] !== 'spycraft' && !laden;
+    // (Slice 6) A craft in deep maintenance has its hold locked — the engine refuses every transfer — so no DOCK.
+    var showDock = !!(v.location && v.location.landmarkKind === 'system') && v['class'] !== 'spycraft' && !laden && !deep;
     var dockBtn = showDock
       ? '<button class="ops-tp-dock" type="button" data-tp-dock="' + esc(v.id) + '">Dock</button>'
       : '';
@@ -12204,7 +12391,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +     '<span class="tsys">' + esc(tpCraftWhere(v)) + '</span>'
       +   '</div>'
       +   '<div class="ops-tp-craftbody">'
-      +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + maint + '%</span></div>'
+      +     '<div class="ops-tp-stat"><span class="k">Maintenance</span><span class="v">' + esc(maint) + '</span></div>'
+      +     (deep ? '<div class="ops-tp-stat ops-tp-deep"><span class="k">Deep maintenance</span><span class="v">' + esc(deep) + '</span></div>' : '')
       +     '<div class="ops-tp-stat"><span class="k">Hold</span><span class="v">' + fmt(v.used) + ' / ' + fmt(v.capacity) + (laden ? ' · locked' : '') + '</span></div>'
       +     holdRows
       +     '<div class="ops-tp-btns">'
@@ -12270,10 +12458,16 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       +   '<div class="ops-tp-syshd">'
       +     '<span class="ops-idle-caret">&#9660;</span>'
       +     '<span class="nm">' + esc(name) + '</span>'
-      +     '<span class="ct">' + craft.length + ' idle</span>'
+      +     '<span class="ct">' + tpCountText(craft) + '</span>'
       +   '</div>'
       +   '<div class="ops-tp-sysbody">' + body + '</div>'
       + '</div>';
+  }
+
+  // tpCountText(craft) -> the group header's count: "N idle", and (slice 6) " · M in maintenance" when any are.
+  function tpCountText(craft){
+    var inDeep = craft.filter(function(v){ return v.status === 'maintenance'; }).length;
+    return (craft.length - inDeep) + ' idle' + (inDeep ? ' · ' + inDeep + ' in maintenance' : '');
   }
 
   // Rebuild the tree only when the idle-transport set (id + where each sits + status + shown
@@ -12311,7 +12505,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     });
     var sig = craft.map(function(v){
       return v.id + '@' + tpGroupOf(v).key + JSON.stringify(v.location)
-        + ':' + v.status + ':' + Math.round((v.maintenanceCondition || 0) * 100)
+        + ':' + v.status + ':' + window.__fmtCondition(v.maintenanceCondition) + ':' + tpDeepLine(v)
         + ':' + Object.keys(v.cargo || {}).sort().map(function(g){ return g + (v.cargo[g]); }).join(',')
         + ':' + (v.carryingAssetId || '') + (unloadable(v) ? '+unload' : '');
     }).sort().join('|') + '#' + Object.keys(O.tpUi).sort().join(',');
@@ -12641,19 +12835,48 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     return slow + ' maintained · ' + fast + ' unmaintained';
   }
 
+  // ---- slice 6: the row's Deep maintenance button (docs/maintenance.md §7.1, RULED 10-11-26) ----
+  // The same button as the Dispatch popup's, by the same shared rule (window.__deepMaintButton): enabled only when the
+  // snapshot says the engine would accept it; otherwise disabled, with its display-only reason under it. A press posts
+  // startDeepMaintenance through the shared helper; a refusal shows under the button until the tick moves on, and an
+  // accepted one shows only once the next snapshot does (the row's state changes then).
+  function deepMaintHtml(v){
+    var key = 'deep:' + v.id;
+    var ui = M.ui[key] || {};
+    var b = window.__deepMaintButton(v);
+    var on = b.allowed && !ui.busy;
+    return '<button class="mt-btn" type="button" data-mt-deep="' + esc(v.id) + '"' + (on ? '' : ' disabled')
+      + (b.why ? ' title="' + esc(b.why) + '"' : '') + '>Deep maintenance</button>'
+      + (b.why ? '<span class="mt-note">' + esc(b.why) + '</span>' : '')
+      + (ui.msg ? '<div class="mt-msg">' + esc(ui.msg) + '</div>' : '');
+  }
+
+  async function onDeepMaint(vehicleId){
+    var key = 'deep:' + vehicleId;
+    M.ui[key] = { busy: true };
+    draw(true);
+    var out = await window.__startDeepMaintenance(vehicleId);
+    if(out && out.accepted){
+      delete M.ui[key];
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+    } else {
+      var now = snap();
+      M.ui[key] = { msg: 'Refused: ' + ((out && out.reason) || 'the Syndicate declined'), tick: now ? now.tick : null };
+    }
+    draw(true);
+  }
+
   function craftRowHtml(v, tick){
     var st = craftState(v, tick);
-    // Condition as a percent of the published fraction — the same display Operations' craft cards use.
-    var pct = typeof v.maintenanceCondition === 'number' ? Math.round(v.maintenanceCondition * 100) + '%' : '—';
-    // Shown as plain text only: the button that acts on it is the Dispatch popup's (slice 6).
-    var early = (v.craftMaintenance || {}).earlyMaintenanceAllowed === true
-      ? '<span class="mt-note">Early deep maintenance available</span>' : '';
+    // Condition through the one shared display rule (rounded down; "<1%" just above 0).
+    var pct = window.__fmtCondition(v.maintenanceCondition);
     return '<tr data-craft="' + esc(v.id) + '">'
       + '<td>' + esc(craftName(v)) + '</td>'
       + '<td>' + esc(craftWhere(v)) + '</td>'
       + '<td>' + esc(pct) + '</td>'
-      + '<td><span class="mt-state ' + st.cls + '">' + esc(st.text) + '</span>' + early + '</td>'
+      + '<td><span class="mt-state ' + st.cls + '">' + esc(st.text) + '</span></td>'
       + '<td>' + esc(flightLeft(v)) + '</td>'
+      + '<td>' + deepMaintHtml(v) + '</td>'
       + '</tr>';
   }
 
@@ -12662,7 +12885,7 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
       .sort(function(a, b){ return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0); });
     var rows = craft.length
       ? '<table class="mt-table"><thead><tr><th>Craft</th><th>Where</th><th>Condition</th><th>Maintenance</th>'
-        + '<th>Flight time left to 0%</th></tr></thead><tbody>'
+        + '<th>Flight time left to 0%</th><th>Deep maintenance</th></tr></thead><tbody>'
         + craft.map(function(v){ return craftRowHtml(v, tick); }).join('') + '</tbody></table>'
       : '<div class="mt-empty">Your guild has no craft.</div>';
     return poolHtml(me && me.craftMaintenance, tick) + '<div style="margin-top:16px">' + rows + '</div>';
@@ -12779,6 +13002,8 @@ function updateMusicBtn(){ var b=document.getElementById('musicBtn'); if(!b) ret
     panel.addEventListener('click', function(e){
       var btn = e.target && e.target.closest && e.target.closest('[data-mt-send]');
       if(btn && !btn.disabled) onSend(btn.getAttribute('data-mt-send'));
+      var deep = e.target && e.target.closest && e.target.closest('[data-mt-deep]');
+      if(deep && !deep.disabled) onDeepMaint(deep.getAttribute('data-mt-deep'));
     });
   }
 
@@ -14748,8 +14973,7 @@ function paintInventoryHero(d){
     $('dpName').textContent = prettyClass(v.class) + ' · #' + suffix;
     $('dpClass').textContent = prettyClass(v.class);
     $('dpLoc').textContent = locLabel(v);
-    var maint = Math.round((typeof v.maintenanceCondition === 'number' ? v.maintenanceCondition : 0) * 100);
-    $('dpMaint').textContent = maint + '%';
+    $('dpMaint').textContent = window.__fmtCondition(v.maintenanceCondition);   // the one shared display rule (slice 6)
     // per-class hero art (client/assets/units/<class>.jpg, all four classes resolve): heavyTransport
     // -> "heavytransport.jpg", spycraft -> "spycraft.jpg".
     $('dpArt').style.backgroundImage = "url('assets/units/" + String(v.class).toLowerCase() + ".jpg')";
@@ -14778,21 +15002,48 @@ function paintInventoryHero(d){
       '<div class="msum">' + fmtNum(used) + ' / ' + fmtNum(cap) + ' cargo space</div>';
   }
 
-  // PRE-PLAN state (§A): the Onboard Manifest (the craft's real hold) + the Maintenance (disabled) /
+  // PRE-PLAN state (§A): the Onboard Manifest (the craft's real hold) + the Deep maintenance /
   // Plan Route buttons. Re-read from DP.vehicle each call so the box reflects the current cargo (§18).
   // (A deploy no longer starts here: it starts from the idle kit — the Deploy popup — which picks
   // this craft as its carrier; territory-model.md §5 REVISED removed the heavy-first entry.)
-  function renderPrePlan(){
+  // `refusal` is the engine's reason for a Deep maintenance press it refused, shown under the manifest.
+  function renderPrePlan(refusal){
+    var b = window.__deepMaintButton(DP.vehicle);
     $('dpSection').innerHTML =
       '<div class="dp-manifest">' +
         '<div class="dp-sechead" style="margin-bottom:10px">Onboard Manifest</div>' +
         manifestHtml(DP.vehicle) +
-      '</div>';
+      '</div>' +
+      (b.why ? '<div class="dp-hint" id="dpMaintWhy">Deep maintenance: ' + esc(b.why) + '</div>' : '') +
+      (refusal ? '<div class="dp-refuse">' + esc(refusal) + '</div>' : '');
     var acts = $('dpActions');
     acts.innerHTML =
-      '<button class="dp-btn" id="dpMaintBtn" type="button" disabled title="Maintenance arrives later">Maintenance</button>' +
+      '<button class="dp-btn" id="dpMaintBtn" type="button"' + (b.allowed ? '' : ' disabled') +
+        (b.why ? ' title="' + esc(b.why) + '"' : '') + '>Deep maintenance</button>' +
       '<button class="dp-btn primary" id="dpPlanBtn" type="button">Plan Route</button>';
+    $('dpMaintBtn').addEventListener('click', onDeepMaint);
     $('dpPlanBtn').addEventListener('click', onPlanRoute);
+  }
+
+  // ---- slice 6: the Deep maintenance button (docs/maintenance.md §7.2) ----
+  // Enabled only when the snapshot says the engine would accept it (window.__deepMaintButton). A press posts
+  // startDeepMaintenance { guildId, vehicleId } (window.__startDeepMaintenance). Accepted: re-read the snapshot and
+  // redraw the head and buttons from the craft's NEW row — the change shows because the snapshot shows it, never
+  // because the client assumed it. Refused: the engine's reason, in place under the manifest.
+  async function onDeepMaint(){
+    var v = DP.vehicle; if(!v) return;
+    var btn = $('dpMaintBtn'); if(btn) btn.disabled = true;
+    var out = await window.__startDeepMaintenance(v.id);
+    if(DP.vehicle !== v) return;   // the popup was closed or moved to another craft meanwhile
+    if(out && out.accepted){
+      if(window.__refreshNow){ try { await window.__refreshNow(); } catch(e){} }
+      if(DP.vehicle !== v) return;
+      DP.vehicle = liveVehicle(v.id) || v;
+      fillHead(DP.vehicle);
+      renderPrePlan();
+      return;
+    }
+    renderPrePlan('Refused: ' + ((out && out.reason) || 'the Syndicate declined'));
   }
 
   // POST-FINALISE state (§D): the two-box Planned Route (a scrollable Origin+waypoints list beside
@@ -14811,6 +15062,9 @@ function paintInventoryHero(d){
     var looping = !!launchRepeat();
     var closed = looping && rc.loopClosed(route);
     var rows = '<div class="wp-row origin"><div class="ix">◎</div><div class="nm">' + esc(locLabel(v)) + '</div><div class="slot"></div></div>';
+    // Slice 6 (docs/maintenance.md §7.4): a 0% craft's quote refused by the engine names the stop the route must end
+    // at (window.__zeroStopIndex) — that stop and every one after it are flagged. -1 when the quote says nothing so.
+    var zeroStop = window.__zeroStopIndex(q);
     DP.waypoints.forEach(function(wp, i){
       var sub = (wp.action && window.__routeActionSummary) ? '<div class="act">' + esc(window.__routeActionSummary(wp.action)) + '</div>' : '';
       // Automation 2b: stop 1 on the craft's own hex (the §11.4 skip) carries a quiet "you are here"
@@ -14824,6 +15078,8 @@ function paintInventoryHero(d){
       // or drop the stop, without leaving the popup. Either un-breaks it.
       var broken = rc.brokenAt(route, i);
       if(broken) sub += '<div class="warn">' + esc(rc.brokenReason(route)) + '</div>';
+      if(zeroStop >= 0 && i === zeroStop) sub += '<div class="warn">At 0% the craft goes into deep maintenance here — end the route here</div>';
+      if(zeroStop >= 0 && i > zeroStop) sub += '<div class="warn">Past the maintenance stop — remove this stop</div>';
       var rm = broken ? '<button class="wp-rm" type="button" data-rm="' + i + '" title="Remove this stop">✕</button>' : '';
       rows += '<div class="wp-row' + (broken ? ' broken' : '') + '"><div class="ix">' + (i+1) + '</div>' +
         '<div class="nm">' + esc(wpName(wp.anchor)) + sub + '</div>' +
@@ -14855,7 +15111,9 @@ function paintInventoryHero(d){
       // an { ok:false } quote surfaces its engine reason (a route the dispatch would refuse); otherwise
       // a client route gate (dispatchBlock) shows ITS reason the same way. An unaffordable ok quote
       // needs no sentence — the disabled Dispatch button is the quiet cue (§D).
-      (q && q.ok === false ? '<div class="dp-refuse">' + esc(q.reason || 'This route cannot be dispatched.') + '</div>'
+      (q && q.ok === false ? '<div class="dp-refuse">' + esc(zeroStop >= 0
+          ? window.__zeroStopWords(q, DP.waypoints[zeroStop] ? wpName(DP.waypoints[zeroStop].anchor) : '')   // the 0% stop, in plain words (slice 6)
+          : (q.reason || 'This route cannot be dispatched.')) + '</div>'
         : (block ? '<div class="dp-refuse">' + esc(block) + '</div>' : '')) +
       (kit ? '' : saveRowHtml() + launchHtml(q));
     var acts = $('dpActions');
@@ -15811,6 +16069,7 @@ function paintInventoryHero(d){
     renderTabs();
     renderLeft(row);
     renderStorage(row);
+    renderHangar(row);
     renderTiers();
     syncSellDraft(row);
     renderTierBody(row);
@@ -15986,6 +16245,42 @@ function paintInventoryHero(d){
           '<div class="fig">'+fmtNum(used)+' / '+fmtNum(cap)+'</div>' +
         '</div>' +
       '</div>';
+  }
+
+  // ---- maintenance slice 6: the MAINTENANCE HANGAR (docs/maintenance.md §7.3) ----
+  // The Outpost row's `maintenance` readout, drawn as it is published: one line per bay (its count is the readout's
+  // `bays`), each empty or holding a craft with "ready in …" (the published `eta`, formatted as time), then the queue in
+  // the order the engine serves it. The readout is the owner's only — a rival's Outpost row does not carry it — so
+  // without it the box says so rather than inventing empty bays. Nothing is computed here.
+  function hangarCraftName(id){
+    var v = vehicleById()[id];
+    return (v ? pretty(v.class) : '—') + ' · #' + String(id).split('_').slice(-1)[0];
+  }
+  // One line: its label, its value, and an optional quieter second line under the value (a bay's "ready in …").
+  function hangarRow(k, v, empty, sub){
+    return '<div class="hg-row' + (empty ? ' empty' : '') + '"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v)
+      + (sub ? '<span class="t">' + esc(sub) + '</span>' : '') + '</span></div>';
+  }
+  function renderHangar(row){
+    var mt = row.maintenance;
+    var html = '<div class="sqhead">Maintenance Hangar</div>';
+    if(!mt){
+      paint('omHangar', html + '<div class="hg-none">Only the owner sees this Outpost\'s bays.</div>');
+      return;
+    }
+    var inBays = mt.inBays || [], queue = mt.queue || [];
+    html += '<div class="hg-sub">Bays</div>';
+    for(var i = 0; i < mt.bays; i++){
+      var b = inBays[i];
+      html += b
+        ? hangarRow('Bay ' + (i + 1), hangarCraftName(b.vehicleId), false, 'ready in ' + (window.__fmtETA ? window.__fmtETA(b.eta) : b.eta))
+        : hangarRow('Bay ' + (i + 1), 'empty', true);
+    }
+    html += '<div class="hg-sub">Queue</div>';
+    html += queue.length
+      ? queue.map(function(q, n){ return hangarRow(n === 0 ? 'Next' : 'Queue ' + pad2(n + 1), hangarCraftName(q.vehicleId), false); }).join('')
+      : '<div class="hg-none">No craft waiting for a bay.</div>';
+    paint('omHangar', html);
   }
 
   function renderTiers(){

@@ -49,6 +49,9 @@ function cut(src, re, what) {
   return m;
 }
 const kitKindsSrc = cut(html, /<script id="kit-kinds">([\s\S]*?)<\/script>/, 'the kit-kinds script')[1];
+// Maintenance slice 6: the Operations craft cards format a craft's condition through the page's shared helpers
+// (window.__fmtCondition), so every sandbox that runs the Operations script loads them first, as the page does.
+const sharedMaintSrc = cut(html, /<script id="craft-maintenance-shared">([\s\S]*?)<\/script>/, 'the craft-maintenance shared helpers')[1];
 // The Operations hub's whole script without its IIFE wrapper, so its own functions land at the sandbox's top level.
 const opsSrc = cut(html, /<script id="operations-tab-wire">\n\(function\(\)\{\n([\s\S]*?)\n\}\)\(\);\n<\/script>/, 'the Operations script')[1];
 const deployWireSrc = cut(html, /<script id="deploy-kit-wire">([\s\S]*?)<\/script>/, 'the deploy popup script')[1];
@@ -141,7 +144,7 @@ function page(state, { guildId = 'g1', ops = opsSrc, wire = deployWireSrc, view 
       __refreshNow() { current = view(world.s, guildId); sandbox.window.__opsRefresh(); return Promise.resolve(); },
     },
   };
-  vm.runInNewContext(kitKindsSrc + ops, sandbox);
+  vm.runInNewContext(sharedMaintSrc + kitKindsSrc + ops, sandbox);
   vm.runInNewContext(wire, sandbox);
   const html_ = (id) => node(id).innerHTML;
   // press(host, cls, attr, value) — click a button the hub DREW: the host's html must hold a button of class `cls`
@@ -599,14 +602,15 @@ const AS_ON_MAIN = {
   'returned (g1)': [() => W.returned, 'g1'],
 };
 // RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 6): a transport card's condition % now ROUNDS DOWN (the one shared display rule, window.__fmtCondition, RULED 10-11-26), so a worn craft can read one percent lower. With the page's formatter put back to main's Math.round, the branch renders main's (88f1536) exact bytes for every pin here — the rounding is the only change.
 const PINS = {
   'held (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': 'b17c5004050e1bbe', 'ops-tp-list': '06366f2a5df14e74',
+    'ops-idle-list': 'b17c5004050e1bbe', 'ops-tp-list': '6e45de21c017e2aa',
   },
   'stranded (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': '06366f2a5df14e74',
+    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': '6e45de21c017e2aa',
   },
   'stranded (g2)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
@@ -614,11 +618,11 @@ const PINS = {
   },
   'fleet (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '8eae89355076c922', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': 'b427b77887a66b2f',
+    'ops-idle-list': '74ab3599a10d2898', 'ops-tp-list': '67f87a21aa13a68a',
   },
   'loaded (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': '2212fdfb13c2154e',
+    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': '8cf1d1f1f4b1be7f',
   },
   'inFlight (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '41c16a21e3bf0720', 'ops-deployed-list': '01b637646c7e1986',
@@ -630,15 +634,15 @@ const PINS = {
   },
   'home (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': 'e154f18af8658682',
+    'ops-idle-list': 'ad96232665906708', 'ops-tp-list': '90111c41f310a28b',
   },
   'unloaded (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': 'd9f41b91e9652e11',
+    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': '394b1e0340bb3766',
   },
   'returned (g1)': {
     'ops-lane-notices': '12ae32cb1ec02d01', 'ops-transit-list': '3b10d9713b124c52', 'ops-deployed-list': '01b637646c7e1986',
-    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': 'f43af3339993b045',
+    'ops-idle-list': '4d7a97bef7274b85', 'ops-tp-list': 'c57e2a7119b4470e',
   },
 };
 

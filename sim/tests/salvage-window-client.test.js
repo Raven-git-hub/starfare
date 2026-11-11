@@ -44,6 +44,9 @@ function cut(src, re, what) {
   return m;
 }
 const kitKindsSrc = cut(html, /<script id="kit-kinds">([\s\S]*?)<\/script>/, 'the kit-kinds script')[1];
+// Maintenance slice 6: the Operations craft cards format a craft's condition through the page's shared helpers
+// (window.__fmtCondition), so every sandbox that runs the Operations script loads them first, as the page does.
+const sharedMaintSrc = cut(html, /<script id="craft-maintenance-shared">([\s\S]*?)<\/script>/, 'the craft-maintenance shared helpers')[1];
 // The Operations hub's whole script without its IIFE wrapper, so its own functions land at the sandbox's top level.
 const opsSrc = cut(html, /<script id="operations-tab-wire">\n\(function\(\)\{\n([\s\S]*?)\n\}\)\(\);\n<\/script>/, 'the Operations script')[1];
 // A stranded machine's row asks the deploy popup's carrier list whether to offer Salvage, so the hub runs beside it.
@@ -124,7 +127,7 @@ function opsPage(snapshot, guildId, src = opsSrc) {
       __landmarkNameAt: landmarkNameAt,
     },
   };
-  vm.runInNewContext(kitKindsSrc + src, sandbox);
+  vm.runInNewContext(sharedMaintSrc + kitKindsSrc + src, sandbox);
   vm.runInNewContext(deployWireSrc, sandbox);
   return {
     open: () => sandbox.window.__opsOpen(),
@@ -292,33 +295,34 @@ test('the last tick before the lapse reads 1m left; on the deadline\'s tick the 
 // On main, which never reads the window, the two views draw the same bytes, so this test passes there too.
 const COUNTDOWN = / · (?:\d+d \d\dh|\d+h \d\dm|\d+m) left(?=<\/span>)/g;
 // RE-PINNED 10-11-26 (maintenance slice 3): a craft in this script now wears in flight, so a transport row prints a lower condition %. With the wear switched off the branch renders main's (bb1a9c5) exact bytes for every pin here — the condition is the only change.
+// RE-PINNED 10-11-26 (maintenance slice 6): a transport card's condition % now ROUNDS DOWN (the one shared display rule, window.__fmtCondition, RULED 10-11-26), so a worn craft can read one percent lower. With the page's formatter put back to main's Math.round, the branch renders main's (88f1536) exact bytes for every pin here — the rounding is the only change.
 const AS_ON_MAIN = [
   { name: 'salvage, held (g1)', state: () => W.held, guild: 'g1',
-    pin: '25817f37808735086e55e519adc4bbaacebe2165c79932ab63c5f674b6401631' },
+    pin: 'b11e278b77b0be0415082470cbc362a43c58bb4592a4d1b4e0169232d56cffd0' },
   { name: 'salvage, stranded (g1)', state: () => W.stranded, guild: 'g1',
-    pin: '2b07a2b861ca78378e86b67f2ad65986a5630cbeb27ed7aa0c26a3c54d305721' },
+    pin: '1b2f5e0391e17b7f2eb8116b8de4cef328536d61336714cdccf5ccfae6f2c9dd' },
   { name: 'salvage, stranded (g2)', state: () => W.stranded, guild: 'g2',
     pin: '071ce5098c1dd116c8d1da228bd9b04334a42c4f6a09fd4a20ba56840793a70c' },
   { name: 'salvage, fleet (g1)', state: () => W.fleet, guild: 'g1',
-    pin: '31e1b85e24a59edace9c0d4e3a5ae980fd42d756f0f9b32599cf75f0cbf57883' },
+    pin: '6806a875915ece74a97d0e0772ba26ea0315e5c38819bae2a87a982cf7af81b9' },
   { name: 'salvage, loaded (g1)', state: () => W.loaded, guild: 'g1',
-    pin: '9aee5daf08e0c0ac6f1d1795f5f80881053159a168f8b1770e55d6557efc19eb' },
+    pin: 'b7ba537dff3596225098f8e697a17b73c47de4f1a45ba1d34a2d9560e08cf795' },
   { name: 'salvage, inFlight (g1)', state: () => W.inFlight, guild: 'g1',
     pin: 'cfb1f51508a5e3a1616e4c46a3ca8c20acb0e365569cf9b007f6ce3e1b2914ad' },
   { name: 'salvage, home (g1)', state: () => W.home, guild: 'g1',
-    pin: '74abcc93a1107c510a9dd4a58dbc8275d8c9a0c4ddce0bbaf11c5897ab71c9d0' },
+    pin: '30169d129622e9681b1acf862463a3e29b52b7cafd2d76c5bd375a8ab244e26e' },
   { name: 'salvage, unloaded (g1)', state: () => W.unloaded, guild: 'g1',
-    pin: '14ea60e0f22e587152b0b76c58f2ef8de9c70921c5d421585eecabaf9e87bd0b' },
+    pin: '831be2aab858504aeb47c77425385fd0ad12b6df07729864b9f01e2c53e190a7' },
   { name: 'salvage, returned (g1)', state: () => W.returned, guild: 'g1',
-    pin: 'd4517eae0eef2f92cb02cf52009cb99d994782b838addf66a51e487ae68bb665' },
+    pin: '4aab2afce0290df96adf4d8004fb47220e14539cac078ff70210854e4f0fc27e' },
   { name: 'sweep, fallow (g1)', state: () => FALLOW.s, guild: 'g1',
-    pin: '7bb69bfa94d915f661c9198850c7a47a72b2eb37b038bba3c7d539583bfe824c' },
+    pin: 'b045e63741011c212d310f3ea2d0d808ca4d329ded857887ce95ce8edfd02242' },
   { name: 'last tick, evicted (g1)', state: () => LAST.evicted, guild: 'g1',
-    pin: 'e7989addda221cc8da7453091c66fd68048e06766492312a7354823a2c21fb73' },
+    pin: '6895dc26a4fec8163dd1ed948f8d055889cdd11b132a2b4a4d8484a89f8f8258' },
   { name: 'last tick, before (g1)', state: () => LAST.before, guild: 'g1',
-    pin: 'e7989addda221cc8da7453091c66fd68048e06766492312a7354823a2c21fb73' },
+    pin: '6895dc26a4fec8163dd1ed948f8d055889cdd11b132a2b4a4d8484a89f8f8258' },
   { name: 'last tick, after (g1)', state: () => LAST.after, guild: 'g1',
-    pin: '6e653d5a73a50f0624a2959ffaa5ee1bc5f3e7ed99311b70212230223e7d9bcb' },
+    pin: '553935b062ff4f3df888c00392ba42af3bd2b0f8c7fdbbb5a28a176a16f07f36' },
 ];
 
 test('GUARD: without the window every Operations host renders as main rendered it; with it, only the countdown is new', () => {
